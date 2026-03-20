@@ -300,20 +300,22 @@ function App() {
               const filtered = overdueGradeFilter==="all" ? overdueList : overdueList.filter(s=>s.className===overdueGradeFilter);
               return (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={()=>setShowOverdueModal(false)}>
-                  <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 space-y-4" onClick={e=>e.stopPropagation()}>
-                    <div className="flex items-center justify-between">
+                  <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 space-y-4 flex flex-col"
+                    style={{resize:"vertical", overflow:"hidden", minHeight:"260px", maxHeight:"90vh"}}
+                    onClick={e=>e.stopPropagation()}>
+                    <div className="flex items-center justify-between shrink-0">
                       <h2 className="text-lg font-bold">⚠️ 밀린 학생 목록</h2>
                       <button onClick={()=>setShowOverdueModal(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
                     </div>
-                    <div className="flex gap-2 flex-wrap">
+                    <div className="flex gap-2 flex-wrap shrink-0">
                       <button onClick={()=>setOverdueGradeFilter("all")} className={`px-3 py-1 rounded-xl text-sm font-medium border transition ${overdueGradeFilter==="all"?"bg-slate-900 text-white border-slate-900":"bg-white text-slate-600 border-slate-200 hover:border-slate-400"}`}>전체</button>
                       {GRADES.map(g=>(
                         <button key={g} onClick={()=>setOverdueGradeFilter(g)} className={`px-3 py-1 rounded-xl text-sm font-medium border transition ${overdueGradeFilter===g?"bg-slate-900 text-white border-slate-900":"bg-white text-slate-600 border-slate-200 hover:border-slate-400"}`}>{g}</button>
                       ))}
                     </div>
                     {filtered.length===0
-                      ? <div className="text-sm text-slate-400 text-center py-6">해당 학년에 밀린 학생이 없습니다.</div>
-                      : <div className="space-y-2 max-h-80 overflow-y-auto">
+                      ? <div className="text-sm text-slate-400 text-center py-6 shrink-0">해당 학년에 밀린 학생이 없습니다.</div>
+                      : <div className="space-y-2 overflow-y-auto flex-1">
                           {filtered.map(s=>(
                             <div key={s.id} className="flex items-center justify-between rounded-xl border bg-slate-50 px-4 py-3">
                               <div>
