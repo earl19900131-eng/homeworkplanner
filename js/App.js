@@ -10,6 +10,8 @@ function App() {
   const [loginError, setLoginError] = useState("");
   const [materials, setMaterials] = useState([]);
   const [activeTab, setActiveTab] = useState("today");
+  const [editingHW, setEditingHW] = useState(null); // { key, form }
+  const [deleteConfirmHW, setDeleteConfirmHW] = useState(null);
   const [teacherTab, setTeacherTab] = useState("dashboard");
   const [teacherViewId, setTeacherViewId] = useState("all");
   const [gradeFilter, setGradeFilter] = useState("all");
@@ -143,6 +145,32 @@ function App() {
     setSaving(true);
     try { await db.ref(`homeworks/${hwKey}/chunks`).set(updated.chunks); }
     catch(e) { alert("저장 실패: "+e.message); }
+    setSaving(false);
+  };
+
+  const handleUpdateHW = async () => {
+    if (!editingHW) return;
+    const { key, form: ef } = editingHW;
+    if (!ef.title.trim()) { alert("숙제명을 입력해 주세요."); return; }
+    if (!ef.totalAmount || !ef.startDate || !ef.dueDate) { alert("총 문제 수, 시작일, 마감일을 모두 입력해 주세요."); return; }
+    const newChunks = splitHomework({...ef, customDates: ef.selectedDates});
+    if (!newChunks.length) { alert("기간이나 최대 문제 수를 조정해 주세요."); return; }
+    const oldChunks = homeworks.find(h=>h._key===key)?.chunks || [];
+    const doneMap = {};
+    oldChunks.forEach(c => { if (c.done) doneMap[c.date] = c; });
+    const mergedChunks = newChunks.map(c => doneMap[c.date] ? {...c, done: true, completedAmount: doneMap[c.date].completedAmount, submittedAt: doneMap[c.date].submittedAt} : c);
+    setSaving(true);
+    try {
+      await db.ref(`homeworks/${key}`).update({ title: ef.title.trim(), subject: ef.subject, totalAmount: Number(ef.totalAmount), startDate: ef.startDate, dueDate: ef.dueDate, includeWeekend: ef.includeWeekend, dailyMax: ef.dailyMax ? Number(ef.dailyMax) : null, chunks: mergedChunks });
+      setEditingHW(null);
+    } catch(e) { alert("저장 실패: " + e.message); }
+    setSaving(false);
+  };
+
+  const handleDeleteHW = async (hwKey) => {
+    setSaving(true);
+    try { await db.ref(`homeworks/${hwKey}`).remove(); setDeleteConfirmHW(null); }
+    catch(e) { alert("삭제 실패: " + e.message); }
     setSaving(false);
   };
 
@@ -418,8 +446,11 @@ function App() {
                       const doneCount=(hw.chunks||[]).filter(c=>c.done).length;
                       const pct=hw.chunks?.length>0?Math.round(doneCount/hw.chunks.length*100):0;
                       const hasOverdue=(hw.chunks||[]).some(c=>!c.done&&c.date<today);
+                      const isEditing = editingHW?.key === hw._key;
+                      const isDeleting = deleteConfirmHW === hw._key;
+                      const ef = editingHW?.form;
                       return(
-                        <div key={hw._key} className="rounded-2xl border bg-white p-4 space-y-3">
+                        <div key={hw._key} className={`rounded-2xl border bg-white p-4 space-y-3 ${isDeleting?"border-red-300":""}`}>
                           <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                             <div className="flex-1">
                               <div className="flex items-center gap-2 flex-wrap">
@@ -431,9 +462,43 @@ function App() {
                               <div className="mt-2"><ProgressBar value={pct}/></div>
                               <div className="text-xs text-slate-400 mt-1">{doneCount}/{hw.chunks?.length||0}일 완료 ({pct}%)</div>
                             </div>
-                            {hasOverdue&&<Btn variant="outline" size="sm" onClick={()=>redistribute(hw._key)} disabled={saving}>자동 재분배</Btn>}
+                            <div className="flex gap-1.5 flex-wrap shrink-0">
+                              {hasOverdue&&<Btn variant="outline" size="sm" onClick={()=>redistribute(hw._key)} disabled={saving}>재분배</Btn>}
+                              {!isDeleting && !isEditing && <Btn variant="outline" size="sm" onClick={()=>setEditingHW({key:hw._key, form:{title:hw.title,subject:hw.subject,totalAmount:hw.totalAmount,startDate:hw.startDate,dueDate:hw.dueDate,includeWeekend:hw.includeWeekend||false,dailyMax:hw.dailyMax||"",selectedDates:null}})}>수정</Btn>}
+                              {!isDeleting && !isEditing && <Btn variant="danger" size="sm" onClick={()=>setDeleteConfirmHW(hw._key)}>삭제</Btn>}
+                              {isDeleting && <>
+                                <span className="text-xs text-red-600 self-center">삭제할까요?</span>
+                                <Btn variant="danger" size="sm" onClick={()=>handleDeleteHW(hw._key)} disabled={saving}>확인</Btn>
+                                <Btn variant="outline" size="sm" onClick={()=>setDeleteConfirmHW(null)}>취소</Btn>
+                              </>}
+                              {isEditing && <>
+                                <Btn size="sm" onClick={handleUpdateHW} disabled={saving}>{saving?"저장 중...":"저장"}</Btn>
+                                <Btn variant="outline" size="sm" onClick={()=>setEditingHW(null)}>취소</Btn>
+                              </>}
+                            </div>
                           </div>
-                          <div className="space-y-1">
+                          {isEditing && ef && (
+                            <div className="border-t pt-3 space-y-2">
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                <div className="space-y-1 sm:col-span-2"><Lbl>숙제명</Lbl><Inp value={ef.title} onChange={e=>setEditingHW(p=>({...p,form:{...p.form,title:e.target.value}}))} /></div>
+                                <div className="space-y-1"><Lbl>과목</Lbl>
+                                  <select value={ef.subject} onChange={e=>setEditingHW(p=>({...p,form:{...p.form,subject:e.target.value}}))}
+                                    className="w-full rounded-xl border border-input px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300">
+                                    {["중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"].map(s=><option key={s} value={s}>{s}</option>)}
+                                  </select>
+                                </div>
+                                <div className="space-y-1"><Lbl>총 문제 수</Lbl><Inp type="number" value={ef.totalAmount} onChange={e=>setEditingHW(p=>({...p,form:{...p.form,totalAmount:e.target.value}}))} /></div>
+                                <div className="space-y-1"><Lbl>시작일</Lbl><Inp type="date" value={ef.startDate} onChange={e=>setEditingHW(p=>({...p,form:{...p.form,startDate:e.target.value,selectedDates:null}}))} /></div>
+                                <div className="space-y-1"><Lbl>마감일</Lbl><Inp type="date" value={ef.dueDate} onChange={e=>setEditingHW(p=>({...p,form:{...p.form,dueDate:e.target.value,selectedDates:null}}))} /></div>
+                                <div className="space-y-1"><Lbl>하루 최대 문제 수</Lbl><Inp type="number" value={ef.dailyMax} onChange={e=>setEditingHW(p=>({...p,form:{...p.form,dailyMax:e.target.value}}))} placeholder="선택"/></div>
+                                <div className="flex items-center gap-2 rounded-xl border bg-slate-50 px-3 py-2">
+                                  <input type="checkbox" id={`weekend-${hw._key}`} checked={ef.includeWeekend} onChange={e=>setEditingHW(p=>({...p,form:{...p.form,includeWeekend:e.target.checked,selectedDates:null}}))} className="w-4 h-4 cursor-pointer"/>
+                                  <label htmlFor={`weekend-${hw._key}`} className="text-sm font-medium cursor-pointer">주말 포함</label>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          {!isEditing && <div className="space-y-1">
                             {(hw.chunks||[]).map(chunk=>{
                               const isOverdue=!chunk.done&&chunk.date<today;
                               const isToday=chunk.date===today;
@@ -445,7 +510,7 @@ function App() {
                                 </button>
                               );
                             })}
-                          </div>
+                          </div>}
                         </div>
                       );
                     })
