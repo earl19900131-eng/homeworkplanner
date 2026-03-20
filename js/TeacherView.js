@@ -6,20 +6,25 @@ function TeacherStatsTab({ students, homeworks, today }) {
 
   const filteredStudents = selectedClass === "all" ? students : students.filter(s=>s.className===selectedClass);
 
+  // 이행/미이행 기반 통계 (마감일이 지난 숙제만)
   const studentRates = useMemo(() => filteredStudents.map(s => {
-    const hws = hwByStudent[s.id] ?? [];
-    const allChunks = hws.flatMap(hw=>(hw.chunks||[]).filter(c=>c.date<=today));
-    const total = allChunks.length;
-    const done = allChunks.filter(c=>c.done).length;
-    return { ...s, rate: total>0?Math.round(done/total*100):null, done, total };
+    const hws = (hwByStudent[s.id] ?? []).filter(hw => hw.dueDate <= today);
+    const verified = hws.filter(hw=>hw.teacherVerified==="이행").length;
+    const unverified = hws.filter(hw=>hw.teacherVerified==="미이행").length;
+    const pending = hws.filter(hw=>!hw.teacherVerified).length;
+    const judged = verified + unverified;
+    const rate = judged > 0 ? Math.round(verified / judged * 100) : null;
+    return { ...s, rate, verified, unverified, pending, judged };
   }).sort((a,b) => (b.rate??-1) - (a.rate??-1)), [filteredStudents, hwByStudent, today]);
 
   const classRates = useMemo(() => classes.map(cls => {
     const group = students.filter(s=>s.className===cls);
     const rates = group.map(s => {
-      const hws = hwByStudent[s.id]??[];
-      const chunks = hws.flatMap(hw=>(hw.chunks||[]).filter(c=>c.date<=today));
-      return chunks.length>0 ? Math.round(chunks.filter(c=>c.done).length/chunks.length*100) : null;
+      const hws = (hwByStudent[s.id]??[]).filter(hw=>hw.dueDate<=today);
+      const verified = hws.filter(hw=>hw.teacherVerified==="이행").length;
+      const unverified = hws.filter(hw=>hw.teacherVerified==="미이행").length;
+      const judged = verified + unverified;
+      return judged > 0 ? Math.round(verified/judged*100) : null;
     }).filter(r=>r!==null);
     return { cls, avg: rates.length>0?Math.round(rates.reduce((a,b)=>a+b,0)/rates.length):0, count: group.length, active: rates.length };
   }), [classes, students, hwByStudent, today]);
@@ -39,9 +44,9 @@ function TeacherStatsTab({ students, homeworks, today }) {
             <div className="flex items-center justify-between">
               <div>
                 <div className="font-bold">{c.cls}</div>
-                <div className="text-xs text-slate-400 mt-0.5">{c.count}명 중 {c.active}명 활동</div>
+                <div className="text-xs text-slate-400 mt-0.5">{c.count}명 중 {c.active}명 판정 있음</div>
               </div>
-              <div className="text-2xl font-bold">{c.avg}%</div>
+              <div className="text-2xl font-bold">{c.avg > 0 ? c.avg+"%" : "-"}</div>
             </div>
             <div className="mt-2"><ProgressBar value={c.avg}/></div>
           </Card>
@@ -62,7 +67,10 @@ function TeacherStatsTab({ students, homeworks, today }) {
       </div>
 
       <Card className="p-5 space-y-3">
-        <h2 className="text-lg font-bold">학생별 이행률</h2>
+        <div>
+          <h2 className="text-lg font-bold">학생별 숙제 이행률</h2>
+          <p className="text-xs text-slate-400 mt-0.5">마감일이 지난 숙제 중 관리자가 이행/미이행 판정한 항목 기준</p>
+        </div>
         {studentRates.length === 0
           ? <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-400 text-center">데이터가 없습니다.</div>
           : <div className="space-y-2">
@@ -76,7 +84,10 @@ function TeacherStatsTab({ students, homeworks, today }) {
                   <div className={`shrink-0 rounded-xl px-2.5 py-0.5 text-xs font-bold ${rateColor(s.rate)}`}>
                     {s.rate !== null ? s.rate+"%" : "-"}
                   </div>
-                  <div className="text-xs text-slate-400 shrink-0 w-16 text-right">{s.done}/{s.total}일</div>
+                  <div className="text-xs text-slate-400 shrink-0 text-right">
+                    <span className="text-emerald-600">이행 {s.verified}</span> / <span className="text-red-500">미이행 {s.unverified}</span>
+                    {s.pending > 0 && <span className="text-slate-400"> · 미판정 {s.pending}</span>}
+                  </div>
                 </div>
               ))}
             </div>
@@ -212,11 +223,21 @@ function TeacherHWCard({ hw, done, pct, today }) {
     setSaving(false);
   };
 
+  const handleVerify = async (value) => {
+    setSaving(true);
+    try { await db.ref(`homeworks/${hw._key}/teacherVerified`).set(value); }
+    catch(err) { alert("저장 실패: "+err.message); }
+    setSaving(false);
+  };
+
+  const isPastDue = hw.dueDate <= today;
+  const verified = hw.teacherVerified; // null | "이행" | "미이행"
+
   const ef = editForm;
   const setEF = (fn) => setEditForm(p=>typeof fn==="function"?fn(p):fn);
 
   return (
-    <div className={`rounded-2xl border overflow-hidden ${deleteConfirm?"border-red-300":""}`}>
+    <div className={`rounded-2xl border overflow-hidden ${deleteConfirm?"border-red-300":verified==="이행"?"border-emerald-300":verified==="미이행"?"border-red-300":""}`}>
       <div className="p-4">
         <div className="flex items-start gap-2">
           <button type="button" onClick={()=>!editing&&setExpanded(p=>!p)} className="flex-1 text-left">
@@ -226,6 +247,9 @@ function TeacherHWCard({ hw, done, pct, today }) {
                   <span className="font-semibold">{hw.title}</span>
                   <Badge variant="secondary">{hw.studentName}</Badge>
                   <Badge variant="outline">{hw.subject}</Badge>
+                  {verified==="이행"&&<span className="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-0.5">✓ 이행</span>}
+                  {verified==="미이행"&&<span className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg px-2 py-0.5">✗ 미이행</span>}
+                  {isPastDue && !verified && <span className="text-xs text-slate-400 bg-slate-100 rounded-lg px-2 py-0.5">미판정</span>}
                 </div>
                 <div className="text-xs text-slate-500 mt-1">{hw.startDate} ~ {hw.dueDate} · 총 {hw.totalAmount}문제</div>
               </div>
@@ -238,6 +262,17 @@ function TeacherHWCard({ hw, done, pct, today }) {
             <div className="text-xs text-slate-400 mt-1">{done}/{hw.chunks?.length||0}일 완료 · 클릭해서 제출 시각 확인</div>
           </button>
           <div className="shrink-0 flex items-center gap-1.5 ml-1 flex-wrap justify-end">
+            {!editing && !deleteConfirm && isPastDue && (
+              verified ? (
+                <button type="button" onClick={()=>handleVerify(null)} disabled={saving}
+                  className="px-2 py-1 text-xs font-medium bg-slate-100 text-slate-500 rounded-xl hover:bg-slate-200 transition">판정 취소</button>
+              ) : (<>
+                <button type="button" onClick={()=>handleVerify("이행")} disabled={saving}
+                  className="px-2 py-1 text-xs font-medium bg-emerald-100 text-emerald-700 rounded-xl hover:bg-emerald-200 transition">✓ 이행</button>
+                <button type="button" onClick={()=>handleVerify("미이행")} disabled={saving}
+                  className="px-2 py-1 text-xs font-medium bg-red-100 text-red-600 rounded-xl hover:bg-red-200 transition">✗ 미이행</button>
+              </>)
+            )}
             {!editing && !deleteConfirm && hasOverdue && (
               <button type="button" onClick={handleRedistribute} disabled={saving}
                 className="px-2 py-1 text-xs font-medium bg-amber-100 text-amber-700 rounded-xl hover:bg-amber-200 transition">재분배</button>
