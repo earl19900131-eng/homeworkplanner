@@ -269,7 +269,7 @@ function App() {
                     <h2 className="text-lg font-bold">학생별 진행 현황</h2>
                     {teacherStats.length===0
                       ? <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-400 text-center">학생 관리 탭에서 학생을 먼저 추가해 주세요.</div>
-                      : <ClassGroupList teacherStats={teacherStats} teacherViewId={teacherViewId} setTeacherViewId={setTeacherViewId}/>
+                      : <ClassGroupList teacherStats={teacherStats} teacherViewId={teacherViewId} setTeacherViewId={setTeacherViewId} homeworks={homeworks}/>
                     }
                   </Card>
                   <Card className="p-5 space-y-4">

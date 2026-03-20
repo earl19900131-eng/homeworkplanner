@@ -86,62 +86,81 @@ function TeacherStatsTab({ students, homeworks, today }) {
   );
 }
 
-// ── 학년별 토글 그룹 리스트 ───────────────────────────────────────────────────
-function ClassGroupList({ teacherStats, teacherViewId, setTeacherViewId }) {
-  const classes = [...new Set(teacherStats.map(s=>s.className))].sort();
-  const [openClasses, setOpenClasses] = useState(() => {
-    const init = {};
-    classes.forEach(c => init[c] = false);
-    return init;
-  });
+// ── 학년별/과목별 필터 리스트 ─────────────────────────────────────────────────
+const GRADES = ["중1","중2","중3","고1","고2","고3"];
+const SUBJECTS = ["중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"];
 
-  const toggle = (cls) => setOpenClasses(prev=>({...prev,[cls]:!prev[cls]}));
+function ClassGroupList({ teacherStats, teacherViewId, setTeacherViewId, homeworks }) {
+  const [gradeFilter, setGradeFilter] = useState("all");
+  const [subjectFilter, setSubjectFilter] = useState("all");
+
+  const hwByStudent = useMemo(() => (homeworks||[]).reduce((acc,hw)=>{
+    (acc[hw.studentId]||(acc[hw.studentId]=[])).push(hw); return acc;
+  },{}), [homeworks]);
+
+  const usedSubjects = useMemo(() => {
+    const set = new Set((homeworks||[]).map(hw=>hw.subject).filter(Boolean));
+    return SUBJECTS.filter(s=>set.has(s));
+  }, [homeworks]);
+
+  const filtered = useMemo(() => {
+    let list = teacherStats;
+    if (gradeFilter !== "all") list = list.filter(s=>s.className===gradeFilter);
+    if (subjectFilter !== "all") list = list.filter(s=>(hwByStudent[s.id]||[]).some(hw=>hw.subject===subjectFilter));
+    return list;
+  }, [teacherStats, gradeFilter, subjectFilter, hwByStudent]);
+
+  const FilterBtn = ({value, current, onClick, children}) => (
+    <button type="button" onClick={onClick}
+      className={"px-2.5 py-1 rounded-lg text-xs font-medium transition border " +
+        (current===value?"bg-slate-900 text-white border-slate-900":"bg-white text-slate-500 border-slate-200 hover:bg-slate-50")}>
+      {children}
+    </button>
+  );
 
   return (
-    <div className="space-y-2">
-      {classes.map(cls => {
-        const group = teacherStats.filter(s=>s.className===cls);
-        const isOpen = openClasses[cls];
-        const dangerCount = group.filter(s=>s.overdueChunks>=2).length;
-        const avgProgress = group.length>0 ? Math.round(group.reduce((sum,s)=>sum+s.progress,0)/group.length) : 0;
-        return (
-          <div key={cls} className="rounded-2xl border overflow-hidden">
-            <button type="button" onClick={()=>toggle(cls)}
-              className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition text-left">
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-sm">{cls}</span>
-                <span className="text-xs text-slate-400">{group.length}명</span>
-                {dangerCount>0 && <Badge variant="destructive">⚠ {dangerCount}명</Badge>}
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400">평균 {avgProgress}%</span>
-                <span className="text-slate-400 text-xs">{isOpen?"▲":"▼"}</span>
-              </div>
-            </button>
-            {isOpen && (
-              <div className="divide-y">
-                {group.map(s=>(
-                  <button key={s.id} type="button" onClick={()=>setTeacherViewId(s.id)}
-                    className={`w-full px-4 py-3 text-left transition ${teacherViewId===s.id?"bg-slate-100":"bg-white hover:bg-slate-50"}`}>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-sm">{s.name}</span>
-                        {s.overdueChunks>=2&&<Badge variant="destructive">위험</Badge>}
-                        {s.homeworkCount===0&&<Badge variant="outline">미등록</Badge>}
-                      </div>
-                      <span className={"text-sm font-bold shrink-0 text-slate-700"}>{s.progress}%</span>
-                    </div>
-                    <div className="mt-1.5"><ProgressBar value={s.progress}/></div>
-                    <div className={"mt-1 text-xs text-slate-400"}>
-                      오늘 미완료 {s.todayIncomplete}개 · 밀림 {s.overdueChunks}개
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <div className="text-xs text-slate-400 font-medium">학년</div>
+        <div className="flex gap-1.5 flex-wrap">
+          <FilterBtn value="all" current={gradeFilter} onClick={()=>setGradeFilter("all")}>전체</FilterBtn>
+          {GRADES.map(g=>(
+            <FilterBtn key={g} value={g} current={gradeFilter} onClick={()=>setGradeFilter(g)}>{g}</FilterBtn>
+          ))}
+        </div>
+      </div>
+      {usedSubjects.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="text-xs text-slate-400 font-medium">과목</div>
+          <div className="flex gap-1.5 flex-wrap">
+            <FilterBtn value="all" current={subjectFilter} onClick={()=>setSubjectFilter("all")}>전체</FilterBtn>
+            {usedSubjects.map(s=>(
+              <FilterBtn key={s} value={s} current={subjectFilter} onClick={()=>setSubjectFilter(s)}>{s}</FilterBtn>
+            ))}
           </div>
-        );
-      })}
+        </div>
+      )}
+      <div className="space-y-1 max-h-72 overflow-y-auto pr-0.5">
+        {filtered.length === 0
+          ? <div className="text-sm text-slate-400 text-center py-4">해당하는 학생이 없습니다.</div>
+          : filtered.map(s=>(
+            <button key={s.id} type="button" onClick={()=>setTeacherViewId(s.id)}
+              className={`w-full px-3 py-2.5 rounded-xl text-left transition border ${teacherViewId===s.id?"bg-slate-100 border-slate-300":"bg-white border-transparent hover:bg-slate-50 hover:border-slate-200"}`}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-sm">{s.name}</span>
+                  <span className="text-xs text-slate-400 bg-slate-100 rounded-md px-1.5 py-0.5">{s.className}</span>
+                  {s.overdueChunks>=2&&<Badge variant="destructive">위험</Badge>}
+                  {s.homeworkCount===0&&<Badge variant="outline">미등록</Badge>}
+                </div>
+                <span className="text-sm font-bold shrink-0 text-slate-700">{s.progress}%</span>
+              </div>
+              <div className="mt-1.5"><ProgressBar value={s.progress}/></div>
+              <div className="mt-1 text-xs text-slate-400">오늘 미완료 {s.todayIncomplete}개 · 밀림 {s.overdueChunks}개</div>
+            </button>
+          ))
+        }
+      </div>
     </div>
   );
 }

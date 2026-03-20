@@ -1,7 +1,7 @@
 // ── 학생 관리 탭 (선생님용) ────────────────────────────────────────────────────
 function StudentManager({ students, homeworks }) {
   const [newName, setNewName] = useState("");
-  const [newClass, setNewClass] = useState("");
+  const [newClass, setNewClass] = useState("중1");
   const [newPin, setNewPin] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -15,7 +15,7 @@ function StudentManager({ students, homeworks }) {
 
   const addStudent = async () => {
     if (!newName.trim()) { setErr("이름을 입력해 주세요."); return; }
-    if (!newClass.trim()) { setErr("반을 입력해 주세요."); return; }
+    if (!newClass.trim()) { setErr("학년을 선택해 주세요."); return; }
     if (!newPin.trim() || newPin.length < 4) { setErr("PIN은 4자리 이상 입력해 주세요."); return; }
     if (students.some(s => s.name === newName.trim() && s.className === newClass.trim())) { setErr("같은 이름+반 학생이 이미 있습니다."); return; }
     setSaving(true);
@@ -115,7 +115,12 @@ function StudentManager({ students, homeworks }) {
           <div className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-3">
               <div className="space-y-1.5"><Lbl>이름</Lbl><Inp value={newName} onChange={e=>setNewName(e.target.value)} placeholder="홍길동" onKeyDown={e=>e.key==="Enter"&&addStudent()}/></div>
-              <div className="space-y-1.5"><Lbl>반</Lbl><Inp value={newClass} onChange={e=>setNewClass(e.target.value)} placeholder="중3A" onKeyDown={e=>e.key==="Enter"&&addStudent()}/></div>
+              <div className="space-y-1.5"><Lbl>학년</Lbl>
+                <select value={newClass} onChange={e=>setNewClass(e.target.value)}
+                  className="w-full rounded-xl border border-input px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300">
+                  {["중1","중2","중3","고1","고2","고3"].map(g=><option key={g} value={g}>{g}</option>)}
+                </select>
+              </div>
               <div className="space-y-1.5"><Lbl>PIN</Lbl><Inp value={newPin} onChange={e=>setNewPin(e.target.value)} placeholder="4자리 이상" onKeyDown={e=>e.key==="Enter"&&addStudent()}/></div>
             </div>
             {err && <AlertBox className="bg-red-50 text-red-700">{err}</AlertBox>}
@@ -211,8 +216,10 @@ function StudentManager({ students, homeworks }) {
                             <>
                               <input value={editInfo[s.id].name} onChange={e=>setEditInfo(p=>({...p,[s.id]:{...p[s.id],name:e.target.value}}))}
                                 className="border border-slate-200 rounded-xl px-2 py-1 text-xs w-20 outline-none focus:ring-1 focus:ring-slate-300" placeholder="이름"/>
-                              <input value={editInfo[s.id].className} onChange={e=>setEditInfo(p=>({...p,[s.id]:{...p[s.id],className:e.target.value}}))}
-                                className="border border-slate-200 rounded-xl px-2 py-1 text-xs w-16 outline-none focus:ring-1 focus:ring-slate-300" placeholder="반"/>
+                              <select value={editInfo[s.id].className} onChange={e=>setEditInfo(p=>({...p,[s.id]:{...p[s.id],className:e.target.value}}))}
+                                className="border border-slate-200 rounded-xl px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-slate-300 bg-white">
+                                {["중1","중2","중3","고1","고2","고3"].map(g=><option key={g} value={g}>{g}</option>)}
+                              </select>
                               <Btn size="sm" onClick={()=>updateInfo(s.id, editInfo[s.id].name, editInfo[s.id].className)}>저장</Btn>
                               <Btn variant="outline" size="sm" onClick={()=>setEditInfo(p=>{const n={...p};delete n[s.id];return n;})}>취소</Btn>
                             </>
