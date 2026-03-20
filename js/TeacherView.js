@@ -90,9 +90,7 @@ function TeacherStatsTab({ students, homeworks, today }) {
 const GRADES = ["중1","중2","중3","고1","고2","고3"];
 const SUBJECTS = ["중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"];
 
-function ClassGroupList({ teacherStats, teacherViewId, setTeacherViewId, homeworks }) {
-  const [gradeFilter, setGradeFilter] = useState("all");
-  const [subjectFilter, setSubjectFilter] = useState("all");
+function ClassGroupList({ teacherStats, teacherViewId, setTeacherViewId, homeworks, gradeFilter, setGradeFilter, subjectFilter, setSubjectFilter }) {
 
   const hwByStudent = useMemo(() => (homeworks||[]).reduce((acc,hw)=>{
     (acc[hw.studentId]||(acc[hw.studentId]=[])).push(hw); return acc;

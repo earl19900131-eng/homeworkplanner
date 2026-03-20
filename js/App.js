@@ -12,6 +12,8 @@ function App() {
   const [activeTab, setActiveTab] = useState("today");
   const [teacherTab, setTeacherTab] = useState("dashboard");
   const [teacherViewId, setTeacherViewId] = useState("all");
+  const [gradeFilter, setGradeFilter] = useState("all");
+  const [subjectFilter, setSubjectFilter] = useState("all");
   const [form, setForm] = useState(defaultForm);
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -85,7 +87,13 @@ function App() {
   }),[teacherStats,students.length]);
 
   const selectedTeacherStudent = teacherViewId==="all"?null:students.find(s=>s.id===teacherViewId)??null;
-  const selectedTeacherHW = selectedTeacherStudent?hwByStudent[selectedTeacherStudent.id]??[]:homeworks;
+  const selectedTeacherHW = useMemo(() => {
+    if (selectedTeacherStudent) return hwByStudent[selectedTeacherStudent.id]??[];
+    let hws = homeworks;
+    if (gradeFilter !== "all") hws = hws.filter(hw => students.find(s=>s.id===hw.studentId)?.className === gradeFilter);
+    if (subjectFilter !== "all") hws = hws.filter(hw => hw.subject === subjectFilter);
+    return hws;
+  }, [selectedTeacherStudent, homeworks, gradeFilter, subjectFilter, hwByStudent, students]);
   const studentHW = currentStudent?hwByStudent[currentStudent.id]??[]:[];
   const todayTasks = studentHW.flatMap(hw=>(hw.chunks||[]).filter(c=>c.date===today).map(c=>({...c,hwKey:hw._key,title:hw.title,subject:hw.subject})));
   const overdueTasks = studentHW.flatMap(hw=>(hw.chunks||[]).filter(c=>c.date<today&&!c.done).map(c=>({...c,hwKey:hw._key,title:hw.title,subject:hw.subject})));
@@ -269,7 +277,7 @@ function App() {
                     <h2 className="text-lg font-bold">학생별 진행 현황</h2>
                     {teacherStats.length===0
                       ? <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-400 text-center">학생 관리 탭에서 학생을 먼저 추가해 주세요.</div>
-                      : <ClassGroupList teacherStats={teacherStats} teacherViewId={teacherViewId} setTeacherViewId={setTeacherViewId} homeworks={homeworks}/>
+                      : <ClassGroupList teacherStats={teacherStats} teacherViewId={teacherViewId} setTeacherViewId={setTeacherViewId} homeworks={homeworks} gradeFilter={gradeFilter} setGradeFilter={setGradeFilter} subjectFilter={subjectFilter} setSubjectFilter={setSubjectFilter}/>
                     }
                   </Card>
                   <Card className="p-5 space-y-4">
