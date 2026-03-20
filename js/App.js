@@ -13,6 +13,8 @@ function App() {
   const [editingHW, setEditingHW] = useState(null); // { key, form }
   const [deleteConfirmHW, setDeleteConfirmHW] = useState(null);
   const [teacherTab, setTeacherTab] = useState("dashboard");
+  const [showOverdueModal, setShowOverdueModal] = useState(false);
+  const [overdueGradeFilter, setOverdueGradeFilter] = useState("all");
   const [teacherViewId, setTeacherViewId] = useState("all");
   const [gradeFilter, setGradeFilter] = useState("all");
   const [subjectFilter, setSubjectFilter] = useState("all");
@@ -292,13 +294,49 @@ function App() {
               ))}
             </div>
 
+            {showOverdueModal && (() => {
+              const GRADES = ["중1","중2","중3","고1","고2","고3"];
+              const overdueList = teacherStats.filter(s=>s.overdueChunks>=1);
+              const filtered = overdueGradeFilter==="all" ? overdueList : overdueList.filter(s=>s.className===overdueGradeFilter);
+              return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={()=>setShowOverdueModal(false)}>
+                  <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 space-y-4" onClick={e=>e.stopPropagation()}>
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-lg font-bold">⚠️ 밀린 학생 목록</h2>
+                      <button onClick={()=>setShowOverdueModal(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      <button onClick={()=>setOverdueGradeFilter("all")} className={`px-3 py-1 rounded-xl text-sm font-medium border transition ${overdueGradeFilter==="all"?"bg-slate-900 text-white border-slate-900":"bg-white text-slate-600 border-slate-200 hover:border-slate-400"}`}>전체</button>
+                      {GRADES.map(g=>(
+                        <button key={g} onClick={()=>setOverdueGradeFilter(g)} className={`px-3 py-1 rounded-xl text-sm font-medium border transition ${overdueGradeFilter===g?"bg-slate-900 text-white border-slate-900":"bg-white text-slate-600 border-slate-200 hover:border-slate-400"}`}>{g}</button>
+                      ))}
+                    </div>
+                    {filtered.length===0
+                      ? <div className="text-sm text-slate-400 text-center py-6">해당 학년에 밀린 학생이 없습니다.</div>
+                      : <div className="space-y-2 max-h-80 overflow-y-auto">
+                          {filtered.map(s=>(
+                            <div key={s.id} className="flex items-center justify-between rounded-xl border bg-slate-50 px-4 py-3">
+                              <div>
+                                <span className="font-semibold text-sm">{s.name}</span>
+                                <span className="ml-2 text-xs text-slate-400 bg-slate-200 rounded px-1.5 py-0.5">{s.className}</span>
+                              </div>
+                              <span className="text-sm text-red-600 font-medium">밀림 {s.overdueChunks}개</span>
+                            </div>
+                          ))}
+                        </div>
+                    }
+                  </div>
+                </div>
+              );
+            })()}
+
             {teacherTab==="dashboard" && (
               <div className="space-y-5">
                 <div className="grid gap-3 md:grid-cols-4">
                   <SummaryCard title="전체 학생" value={`${teacherDash.totalStudents}명`} description="등록된 학생 수" icon="👥"/>
                   <SummaryCard title="숙제 입력 학생" value={`${teacherDash.activeStudents}명`} description="숙제를 한 번 이상 등록" icon="📖"/>
                   <SummaryCard title="오늘 미완료" value={`${teacherDash.incompleteToday}명`} description="오늘 할 양 미체크" icon="⏰"/>
-                  <SummaryCard title="밀린 학생" value={`${teacherDash.dangerStudents}명`} description="밀린 분량 1개 이상" icon="⚠️"/>
+                  <div className="cursor-pointer" onClick={()=>{setShowOverdueModal(true);setOverdueGradeFilter("all");}}><SummaryCard title="밀린 학생" value={`${teacherDash.dangerStudents}명`} description="클릭해서 목록 보기" icon="⚠️"/></div>
                 </div>
                 <div className="grid gap-5 lg:grid-cols-[2fr_3fr]">
                   <Card className="p-5 space-y-3">
