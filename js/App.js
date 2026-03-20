@@ -85,7 +85,7 @@ function App() {
     totalStudents:students.length,
     activeStudents:teacherStats.filter(s=>s.homeworkCount>0).length,
     incompleteToday:teacherStats.filter(s=>s.todayIncomplete>0).length,
-    dangerStudents:teacherStats.filter(s=>s.overdueChunks>=2).length,
+    dangerStudents:teacherStats.filter(s=>s.overdueChunks>=1).length,
   }),[teacherStats,students.length]);
 
   const selectedTeacherStudent = teacherViewId==="all"?null:students.find(s=>s.id===teacherViewId)??null;
@@ -298,7 +298,7 @@ function App() {
                   <SummaryCard title="전체 학생" value={`${teacherDash.totalStudents}명`} description="등록된 학생 수" icon="👥"/>
                   <SummaryCard title="숙제 입력 학생" value={`${teacherDash.activeStudents}명`} description="숙제를 한 번 이상 등록" icon="📖"/>
                   <SummaryCard title="오늘 미완료" value={`${teacherDash.incompleteToday}명`} description="오늘 할 양 미체크" icon="⏰"/>
-                  <SummaryCard title="위험 학생" value={`${teacherDash.dangerStudents}명`} description="밀린 분량 2개 이상" icon="⚠️"/>
+                  <SummaryCard title="밀린 학생" value={`${teacherDash.dangerStudents}명`} description="밀린 분량 1개 이상" icon="⚠️"/>
                 </div>
                 <div className="grid gap-5 lg:grid-cols-[2fr_3fr]">
                   <Card className="p-5 space-y-3">

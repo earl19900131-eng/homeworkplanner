@@ -148,7 +148,7 @@ function ClassGroupList({ teacherStats, teacherViewId, setTeacherViewId, homewor
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-semibold text-sm">{s.name}</span>
                   <span className="text-xs text-slate-400 bg-slate-100 rounded-md px-1.5 py-0.5">{s.className}</span>
-                  {s.overdueChunks>=2&&<Badge variant="destructive">위험</Badge>}
+                  {s.overdueChunks>=1&&<Badge variant="destructive">밀림</Badge>}
                   {s.homeworkCount===0&&<Badge variant="outline">미등록</Badge>}
                 </div>
                 <span className="text-sm font-bold shrink-0 text-slate-700">{s.progress}%</span>
