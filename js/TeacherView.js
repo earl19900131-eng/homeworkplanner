@@ -167,6 +167,10 @@ function ClassGroupList({ teacherStats, teacherViewId, setTeacherViewId, homewor
 function TeacherHWCard({ hw, done, pct, today }) {
   const [expanded, setExpanded] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const hasOverdue = (hw.chunks||[]).some(c=>!c.done&&c.date<today);
 
   const handleDelete = async (e) => {
     e.stopPropagation();
@@ -176,11 +180,46 @@ function TeacherHWCard({ hw, done, pct, today }) {
     } catch(err) { alert("삭제 실패: " + err.message); }
   };
 
+  const startEdit = (e) => {
+    e.stopPropagation();
+    setEditForm({ title:hw.title, subject:hw.subject, totalAmount:hw.totalAmount, startDate:hw.startDate, dueDate:hw.dueDate, includeWeekend:hw.includeWeekend||false, dailyMax:hw.dailyMax||"" });
+    setEditing(true);
+    setExpanded(false);
+  };
+
+  const handleUpdate = async () => {
+    if (!editForm.title.trim()) { alert("숙제명을 입력해 주세요."); return; }
+    if (!editForm.totalAmount||!editForm.startDate||!editForm.dueDate) { alert("총 문제 수, 시작일, 마감일을 입력해 주세요."); return; }
+    const newChunks = splitHomework({...editForm, customDates:null});
+    if (!newChunks.length) { alert("기간이나 최대 문제 수를 조정해 주세요."); return; }
+    const doneMap = {};
+    (hw.chunks||[]).forEach(c=>{ if(c.done) doneMap[c.date]=c; });
+    const merged = newChunks.map(c=>doneMap[c.date]?{...c,done:true,completedAmount:doneMap[c.date].completedAmount,submittedAt:doneMap[c.date].submittedAt}:c);
+    setSaving(true);
+    try {
+      await db.ref(`homeworks/${hw._key}`).update({ title:editForm.title.trim(), subject:editForm.subject, totalAmount:Number(editForm.totalAmount), startDate:editForm.startDate, dueDate:editForm.dueDate, includeWeekend:editForm.includeWeekend, dailyMax:editForm.dailyMax?Number(editForm.dailyMax):null, chunks:merged });
+      setEditing(false);
+    } catch(err) { alert("저장 실패: "+err.message); }
+    setSaving(false);
+  };
+
+  const handleRedistribute = async (e) => {
+    e.stopPropagation();
+    const updated = redistributeHomework(hw, today);
+    setSaving(true);
+    try { await db.ref(`homeworks/${hw._key}/chunks`).set(updated.chunks); }
+    catch(err) { alert("저장 실패: "+err.message); }
+    setSaving(false);
+  };
+
+  const ef = editForm;
+  const setEF = (fn) => setEditForm(p=>typeof fn==="function"?fn(p):fn);
+
   return (
     <div className={`rounded-2xl border overflow-hidden ${deleteConfirm?"border-red-300":""}`}>
       <div className="p-4">
         <div className="flex items-start gap-2">
-          <button type="button" onClick={()=>setExpanded(p=>!p)} className="flex-1 text-left">
+          <button type="button" onClick={()=>!editing&&setExpanded(p=>!p)} className="flex-1 text-left">
             <div className="flex flex-col gap-2 md:flex-row md:justify-between">
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -192,14 +231,30 @@ function TeacherHWCard({ hw, done, pct, today }) {
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <span className="text-sm font-bold">{pct}%</span>
-                <span className="text-slate-400 text-xs">{expanded?"▲":"▼"}</span>
+                {!editing&&<span className="text-slate-400 text-xs">{expanded?"▲":"▼"}</span>}
               </div>
             </div>
             <div className="mt-2"><ProgressBar value={pct}/></div>
             <div className="text-xs text-slate-400 mt-1">{done}/{hw.chunks?.length||0}일 완료 · 클릭해서 제출 시각 확인</div>
           </button>
-          <div className="shrink-0 flex items-center gap-1.5 ml-1">
-            {deleteConfirm ? (
+          <div className="shrink-0 flex items-center gap-1.5 ml-1 flex-wrap justify-end">
+            {!editing && !deleteConfirm && hasOverdue && (
+              <button type="button" onClick={handleRedistribute} disabled={saving}
+                className="px-2 py-1 text-xs font-medium bg-amber-100 text-amber-700 rounded-xl hover:bg-amber-200 transition">재분배</button>
+            )}
+            {!editing && !deleteConfirm && (
+              <button type="button" onClick={startEdit}
+                className="px-2 py-1 text-xs font-medium bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition">수정</button>
+            )}
+            {editing && (
+              <>
+                <button type="button" onClick={handleUpdate} disabled={saving}
+                  className="px-2 py-1 text-xs font-medium bg-slate-900 text-white rounded-xl hover:bg-slate-700 transition">{saving?"저장 중...":"저장"}</button>
+                <button type="button" onClick={()=>setEditing(false)}
+                  className="px-2 py-1 text-xs font-medium bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition">취소</button>
+              </>
+            )}
+            {!editing && (deleteConfirm ? (
               <>
                 <button type="button" onClick={handleDelete}
                   className="px-2 py-1 text-xs font-medium bg-red-500 text-white rounded-xl hover:bg-red-600 transition">확인</button>
@@ -213,7 +268,7 @@ function TeacherHWCard({ hw, done, pct, today }) {
                   <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
                 </svg>
               </button>
-            )}
+            ))}
           </div>
         </div>
         {deleteConfirm && (
@@ -221,8 +276,29 @@ function TeacherHWCard({ hw, done, pct, today }) {
             이 숙제를 삭제하면 복구할 수 없습니다. 확인을 눌러주세요.
           </div>
         )}
+        {editing && ef && (
+          <div className="mt-3 border-t pt-3 space-y-2">
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="space-y-1 sm:col-span-2"><Lbl>숙제명</Lbl><Inp value={ef.title} onChange={e=>setEF(p=>({...p,title:e.target.value}))}/></div>
+              <div className="space-y-1"><Lbl>과목</Lbl>
+                <select value={ef.subject} onChange={e=>setEF(p=>({...p,subject:e.target.value}))}
+                  className="w-full rounded-xl border border-input px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300">
+                  {["중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"].map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1"><Lbl>총 문제 수</Lbl><Inp type="number" value={ef.totalAmount} onChange={e=>setEF(p=>({...p,totalAmount:e.target.value}))}/></div>
+              <div className="space-y-1"><Lbl>시작일</Lbl><Inp type="date" value={ef.startDate} onChange={e=>setEF(p=>({...p,startDate:e.target.value}))}/></div>
+              <div className="space-y-1"><Lbl>마감일</Lbl><Inp type="date" value={ef.dueDate} onChange={e=>setEF(p=>({...p,dueDate:e.target.value}))}/></div>
+              <div className="space-y-1"><Lbl>하루 최대 문제 수</Lbl><Inp type="number" value={ef.dailyMax} onChange={e=>setEF(p=>({...p,dailyMax:e.target.value}))} placeholder="선택"/></div>
+              <div className="flex items-center gap-2 rounded-xl border bg-slate-50 px-3 py-2">
+                <input type="checkbox" id={`tw-weekend-${hw._key}`} checked={ef.includeWeekend} onChange={e=>setEF(p=>({...p,includeWeekend:e.target.checked}))} className="w-4 h-4 cursor-pointer"/>
+                <label htmlFor={`tw-weekend-${hw._key}`} className="text-sm font-medium cursor-pointer">주말 포함</label>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-      {expanded && (
+      {expanded && !editing && (
         <div className="border-t bg-slate-50 p-3 space-y-1">
           {(hw.chunks||[]).map(chunk=>{
             const isOverdue = !chunk.done && chunk.date < today;
