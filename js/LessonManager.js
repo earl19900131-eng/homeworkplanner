@@ -11,6 +11,23 @@ function statusStyle(val) {
   return STATUS_OPTIONS.find(o => o.value === val)?.color ?? "bg-slate-100 text-slate-600 border-slate-200";
 }
 
+function getMonthDays(year, month) {
+  const first = new Date(year, month, 1);
+  const last = new Date(year, month + 1, 0);
+  const days = [];
+  for (let i = 0; i < first.getDay(); i++) days.push(null);
+  for (let d = 1; d <= last.getDate(); d++) days.push(d);
+  return days;
+}
+
+function fmtYMD(year, month, day) {
+  return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function fmtMMDD(date) {
+  return date?.slice(5).replace("-", "") ?? "";
+}
+
 // ── 수업 등록/편집 모달 ────────────────────────────────────────────────────
 function LessonModal({ lesson, students, onClose, onSave }) {
   const isNew = !lesson._key;
@@ -54,18 +71,13 @@ function LessonModal({ lesson, students, onClose, onSave }) {
           <h2 className="text-lg font-bold">{isNew ? "수업 등록" : "수업 편집"}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
         </div>
-
         <div className="space-y-3">
-          <div className="space-y-1.5">
-            <Lbl>수업명</Lbl>
-            <Inp value={title} onChange={e => setTitle(e.target.value)} placeholder="예: 수학 특강" />
-          </div>
+          <div className="space-y-1.5"><Lbl>수업명</Lbl><Inp value={title} onChange={e => setTitle(e.target.value)} placeholder="예: 수학 특강" /></div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5"><Lbl>날짜</Lbl><Inp type="date" value={date} onChange={e => setDate(e.target.value)} /></div>
             <div className="space-y-1.5"><Lbl>시간 (선택)</Lbl><Inp type="time" value={time} onChange={e => setTime(e.target.value)} /></div>
           </div>
         </div>
-
         <div className="space-y-3">
           <Lbl>포함 학생</Lbl>
           {classes.map(cls => {
@@ -95,13 +107,229 @@ function LessonModal({ lesson, students, onClose, onSave }) {
             );
           })}
         </div>
-
         {err && <AlertBox className="bg-red-50 text-red-700">{err}</AlertBox>}
         <div className="flex gap-2">
           <Btn onClick={handleSave} disabled={saving} className="flex-1">{saving ? "저장 중..." : isNew ? "✅ 수업 등록" : "저장"}</Btn>
           <Btn variant="outline" onClick={onClose}>취소</Btn>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── 수업 상세 표 뷰 ───────────────────────────────────────────────────────
+function LessonDetailView({ lesson, students, attendance, onBack, onEdit }) {
+  const [editingCell, setEditingCell] = React.useState(null);
+  const [editValue, setEditValue] = React.useState("");
+
+  const sortedStudents = [...students].sort((a, b) =>
+    a.className.localeCompare(b.className) || a.name.localeCompare(b.name));
+
+  const rec = attendance[lesson._key] || {};
+
+  const cycleTag = async (studentId, current) => {
+    const opts = ["출석", "지각", "결석", "조퇴", null];
+    const idx = opts.indexOf(current || null);
+    const next = opts[(idx + 1) % opts.length];
+    await db.ref(`lessonAttendance/${lesson._key}/${studentId}/status`).set(next);
+  };
+
+  const startEdit = (studentId, field, current) => {
+    setEditingCell({ studentId, field });
+    setEditValue(current ?? "");
+  };
+
+  const saveCell = async (studentId, field, val) => {
+    const value = (field === "xp" || field === "cp")
+      ? (val === "" ? null : Number(val))
+      : (val === "" ? null : val);
+    if (value === null) {
+      await db.ref(`lessonAttendance/${lesson._key}/${studentId}/${field}`).remove();
+    } else {
+      await db.ref(`lessonAttendance/${lesson._key}/${studentId}/${field}`).set(value);
+    }
+    setEditingCell(null);
+  };
+
+  const isEditing = (studentId, field) =>
+    editingCell?.studentId === studentId && editingCell?.field === field;
+
+  const mmdd = fmtMMDD(lesson.date);
+
+  return (
+    <div className="space-y-4">
+      {/* 헤더 */}
+      <Card className="p-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <button onClick={onBack}
+              className="w-8 h-8 rounded-xl border hover:bg-slate-50 flex items-center justify-center text-slate-600 font-bold text-lg">‹</button>
+            <div>
+              <div className="font-bold text-base">{lesson.title}</div>
+              <div className="text-sm text-slate-500">{lesson.date}{lesson.time ? " · " + lesson.time.slice(0, 5) : ""} · {(lesson.studentIds || []).length}명</div>
+            </div>
+          </div>
+          <Btn variant="outline" size="sm" onClick={onEdit}>✏️ 수업 편집</Btn>
+        </div>
+      </Card>
+
+      {/* 표 */}
+      <Card className="p-0 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="text-sm border-collapse w-full">
+            <thead>
+              <tr className="bg-slate-50">
+                <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3 text-left text-xs font-bold text-slate-500 border-b border-r border-slate-200 min-w-[130px]">학생</th>
+                <th className="px-3 py-3 text-center text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[110px]">{mmdd} 현행</th>
+                <th className="px-3 py-3 text-center text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[72px]">{mmdd} 태그</th>
+                <th className="px-3 py-3 text-center text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[64px]">{mmdd} XP</th>
+                <th className="px-3 py-3 text-center text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[64px]">{mmdd} CP</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedStudents.map((s, si) => {
+                const inLesson = (lesson.studentIds || []).includes(s.id);
+                const sRec = rec[s.id] || {};
+                return (
+                  <tr key={s.id} className={`hover:bg-slate-50/80 transition ${si % 2 === 0 ? "bg-white" : "bg-slate-50/30"}`}>
+                    {/* 이름 */}
+                    <td className="sticky left-0 z-10 bg-inherit px-4 py-2.5 border-b border-r border-slate-200 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${inLesson ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-400"}`}>{s.name[0]}</div>
+                        <span className={`font-semibold text-sm ${inLesson ? "" : "text-slate-400"}`}>{s.name}</span>
+                        <span className="text-[10px] text-slate-400">{s.className}</span>
+                      </div>
+                    </td>
+
+                    {!inLesson ? (
+                      [0,1,2,3].map(i => (
+                        <td key={i} className="border-b border-r border-slate-100 bg-slate-50/50 text-center text-slate-200 text-xs py-2.5">—</td>
+                      ))
+                    ) : (
+                      <>
+                        {/* 현행 */}
+                        <td className="border-b border-r border-slate-100 px-3 py-2.5 cursor-text"
+                          onClick={() => !isEditing(s.id, "현행") && startEdit(s.id, "현행", sRec.현행)}>
+                          {isEditing(s.id, "현행") ? (
+                            <input autoFocus value={editValue} onChange={e => setEditValue(e.target.value)}
+                              onBlur={() => saveCell(s.id, "현행", editValue)}
+                              onKeyDown={e => { if (e.key === "Enter") saveCell(s.id, "현행", editValue); if (e.key === "Escape") setEditingCell(null); }}
+                              className="w-full text-xs border-b border-slate-400 outline-none bg-transparent" />
+                          ) : (
+                            <span className="text-xs text-slate-600 block truncate">
+                              {sRec.현행 || <span className="text-slate-300">클릭하여 입력</span>}
+                            </span>
+                          )}
+                        </td>
+                        {/* 태그 */}
+                        <td className="border-b border-r border-slate-100 text-center cursor-pointer py-2.5 px-2"
+                          onClick={() => cycleTag(s.id, sRec.status)}>
+                          {sRec.status ? (
+                            <span className={`text-[11px] px-2 py-0.5 rounded-lg border font-medium ${statusStyle(sRec.status)}`}>{sRec.status}</span>
+                          ) : (
+                            <span className="text-[11px] text-slate-300 hover:text-slate-400">클릭</span>
+                          )}
+                        </td>
+                        {/* XP */}
+                        <td className="border-b border-r border-slate-100 text-center cursor-text py-2.5 px-2"
+                          onClick={() => !isEditing(s.id, "xp") && startEdit(s.id, "xp", sRec.xp)}>
+                          {isEditing(s.id, "xp") ? (
+                            <input autoFocus type="number" value={editValue} onChange={e => setEditValue(e.target.value)}
+                              onBlur={() => saveCell(s.id, "xp", editValue)}
+                              onKeyDown={e => { if (e.key === "Enter") saveCell(s.id, "xp", editValue); if (e.key === "Escape") setEditingCell(null); }}
+                              className="w-14 text-xs text-center border-b border-slate-400 outline-none bg-transparent" />
+                          ) : (
+                            <span className="text-xs text-slate-600">{sRec.xp != null ? sRec.xp : <span className="text-slate-300">—</span>}</span>
+                          )}
+                        </td>
+                        {/* CP */}
+                        <td className="border-b border-r border-slate-100 text-center cursor-text py-2.5 px-2"
+                          onClick={() => !isEditing(s.id, "cp") && startEdit(s.id, "cp", sRec.cp)}>
+                          {isEditing(s.id, "cp") ? (
+                            <input autoFocus type="number" value={editValue} onChange={e => setEditValue(e.target.value)}
+                              onBlur={() => saveCell(s.id, "cp", editValue)}
+                              onKeyDown={e => { if (e.key === "Enter") saveCell(s.id, "cp", editValue); if (e.key === "Escape") setEditingCell(null); }}
+                              className="w-14 text-xs text-center border-b border-slate-400 outline-none bg-transparent" />
+                          ) : (
+                            <span className="text-xs text-slate-600">{sRec.cp != null ? sRec.cp : <span className="text-slate-300">—</span>}</span>
+                          )}
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ── 달력 뷰 ──────────────────────────────────────────────────────────────
+function LessonCalendar({ year, month, lessons, today, onPrev, onNext, onDayClick, onLessonClick, onAddLesson }) {
+  const days = getMonthDays(year, month);
+  const DOW = ["일", "월", "화", "수", "목", "금", "토"];
+  const monthStr = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const monthLessons = lessons.filter(l => l.date?.startsWith(monthStr));
+
+  const lessonsByDate = {};
+  monthLessons.forEach(l => {
+    if (!lessonsByDate[l.date]) lessonsByDate[l.date] = [];
+    lessonsByDate[l.date].push(l);
+  });
+
+  return (
+    <div className="space-y-4">
+      <Card className="p-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <button onClick={onPrev} className="w-8 h-8 rounded-xl border hover:bg-slate-50 flex items-center justify-center text-slate-600 font-bold">‹</button>
+            <span className="text-lg font-bold min-w-[7rem] text-center">{year}년 {month + 1}월</span>
+            <button onClick={onNext} className="w-8 h-8 rounded-xl border hover:bg-slate-50 flex items-center justify-center text-slate-600 font-bold">›</button>
+          </div>
+          <Btn onClick={() => onAddLesson(today)}>+ 수업 등록</Btn>
+        </div>
+      </Card>
+
+      <Card className="p-4">
+        <div className="grid grid-cols-7 mb-1">
+          {DOW.map((d, i) => (
+            <div key={d} className={`text-center text-xs font-bold py-2 ${i === 0 ? "text-red-500" : i === 6 ? "text-blue-500" : "text-slate-400"}`}>{d}</div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7 gap-px bg-slate-100 rounded-xl overflow-hidden border border-slate-100">
+          {days.map((day, idx) => {
+            if (!day) return <div key={`empty-${idx}`} className="bg-white min-h-[90px]" />;
+            const dateStr = fmtYMD(year, month, day);
+            const dayLessons = lessonsByDate[dateStr] || [];
+            const isToday = dateStr === today;
+            const dow = idx % 7;
+            return (
+              <div key={dateStr}
+                className={`bg-white min-h-[90px] p-1.5 cursor-pointer hover:bg-slate-50 transition ${isToday ? "ring-2 ring-inset ring-slate-900" : ""}`}
+                onClick={() => onDayClick(dateStr)}>
+                <div className={`text-xs font-semibold mb-1 w-6 h-6 flex items-center justify-center rounded-full ${isToday ? "bg-slate-900 text-white" : dow === 0 ? "text-red-500" : dow === 6 ? "text-blue-500" : "text-slate-700"}`}>
+                  {day}
+                </div>
+                <div className="space-y-0.5">
+                  {dayLessons.map(l => (
+                    <div key={l._key}
+                      onClick={e => { e.stopPropagation(); onLessonClick(l); }}
+                      className="rounded-lg bg-slate-800 text-white px-1.5 py-0.5 text-[10px] font-medium truncate hover:bg-slate-600 transition cursor-pointer">
+                      {l.time ? l.time.slice(0, 5) + " " : ""}{l.title} ({(l.studentIds || []).length}명)
+                    </div>
+                  ))}
+                  {dayLessons.length === 0 && (
+                    <div className="text-[10px] text-slate-300 text-center mt-4">+</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
     </div>
   );
 }
@@ -114,34 +342,24 @@ function LessonManager({ students }) {
   const [month, setMonth] = React.useState(todayDate.getMonth());
   const [lessons, setLessons] = React.useState([]);
   const [attendance, setAttendance] = React.useState({});
+  const [selectedLesson, setSelectedLesson] = React.useState(null); // null = 달력, lesson = 상세
   const [addModal, setAddModal] = React.useState(null);
-  const [editingCell, setEditingCell] = React.useState(null); // { lessonKey, studentId, field }
-  const [editValue, setEditValue] = React.useState("");
 
   React.useEffect(() => {
     const lRef = db.ref("lessons");
     lRef.on("value", snap => {
       const data = snap.val();
-      if (data) {
-        const arr = Object.entries(data).map(([key, val]) => ({ ...val, _key: key }));
-        setLessons(arr);
-      } else setLessons([]);
+      setLessons(data ? Object.entries(data).map(([key, val]) => ({ ...val, _key: key })) : []);
     });
     const aRef = db.ref("lessonAttendance");
     aRef.on("value", snap => setAttendance(snap.val() || {}));
     return () => { lRef.off(); aRef.off(); };
   }, []);
 
-  const monthStr = `${year}-${String(month + 1).padStart(2, "0")}`;
-  const monthLessons = lessons
-    .filter(l => l.date?.startsWith(monthStr))
-    .sort((a, b) => a.date.localeCompare(b.date) || (a.time || "").localeCompare(b.time || ""));
-
-  const sortedStudents = [...students].sort((a, b) =>
-    a.className.localeCompare(b.className) || a.name.localeCompare(b.name));
-
-  const prevMonth = () => { if (month === 0) { setYear(y => y - 1); setMonth(11); } else setMonth(m => m - 1); };
-  const nextMonth = () => { if (month === 11) { setYear(y => y + 1); setMonth(0); } else setMonth(m => m + 1); };
+  // selectedLesson은 key로만 추적, 최신 데이터는 lessons에서 가져옴
+  const currentLesson = selectedLesson
+    ? lessons.find(l => l._key === selectedLesson) ?? null
+    : null;
 
   const handleSaveLesson = async (data) => {
     if (addModal?.lesson) {
@@ -152,207 +370,42 @@ function LessonManager({ students }) {
     }
   };
 
-  const handleDeleteLesson = async (key) => {
-    if (!window.confirm("이 수업을 삭제할까요? 출석 기록도 함께 삭제됩니다.")) return;
-    await db.ref(`lessons/${key}`).remove();
-    await db.ref(`lessonAttendance/${key}`).remove();
-  };
+  const prevMonth = () => { if (month === 0) { setYear(y => y - 1); setMonth(11); } else setMonth(m => m - 1); };
+  const nextMonth = () => { if (month === 11) { setYear(y => y + 1); setMonth(0); } else setMonth(m => m + 1); };
 
-  // 태그 클릭 시 순환
-  const cycleTag = async (lessonKey, studentId, current) => {
-    const opts = ["출석", "지각", "결석", "조퇴", null];
-    const idx = opts.indexOf(current || null);
-    const next = opts[(idx + 1) % opts.length];
-    await db.ref(`lessonAttendance/${lessonKey}/${studentId}/status`).set(next);
-  };
+  // 상세 뷰
+  if (currentLesson) {
+    return (
+      <>
+        <LessonDetailView
+          lesson={currentLesson}
+          students={students}
+          attendance={attendance}
+          onBack={() => setSelectedLesson(null)}
+          onEdit={() => setAddModal({ date: currentLesson.date, lesson: currentLesson })}
+        />
+        {addModal && (
+          <LessonModal
+            lesson={addModal.lesson || { date: addModal.date, studentIds: [] }}
+            students={students}
+            onClose={() => setAddModal(null)}
+            onSave={handleSaveLesson}
+          />
+        )}
+      </>
+    );
+  }
 
-  const startEdit = (lessonKey, studentId, field, current) => {
-    setEditingCell({ lessonKey, studentId, field });
-    setEditValue(current ?? "");
-  };
-
-  const saveCell = async (lessonKey, studentId, field, val) => {
-    const value = (field === "xp" || field === "cp")
-      ? (val === "" ? null : Number(val))
-      : (val === "" ? null : val);
-    if (value === null) {
-      await db.ref(`lessonAttendance/${lessonKey}/${studentId}/${field}`).remove();
-    } else {
-      await db.ref(`lessonAttendance/${lessonKey}/${studentId}/${field}`).set(value);
-    }
-    setEditingCell(null);
-  };
-
-  const isEditing = (lessonKey, studentId, field) =>
-    editingCell?.lessonKey === lessonKey && editingCell?.studentId === studentId && editingCell?.field === field;
-
-  // 날짜 포맷: "2026-03-21" → "0321"
-  const fmtMMDD = (date) => date?.slice(5).replace("-", "") ?? "";
-
+  // 달력 뷰 (기본)
   return (
-    <div className="space-y-4">
-      {/* 헤더 */}
-      <Card className="p-4">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-3">
-            <button onClick={prevMonth} className="w-8 h-8 rounded-xl border hover:bg-slate-50 flex items-center justify-center text-slate-600 font-bold">‹</button>
-            <span className="text-lg font-bold min-w-[7rem] text-center">{year}년 {month + 1}월</span>
-            <button onClick={nextMonth} className="w-8 h-8 rounded-xl border hover:bg-slate-50 flex items-center justify-center text-slate-600 font-bold">›</button>
-          </div>
-          <Btn onClick={() => setAddModal({ date: today })}>+ 수업 등록</Btn>
-        </div>
-      </Card>
-
-      {/* 표 */}
-      <Card className="p-0 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="text-sm border-collapse" style={{ minWidth: monthLessons.length > 0 ? `${140 + monthLessons.length * 260}px` : "100%" }}>
-            <thead>
-              {/* 수업명 행 */}
-              <tr className="bg-slate-50">
-                <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3 text-left text-xs font-bold text-slate-500 border-b border-r border-slate-200 min-w-[130px]">
-                  학생
-                </th>
-                {monthLessons.length === 0 ? (
-                  <th className="px-6 py-3 text-xs text-slate-400 border-b font-normal">
-                    이번 달 수업이 없습니다. <button onClick={() => setAddModal({ date: today })} className="text-slate-600 font-medium underline">수업 등록</button>
-                  </th>
-                ) : monthLessons.map(l => (
-                  <th key={l._key} colSpan={4}
-                    className="px-3 py-2.5 text-center text-xs font-bold text-slate-700 border-b border-r border-slate-200">
-                    <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                      <span className="font-bold">{fmtMMDD(l.date)}</span>
-                      <span className="text-slate-500 font-medium">{l.title}</span>
-                      {l.time && <span className="text-slate-400 font-normal">{l.time.slice(0, 5)}</span>}
-                      <button onClick={() => setAddModal({ date: l.date, lesson: l })}
-                        className="text-slate-300 hover:text-slate-600 text-xs transition ml-0.5">✏️</button>
-                      <button onClick={() => handleDeleteLesson(l._key)}
-                        className="text-slate-300 hover:text-red-500 text-sm font-bold transition leading-none">×</button>
-                    </div>
-                  </th>
-                ))}
-              </tr>
-              {/* 서브컬럼 행 */}
-              {monthLessons.length > 0 && (
-                <tr className="bg-slate-50/70">
-                  <th className="sticky left-0 z-10 bg-slate-50 border-b border-r border-slate-200" />
-                  {monthLessons.map(l => (
-                    <React.Fragment key={l._key}>
-                      {[
-                        [fmtMMDD(l.date) + " 현행", "w-[100px]"],
-                        [fmtMMDD(l.date) + " 태그", "w-[64px]"],
-                        [fmtMMDD(l.date) + " XP", "w-[56px]"],
-                        [fmtMMDD(l.date) + " CP", "w-[56px]"],
-                      ].map(([label, w]) => (
-                        <th key={label} className={`${w} px-2 py-2 text-[10px] font-semibold text-slate-400 border-b border-r border-slate-100 text-center whitespace-nowrap`}>
-                          {label}
-                        </th>
-                      ))}
-                    </React.Fragment>
-                  ))}
-                </tr>
-              )}
-            </thead>
-            <tbody>
-              {sortedStudents.map((s, si) => (
-                <tr key={s.id} className={`hover:bg-slate-50/80 transition ${si % 2 === 0 ? "bg-white" : "bg-slate-50/30"}`}>
-                  {/* 학생 이름 (sticky) */}
-                  <td className="sticky left-0 z-10 bg-inherit px-4 py-2.5 border-b border-r border-slate-200 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600 shrink-0">{s.name[0]}</div>
-                      <span className="font-semibold text-sm">{s.name}</span>
-                      <span className="text-[10px] text-slate-400">{s.className}</span>
-                    </div>
-                  </td>
-
-                  {/* 수업별 셀 */}
-                  {monthLessons.map(l => {
-                    const inLesson = (l.studentIds || []).includes(s.id);
-                    const rec = attendance[l._key]?.[s.id] || {};
-
-                    if (!inLesson) {
-                      return (
-                        <React.Fragment key={l._key}>
-                          {[0, 1, 2, 3].map(i => (
-                            <td key={i} className="border-b border-r border-slate-100 bg-slate-50/50 text-center text-slate-200 text-xs py-2">—</td>
-                          ))}
-                        </React.Fragment>
-                      );
-                    }
-
-                    return (
-                      <React.Fragment key={l._key}>
-                        {/* 현행 */}
-                        <td className="border-b border-r border-slate-100 px-2 py-2 cursor-text"
-                          onClick={() => !isEditing(l._key, s.id, "현행") && startEdit(l._key, s.id, "현행", rec.현행)}>
-                          {isEditing(l._key, s.id, "현행") ? (
-                            <input autoFocus value={editValue} onChange={e => setEditValue(e.target.value)}
-                              onBlur={() => saveCell(l._key, s.id, "현행", editValue)}
-                              onKeyDown={e => { if (e.key === "Enter") saveCell(l._key, s.id, "현행", editValue); if (e.key === "Escape") setEditingCell(null); }}
-                              className="w-full text-xs border-b border-slate-400 outline-none bg-transparent" />
-                          ) : (
-                            <span className="text-xs text-slate-600 block truncate max-w-[90px]">
-                              {rec.현행 || <span className="text-slate-300">—</span>}
-                            </span>
-                          )}
-                        </td>
-
-                        {/* 태그 */}
-                        <td className="border-b border-r border-slate-100 text-center cursor-pointer py-2 px-1"
-                          onClick={() => cycleTag(l._key, s.id, rec.status)}>
-                          {rec.status ? (
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded-lg border font-medium ${statusStyle(rec.status)}`}>{rec.status}</span>
-                          ) : (
-                            <span className="text-[10px] text-slate-300 hover:text-slate-400">클릭</span>
-                          )}
-                        </td>
-
-                        {/* XP */}
-                        <td className="border-b border-r border-slate-100 text-center cursor-text py-2 px-1"
-                          onClick={() => !isEditing(l._key, s.id, "xp") && startEdit(l._key, s.id, "xp", rec.xp)}>
-                          {isEditing(l._key, s.id, "xp") ? (
-                            <input autoFocus type="number" value={editValue} onChange={e => setEditValue(e.target.value)}
-                              onBlur={() => saveCell(l._key, s.id, "xp", editValue)}
-                              onKeyDown={e => { if (e.key === "Enter") saveCell(l._key, s.id, "xp", editValue); if (e.key === "Escape") setEditingCell(null); }}
-                              className="w-12 text-xs text-center border-b border-slate-400 outline-none bg-transparent" />
-                          ) : (
-                            <span className="text-xs text-slate-600">
-                              {rec.xp != null ? rec.xp : <span className="text-slate-300">—</span>}
-                            </span>
-                          )}
-                        </td>
-
-                        {/* CP */}
-                        <td className="border-b border-r border-slate-100 text-center cursor-text py-2 px-1"
-                          onClick={() => !isEditing(l._key, s.id, "cp") && startEdit(l._key, s.id, "cp", rec.cp)}>
-                          {isEditing(l._key, s.id, "cp") ? (
-                            <input autoFocus type="number" value={editValue} onChange={e => setEditValue(e.target.value)}
-                              onBlur={() => saveCell(l._key, s.id, "cp", editValue)}
-                              onKeyDown={e => { if (e.key === "Enter") saveCell(l._key, s.id, "cp", editValue); if (e.key === "Escape") setEditingCell(null); }}
-                              className="w-12 text-xs text-center border-b border-slate-400 outline-none bg-transparent" />
-                          ) : (
-                            <span className="text-xs text-slate-600">
-                              {rec.cp != null ? rec.cp : <span className="text-slate-300">—</span>}
-                            </span>
-                          )}
-                        </td>
-                      </React.Fragment>
-                    );
-                  })}
-                </tr>
-              ))}
-              {students.length === 0 && (
-                <tr>
-                  <td colSpan={1 + monthLessons.length * 4} className="p-8 text-center text-sm text-slate-400">
-                    학생을 먼저 등록해 주세요.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
+    <>
+      <LessonCalendar
+        year={year} month={month} lessons={lessons} today={today}
+        onPrev={prevMonth} onNext={nextMonth}
+        onDayClick={(date) => setAddModal({ date })}
+        onLessonClick={(lesson) => setSelectedLesson(lesson._key)}
+        onAddLesson={(date) => setAddModal({ date })}
+      />
       {addModal && (
         <LessonModal
           lesson={addModal.lesson || { date: addModal.date, studentIds: [] }}
@@ -361,6 +414,6 @@ function LessonManager({ students }) {
           onSave={handleSaveLesson}
         />
       )}
-    </div>
+    </>
   );
 }
