@@ -149,14 +149,14 @@ function ClassGroupList({ teacherStats, teacherViewId, setTeacherViewId, homewor
           </div>
         </div>
       )}
-      <div className="space-y-1 max-h-144 overflow-y-auto pr-0.5" style={{maxHeight:"36rem"}}>
+      <div className="grid grid-cols-2 gap-1 overflow-y-auto pr-0.5" style={{maxHeight:"36rem"}}>
         {filtered.length === 0
-          ? <div className="text-sm text-slate-400 text-center py-4">해당하는 학생이 없습니다.</div>
+          ? <div className="col-span-2 text-sm text-slate-400 text-center py-4">해당하는 학생이 없습니다.</div>
           : filtered.map(s=>(
             <button key={s.id} type="button" onClick={()=>setTeacherViewId(s.id)}
-              className={`w-full px-3 py-2.5 rounded-xl text-left transition border ${teacherViewId===s.id?"bg-slate-100 border-slate-300":"bg-white border-transparent hover:bg-slate-50 hover:border-slate-200"}`}>
+              className={`px-3 py-2.5 rounded-xl text-left transition border ${teacherViewId===s.id?"bg-slate-100 border-slate-300":"bg-white border-transparent hover:bg-slate-50 hover:border-slate-200"}`}>
               <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="font-semibold text-sm">{s.name}</span>
                   <span className="text-xs text-slate-400 bg-slate-100 rounded-md px-1.5 py-0.5">{s.className}</span>
                   {s.overdueChunks>=1&&<Badge variant="destructive">밀림</Badge>}
@@ -165,7 +165,7 @@ function ClassGroupList({ teacherStats, teacherViewId, setTeacherViewId, homewor
                 <span className="text-sm font-bold shrink-0 text-slate-700">{s.progress}%</span>
               </div>
               <div className="mt-1.5"><ProgressBar value={s.progress}/></div>
-              <div className="mt-1 text-xs text-slate-400">오늘 미완료 {s.todayIncomplete}개 · 밀림 {s.overdueChunks}개</div>
+              <div className="mt-1 text-xs text-slate-400">미완료 {s.todayIncomplete} · 밀림 {s.overdueChunks}</div>
             </button>
           ))
         }
