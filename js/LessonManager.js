@@ -246,6 +246,9 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
 
   const refocusContainer = () => setTimeout(() => containerRef.current?.focus(), 30);
 
+  // 상세 뷰 진입 시 컨테이너 자동 포커스
+  React.useEffect(() => { containerRef.current?.focus(); }, []);
+
   const pushUndo = (studentId, field, prevValue) =>
     setUndoStack(prev => [...prev.slice(-29), { studentId, field, prevValue }]);
 
