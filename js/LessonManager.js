@@ -681,7 +681,7 @@ function LessonCalendar({ lessons, today, onDayClick, onLessonClick, onAddLesson
           </div>
         </div>
       </Card>
-      <Card className="p-4">
+      <Card className="p-4" onClick={() => containerRef.current?.focus()}>
         <div className="grid grid-cols-7 mb-1">
           {DOW.map((d, i) => (
             <div key={d} className={`text-center text-xs font-bold py-2 ${i === 0 ? "text-red-500" : i === 6 ? "text-blue-500" : "text-slate-400"}`}>{d}</div>
@@ -691,7 +691,7 @@ function LessonCalendar({ lessons, today, onDayClick, onLessonClick, onAddLesson
           ref={containerRef}
           tabIndex={0}
           onKeyDown={handleKeyDown}
-          className="grid grid-cols-7 gap-px bg-slate-100 rounded-xl overflow-hidden border border-slate-100 outline-none"
+          className="grid grid-cols-7 gap-px bg-slate-100 rounded-xl overflow-hidden border border-slate-100 outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2 rounded-xl"
         >
           {days.map((day, idx) => {
             if (!day) return <div key={`empty-${idx}`} className="bg-white min-h-[90px]" />;
@@ -706,7 +706,8 @@ function LessonCalendar({ lessons, today, onDayClick, onLessonClick, onAddLesson
                   ${isToday ? "ring-2 ring-inset ring-slate-900" : ""}
                   ${isFocused && !isToday ? "ring-2 ring-inset ring-blue-400 bg-blue-50/40" : ""}
                   ${isFocused && isToday ? "ring-2 ring-inset ring-blue-500" : ""}`}
-                onClick={() => { setFocusedDate(dateStr); containerRef.current?.focus(); onDayClick(dateStr); }}>
+                onClick={() => { setFocusedDate(dateStr); containerRef.current?.focus(); }}
+                onDoubleClick={() => onDayClick(dateStr)}>
                 <div className={`text-xs font-semibold mb-1 w-6 h-6 flex items-center justify-center rounded-full
                   ${isFocused && !isToday ? "bg-blue-500 text-white" : isToday ? "bg-slate-900 text-white" : dow === 0 ? "text-red-500" : dow === 6 ? "text-blue-500" : "text-slate-700"}`}>
                   {day}
