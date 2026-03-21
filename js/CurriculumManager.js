@@ -627,85 +627,115 @@ function CurriculumVisualEditor({ boardId, students, materials }) {
 
 // ── 평가 관리 탭 ──────────────────────────────────────────────────────────────
 function AssessmentsTab() {
-  const TYPES = ["단원평가", "중간고사", "기말고사", "모의고사", "수행평가", "기타"];
-  const SUBJECTS = ["중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"];
-  const empty = { name: "", subject: "공통수학1", type: "단원평가", date: "", totalQuestions: "", maxScore: "" };
-  const [form, setForm] = React.useState(empty);
+  const [step, setStep] = React.useState("select"); // "select" | "daily_test"
+  const [testName, setTestName] = React.useState("");
   const [editId, setEditId] = React.useState(null);
+  const emptyRow = () => ({ num: "", subject: "", major: "", middle: "", minor: "" });
+  const [rows, setRows] = React.useState([emptyRow()]);
   const [saving, setSaving] = React.useState(false);
-  const [error, setError] = React.useState("");
   const [assessments, setAssessments] = React.useState([]);
 
   React.useEffect(() => {
     const ref = db.ref("assessments");
     ref.on("value", snap => {
       const data = snap.val();
-      setAssessments(data ? Object.values(data).sort((a,b) => (b.date||"").localeCompare(a.date||"")) : []);
+      setAssessments(data ? Object.values(data).sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||"")) : []);
     });
     return () => ref.off();
   }, []);
 
+  const updateRow = (i, key, val) => setRows(r => r.map((row, idx) => idx === i ? {...row, [key]: val} : row));
+  const removeRow = (i) => setRows(r => r.filter((_, idx) => idx !== i));
+
+  const startCreate = () => { setStep("daily_test"); setEditId(null); setTestName(""); setRows([emptyRow()]); };
+
+  const startEdit = (a) => {
+    setStep("daily_test");
+    setEditId(a.id);
+    setTestName(a.name);
+    setRows((a.units && a.units.length) ? a.units : [emptyRow()]);
+  };
+
   const handleSave = async () => {
-    if (!form.name.trim()) { setError("평가명을 입력해 주세요."); return; }
-    setSaving(true); setError("");
-    const data = {
-      name: form.name.trim(), subject: form.subject, type: form.type,
-      date: form.date, totalQuestions: Number(form.totalQuestions) || 0,
-      maxScore: Number(form.maxScore) || 0,
-    };
+    if (!testName.trim()) { alert("테스트 제목을 입력해 주세요."); return; }
+    setSaving(true);
+    const data = { type: "일일테스트", name: testName.trim(), createdAt: todayString(), units: rows };
     try {
       if (editId) { await db.ref(`assessments/${editId}`).update(data); }
       else { const id = Date.now().toString(); await db.ref(`assessments/${id}`).set({ id, ...data }); }
-      setForm(empty); setEditId(null);
-    } catch(e) { setError("저장 실패: " + e.message); }
+      setStep("select");
+    } catch(e) { alert("저장 실패: " + e.message); }
     setSaving(false);
   };
 
-  const handleEdit = (a) => {
-    setForm({ name: a.name, subject: a.subject, type: a.type, date: a.date||"", totalQuestions: a.totalQuestions||"", maxScore: a.maxScore||"" });
-    setEditId(a.id);
-  };
+  // ── 일일테스트 만들기 화면 ──
+  if (step === "daily_test") {
+    const CELL = "border border-slate-200 px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-400 w-full";
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={()=>setStep("select")} className="text-sm text-slate-500 hover:text-slate-800">← 뒤로</button>
+          <h2 className="text-lg font-bold">일일테스트 만들기</h2>
+        </div>
 
+        <Card className="p-5 space-y-4">
+          <div className="space-y-1.5">
+            <Lbl>테스트 제목</Lbl>
+            <Inp value={testName} onChange={e=>setTestName(e.target.value)} placeholder="예: 3월 1주차 일일테스트"/>
+          </div>
+
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <table className="text-sm border-collapse w-full">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  {["소단원 번호","과목","대단원명","중단원명","소단원명",""].map((h,i)=>(
+                    <th key={i} className={`text-left px-3 py-2.5 text-xs font-semibold text-slate-500 whitespace-nowrap ${i===5?"w-8":""}`}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, i) => (
+                  <tr key={i} className="border-b border-slate-100 last:border-0">
+                    <td className="p-1"><input className={CELL} value={row.num} onChange={e=>updateRow(i,"num",e.target.value)} placeholder="01"/></td>
+                    <td className="p-1"><input className={CELL} value={row.subject} onChange={e=>updateRow(i,"subject",e.target.value)} placeholder="공통수학1"/></td>
+                    <td className="p-1"><input className={CELL} value={row.major} onChange={e=>updateRow(i,"major",e.target.value)} placeholder="다항식"/></td>
+                    <td className="p-1"><input className={CELL} value={row.middle} onChange={e=>updateRow(i,"middle",e.target.value)} placeholder="다항식의 연산"/></td>
+                    <td className="p-1"><input className={CELL} value={row.minor} onChange={e=>updateRow(i,"minor",e.target.value)} placeholder="다항식의 덧셈"/></td>
+                    <td className="p-1 text-center">
+                      <button type="button" onClick={()=>removeRow(i)} className="text-slate-300 hover:text-red-400 text-lg leading-none px-1">×</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex gap-2 flex-wrap">
+            <button type="button" onClick={()=>setRows(r=>[...r, emptyRow()])}
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-1.5 rounded-xl border border-blue-200 hover:bg-blue-50 transition">
+              + 행 추가
+            </button>
+            <div className="flex-1"/>
+            <Btn variant="outline" onClick={()=>setStep("select")}>취소</Btn>
+            <Btn onClick={handleSave} disabled={saving}>{saving?"저장 중...":(editId?"수정 완료":"저장")}</Btn>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  // ── 종류 선택 화면 ──
   return (
     <div className="space-y-5">
       <Card className="p-5 space-y-4">
-        <h2 className="text-lg font-bold">{editId ? "평가 수정" : "평가 추가"}</h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="space-y-1.5 sm:col-span-2 lg:col-span-3">
-            <Lbl>평가명</Lbl>
-            <Inp value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="예: 1단원 단원평가"/>
-          </div>
-          <div className="space-y-1.5">
-            <Lbl>과목</Lbl>
-            <select value={form.subject} onChange={e=>setForm({...form,subject:e.target.value})}
-              className="w-full rounded-xl border border-input px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300">
-              {SUBJECTS.map(s=><option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <Lbl>유형</Lbl>
-            <select value={form.type} onChange={e=>setForm({...form,type:e.target.value})}
-              className="w-full rounded-xl border border-input px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300">
-              {TYPES.map(t=><option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-          <div className="space-y-1.5">
-            <Lbl>날짜</Lbl>
-            <Inp type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/>
-          </div>
-          <div className="space-y-1.5">
-            <Lbl>총 문항 수</Lbl>
-            <Inp type="number" value={form.totalQuestions} onChange={e=>setForm({...form,totalQuestions:e.target.value})} placeholder="20"/>
-          </div>
-          <div className="space-y-1.5">
-            <Lbl>만점</Lbl>
-            <Inp type="number" value={form.maxScore} onChange={e=>setForm({...form,maxScore:e.target.value})} placeholder="100"/>
-          </div>
-        </div>
-        {error && <AlertBox className="bg-red-50 text-red-700">{error}</AlertBox>}
-        <div className="flex gap-2">
-          <Btn onClick={handleSave} disabled={saving}>{saving?"저장 중...":(editId?"수정 완료":"평가 추가")}</Btn>
-          {editId && <Btn variant="outline" onClick={()=>{ setEditId(null); setForm(empty); setError(""); }}>취소</Btn>}
+        <h2 className="text-lg font-bold">평가 추가 — 종류 선택</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <button type="button" onClick={startCreate}
+            className="rounded-2xl border-2 border-dashed border-slate-200 p-6 text-center hover:border-blue-400 hover:bg-blue-50 transition space-y-2 group">
+            <div className="text-2xl">📋</div>
+            <div className="font-semibold text-sm group-hover:text-blue-700">일일테스트</div>
+            <div className="text-xs text-slate-400">소단원별 테스트 구성</div>
+          </button>
         </div>
       </Card>
 
@@ -722,10 +752,10 @@ function AssessmentsTab() {
                       <Badge variant="secondary">{a.type}</Badge>
                     </div>
                     <div className="text-xs text-slate-500 mt-0.5">
-                      {a.subject}{a.date ? " · " + a.date : ""}{a.totalQuestions ? " · " + a.totalQuestions + "문항" : ""}{a.maxScore ? " · 만점 " + a.maxScore : ""}
+                      {a.createdAt}{a.units ? " · " + a.units.length + "개 소단원" : ""}
                     </div>
                   </div>
-                  <Btn variant="outline" size="sm" onClick={()=>handleEdit(a)}>수정</Btn>
+                  <Btn variant="outline" size="sm" onClick={()=>startEdit(a)}>수정</Btn>
                   <Btn variant="outline" size="sm" onClick={async()=>{ if(!confirm("삭제?")) return; await db.ref(`assessments/${a.id}`).remove(); }}>삭제</Btn>
                 </div>
               ))}
