@@ -14,12 +14,22 @@ function StudentManager({ students, homeworks }) {
   const [bulkErr, setBulkErr] = useState("");
   const [bulkTab, setBulkTab] = useState("single");
   const [profiles, setProfiles] = useState({});
+  const [assessments, setAssessments] = useState([]);
   const [focusedRow, setFocusedRow] = useState(0);
   const tableRef = React.useRef(null);
 
   useEffect(() => {
     const ref = db.ref("studentProfiles");
     ref.on("value", snap => setProfiles(snap.val() || {}));
+    return () => ref.off();
+  }, []);
+
+  useEffect(() => {
+    const ref = db.ref("assessments");
+    ref.on("value", snap => {
+      const data = snap.val();
+      setAssessments(data ? Object.values(data).sort((a,b) => (a.name||"").localeCompare(b.name||"")) : []);
+    });
     return () => ref.off();
   }, []);
 
@@ -101,6 +111,11 @@ function StudentManager({ students, homeworks }) {
 
   const toggleProfileLock = async (studentId, currentLocked) => {
     try { await db.ref(`studentProfiles/${studentId}/locked`).set(!currentLocked); }
+    catch(e) { alert("저장 실패: " + e.message); }
+  };
+
+  const updateCurrentAssessment = async (studentId, assessmentId) => {
+    try { await db.ref(`studentProfiles/${studentId}/currentAssessment`).set(assessmentId || null); }
     catch(e) { alert("저장 실패: " + e.message); }
   };
 
@@ -210,6 +225,7 @@ function StudentManager({ students, homeworks }) {
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">출생연도</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">PIN</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">숙제</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">현행평가</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">상태</th>
                   </tr>
                 </thead>
@@ -242,6 +258,15 @@ function StudentManager({ students, homeworks }) {
                           <td className="px-4 py-2.5 font-mono text-slate-500 text-xs">{s.pin}</td>
                           <td className="px-4 py-2.5 text-slate-500">{hwCount}</td>
                           <td className="px-4 py-2.5">
+                            {(() => {
+                              const ca = profile?.currentAssessment;
+                              const a = ca && assessments.find(x => x.id === ca);
+                              return a
+                                ? <span className="text-xs text-blue-600 font-medium truncate max-w-[120px] block">{a.name}</span>
+                                : <span className="text-xs text-slate-300">-</span>;
+                            })()}
+                          </td>
+                          <td className="px-4 py-2.5">
                             {isLocked
                               ? <span className="text-xs text-emerald-600 font-medium">🔒 확정</span>
                               : hasProfile
@@ -251,7 +276,7 @@ function StudentManager({ students, homeworks }) {
                         </tr>
                         {isFocused && (
                           <tr className="bg-blue-50/60">
-                            <td colSpan={8} className="px-4 py-2 border-b border-blue-100">
+                            <td colSpan={9} className="px-4 py-2 border-b border-blue-100">
                               {isConfirming ? (
                                 <div className="flex items-center gap-2">
                                   <span className="text-xs text-red-600">숙제 {hwCount}개도 삭제됩니다. 정말 삭제할까요?</span>
@@ -267,6 +292,16 @@ function StudentManager({ students, homeworks }) {
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs text-slate-500 shrink-0">현행평가</span>
+                                  <select
+                                    value={profile?.currentAssessment || ""}
+                                    onChange={e => updateCurrentAssessment(s.id, e.target.value)}
+                                    onClick={e => e.stopPropagation()}
+                                    className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-1 focus:ring-blue-300 max-w-[180px]">
+                                    <option value="">-- 선택 안 함 --</option>
+                                    {assessments.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                                  </select>
+                                  <div className="w-px h-4 bg-slate-200 mx-1"/>
                                   {hasProfile && (
                                     <Btn size="sm" variant={isLocked?"outline":"default"} onClick={()=>toggleProfileLock(s.id, isLocked)}>
                                       {isLocked ? "🔓 확정 해제" : "🔒 프로필 확정"}
@@ -284,7 +319,7 @@ function StudentManager({ students, homeworks }) {
                         )}
                         {isExpanded && (
                           <tr>
-                            <td colSpan={8} className="px-4 pb-4 pt-2 border-b bg-slate-50/80">
+                            <td colSpan={9} className="px-4 pb-4 pt-2 border-b bg-slate-50/80">
                               <StudentProfileTab studentId={s.id} studentName={s.name} teacherMode={true}/>
                             </td>
                           </tr>
