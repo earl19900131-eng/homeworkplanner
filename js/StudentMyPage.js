@@ -38,11 +38,13 @@ const gradeColor = (v) => {
   return "text-red-600 font-bold";
 };
 
-function StudentProfileTab({ studentId, studentName, teacherMode = false }) {
+function StudentProfileTab({ studentId, studentName, currentPin, teacherMode = false }) {
   const [profile, setProfile] = useState(null);
   const [draft, setDraft] = useState(null);
   const [draftName, setDraftName] = useState(studentName);
   const [saving, setSaving] = useState(false);
+  const [pinForm, setPinForm] = useState({ current: "", next: "", confirm: "" });
+  const [pinMsg, setPinMsg] = useState(null); // { type: "ok"|"err", text }
   const [editing, setEditing] = useState(teacherMode);
 
   useEffect(() => {
@@ -66,6 +68,18 @@ function StudentProfileTab({ studentId, studentName, teacherMode = false }) {
       if (!teacherMode) setEditing(false);
     } catch(e) { alert("저장 실패: " + e.message); }
     setSaving(false);
+  };
+
+  const handlePinChange = async () => {
+    setPinMsg(null);
+    if (pinForm.current !== currentPin) { setPinMsg({ type:"err", text:"현재 비밀번호가 틀렸습니다." }); return; }
+    if (pinForm.next.length < 4) { setPinMsg({ type:"err", text:"새 비밀번호는 4자리 이상이어야 합니다." }); return; }
+    if (pinForm.next !== pinForm.confirm) { setPinMsg({ type:"err", text:"새 비밀번호가 일치하지 않습니다." }); return; }
+    try {
+      await db.ref(`students/${studentId}/pin`).set(pinForm.next);
+      setPinMsg({ type:"ok", text:"비밀번호가 변경되었습니다." });
+      setPinForm({ current:"", next:"", confirm:"" });
+    } catch(e) { setPinMsg({ type:"err", text:"저장 실패: "+e.message }); }
   };
 
   const cancelEdit = () => {
@@ -203,11 +217,37 @@ function StudentProfileTab({ studentId, studentName, teacherMode = false }) {
           </div>
         )}
       </Card>
+
+      {!teacherMode && (
+        <Card className="p-5 space-y-3">
+          <h2 className="text-lg font-bold">비밀번호 변경</h2>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Lbl>현재 비밀번호</Lbl>
+              <Inp type="password" value={pinForm.current} onChange={e=>setPinForm(p=>({...p,current:e.target.value}))} placeholder="현재 PIN"/>
+            </div>
+            <div className="space-y-1.5">
+              <Lbl>새 비밀번호</Lbl>
+              <Inp type="password" value={pinForm.next} onChange={e=>setPinForm(p=>({...p,next:e.target.value}))} placeholder="4자리 이상"/>
+            </div>
+            <div className="space-y-1.5">
+              <Lbl>새 비밀번호 확인</Lbl>
+              <Inp type="password" value={pinForm.confirm} onChange={e=>setPinForm(p=>({...p,confirm:e.target.value}))} placeholder="다시 입력" onKeyDown={e=>e.key==="Enter"&&handlePinChange()}/>
+            </div>
+          </div>
+          {pinMsg && (
+            <div className={`text-sm rounded-xl px-3 py-2 ${pinMsg.type==="ok"?"bg-emerald-50 text-emerald-700":"bg-red-50 text-red-700"}`}>
+              {pinMsg.text}
+            </div>
+          )}
+          <Btn onClick={handlePinChange}>비밀번호 변경</Btn>
+        </Card>
+      )}
     </div>
   );
 }
 
-function StudentMyPage({ studentHW, studentName, studentId, today }) {
+function StudentMyPage({ studentHW, studentName, studentId, currentPin, today }) {
   const [tab, setTab] = useState("stats");
   const [viewMode, setViewMode] = useState("monthly");
 
@@ -341,7 +381,7 @@ function StudentMyPage({ studentHW, studentName, studentId, today }) {
       )}
 
       {tab === "profile" && (
-        <StudentProfileTab studentId={studentId} studentName={studentName}/>
+        <StudentProfileTab studentId={studentId} studentName={studentName} currentPin={currentPin}/>
       )}
     </div>
   );
