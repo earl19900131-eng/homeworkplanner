@@ -1,16 +1,33 @@
 // ── 학생 마이페이지 ───────────────────────────────────────────────────────────
-const GRADE_GROUPS = [
-  { label: "중1",      items: ["중1-1-a","중1-1-b"] },
-  { label: "중2",      items: ["중2-1-a","중2-1-b"] },
-  { label: "중3",      items: ["중3-1-a","중3-1-b","중3-2-a","중3-2-b"] },
-  { label: "공통수학1", items: ["공통수학1-a","공통수학1-b"] },
-  { label: "공통수학2", items: ["공통수학2-a","공통수학2-b"] },
-  { label: "대수",     items: ["대수-a","대수-b"] },
-  { label: "미적분1",  items: ["미적분1-a","미적분1-b"] },
-  { label: "기하",     items: ["기하-a","기하-b"] },
-  { label: "미적분",   items: ["미적분-a","미적분-b"] },
-  { label: "확통",     items: ["확통-a","확통-b"] },
+const GRADE_ROWS = [
+  { label: "중1-1",    mid: "중1-1-a",    fin: "중1-1-b" },
+  { label: "중2-1",    mid: "중2-1-a",    fin: "중2-1-b" },
+  { label: "중3-1",    mid: "중3-1-a",    fin: "중3-1-b" },
+  { label: "중3-2",    mid: "중3-2-a",    fin: "중3-2-b" },
+  { label: "공통수학1", mid: "공통수학1-a", fin: "공통수학1-b" },
+  { label: "공통수학2", mid: "공통수학2-a", fin: "공통수학2-b" },
+  { label: "대수",     mid: "대수-a",     fin: "대수-b" },
+  { label: "미적분1",  mid: "미적분1-a",  fin: "미적분1-b" },
+  { label: "기하",     mid: "기하-a",     fin: "기하-b" },
+  { label: "미적분",   mid: "미적분-a",   fin: "미적분-b" },
+  { label: "확통",     mid: "확통-a",     fin: "확통-b" },
 ];
+
+function gradeFromBirthYear(birthYear) {
+  if (!birthYear) return null;
+  const currentYear = new Date().getFullYear();
+  const koreanAge = currentYear - Number(birthYear) + 1;
+  return { 13:"중1", 14:"중2", 15:"중3", 16:"고1", 17:"고2", 18:"고3" }[koreanAge] || null;
+}
+
+const scoreColor = (v) => {
+  if (v === undefined || v === "") return "text-slate-400";
+  const n = Number(v);
+  if (n >= 90) return "text-emerald-600 font-bold";
+  if (n >= 70) return "text-blue-600 font-bold";
+  if (n >= 50) return "text-amber-600 font-bold";
+  return "text-red-600 font-bold";
+};
 
 function StudentProfileTab({ studentId, studentName }) {
   const [profile, setProfile] = useState(null);
@@ -21,9 +38,9 @@ function StudentProfileTab({ studentId, studentName }) {
   useEffect(() => {
     const ref = db.ref(`studentProfiles/${studentId}`);
     ref.on("value", snap => {
-      const data = snap.val() || { school: "", grades: {}, locked: false };
+      const data = snap.val() || { school: "", birthYear: "", grades: {}, locked: false };
       setProfile(data);
-      setDraft({ school: data.school || "", grades: { ...(data.grades||{}) } });
+      setDraft({ school: data.school || "", birthYear: data.birthYear || "", grades: { ...(data.grades||{}) } });
     });
     return () => ref.off();
   }, [studentId]);
@@ -32,29 +49,32 @@ function StudentProfileTab({ studentId, studentName }) {
     if (!draft) return;
     setSaving(true);
     try {
-      await db.ref(`studentProfiles/${studentId}`).update({ school: draft.school, grades: draft.grades });
+      await db.ref(`studentProfiles/${studentId}`).update({ school: draft.school, birthYear: draft.birthYear, grades: draft.grades });
+      const grade = gradeFromBirthYear(draft.birthYear);
+      if (grade) await db.ref(`students/${studentId}/className`).set(grade);
       setEditing(false);
     } catch(e) { alert("저장 실패: " + e.message); }
     setSaving(false);
   };
 
-  const setGrade = (key, val) => {
-    setDraft(p => ({ ...p, grades: { ...p.grades, [key]: val } }));
+  const cancelEdit = () => {
+    setDraft({ school: profile.school||"", birthYear: profile.birthYear||"", grades: {...(profile.grades||{})} });
+    setEditing(false);
   };
 
   if (!profile || !draft) return <div className="text-sm text-slate-400 text-center py-8">불러오는 중...</div>;
 
   const locked = profile.locked;
+  const autoGrade = gradeFromBirthYear(editing ? draft.birthYear : profile.birthYear);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {locked && (
         <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-2xl px-4 py-2.5 text-sm text-emerald-700 font-medium">
           🔒 선생님이 프로필을 확정했습니다. 수정하려면 선생님에게 문의하세요.
         </div>
       )}
 
-      {/* 기본 정보 */}
       <Card className="p-5 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold">기본 정보</h2>
@@ -62,68 +82,88 @@ function StudentProfileTab({ studentId, studentName }) {
           {!locked && editing && (
             <div className="flex gap-1.5">
               <Btn size="sm" onClick={handleSave} disabled={saving}>{saving?"저장 중...":"저장"}</Btn>
-              <Btn size="sm" variant="outline" onClick={()=>{ setDraft({school:profile.school||"",grades:{...(profile.grades||{})}}); setEditing(false); }}>취소</Btn>
+              <Btn size="sm" variant="outline" onClick={cancelEdit}>취소</Btn>
             </div>
           )}
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-3">
           <div className="space-y-1.5">
             <Lbl>이름</Lbl>
             <div className="rounded-xl border bg-slate-50 px-3 py-2 text-sm text-slate-700">{studentName}</div>
           </div>
           <div className="space-y-1.5">
             <Lbl>학교</Lbl>
-            {editing ? (
-              <Inp value={draft.school} onChange={e=>setDraft(p=>({...p,school:e.target.value}))} placeholder="학교명 입력"/>
-            ) : (
-              <div className="rounded-xl border bg-slate-50 px-3 py-2 text-sm text-slate-700">{profile.school || <span className="text-slate-400">미입력</span>}</div>
-            )}
+            {editing
+              ? <Inp value={draft.school} onChange={e=>setDraft(p=>({...p,school:e.target.value}))} placeholder="학교명 입력"/>
+              : <div className="rounded-xl border bg-slate-50 px-3 py-2 text-sm text-slate-700">{profile.school || <span className="text-slate-400">미입력</span>}</div>
+            }
+          </div>
+          <div className="space-y-1.5">
+            <Lbl>출생연도</Lbl>
+            {editing
+              ? <Inp type="number" value={draft.birthYear} onChange={e=>setDraft(p=>({...p,birthYear:e.target.value}))} placeholder="예: 2011"/>
+              : <div className="rounded-xl border bg-slate-50 px-3 py-2 text-sm text-slate-700">{profile.birthYear || <span className="text-slate-400">미입력</span>}</div>
+            }
           </div>
         </div>
+        {autoGrade && (
+          <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 text-sm text-blue-700">
+            📚 자동 산출 학년: <span className="font-bold">{autoGrade}</span>
+            {editing && <span className="text-xs text-blue-500 ml-1">(저장 시 적용됩니다)</span>}
+          </div>
+        )}
       </Card>
 
-      {/* 성적 */}
-      <Card className="p-5 space-y-4">
-        <h2 className="text-lg font-bold">학교 성적</h2>
-        <p className="text-xs text-slate-400 -mt-2">각 학기 시험 성적을 입력하세요 (0~100점)</p>
-        <div className="space-y-4">
-          {GRADE_GROUPS.map(group => (
-            <div key={group.label}>
-              <div className="text-xs font-bold text-slate-500 mb-2 tracking-wide">{group.label}</div>
-              <div className="grid gap-2" style={{gridTemplateColumns:`repeat(${group.items.length},minmax(0,1fr))`}}>
-                {group.items.map(key => (
-                  <div key={key} className="space-y-1">
-                    <div className="text-xs text-slate-500 text-center">{key.split("-").slice(-1)[0].toUpperCase()}형</div>
-                    {editing ? (
-                      <input
-                        type="number" min="0" max="100"
-                        value={draft.grades[key] ?? ""}
-                        onChange={e=>setGrade(key, e.target.value)}
-                        placeholder="-"
-                        className="w-full text-center rounded-xl border border-input px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
-                      />
-                    ) : (
-                      <div className={`text-center rounded-xl border px-2 py-2 text-sm font-semibold ${
-                        profile.grades?.[key] !== undefined && profile.grades[key] !== ""
-                          ? Number(profile.grades[key]) >= 90 ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                          : Number(profile.grades[key]) >= 70 ? "bg-blue-50 text-blue-700 border-blue-200"
-                          : Number(profile.grades[key]) >= 50 ? "bg-amber-50 text-amber-700 border-amber-200"
-                          : "bg-red-50 text-red-700 border-red-200"
-                          : "bg-slate-50 text-slate-400 border-slate-200"
-                      }`}>
-                        {profile.grades?.[key] !== undefined && profile.grades[key] !== "" ? profile.grades[key] : "-"}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
+      <Card className="p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold">학교 성적</h2>
+            <p className="text-xs text-slate-400 mt-0.5">0~100점 입력</p>
+          </div>
+          {!locked && !editing && <Btn size="sm" variant="outline" onClick={()=>setEditing(true)}>수정</Btn>}
+        </div>
+        <div className="rounded-xl border overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-slate-50 border-b">
+                <th className="text-left px-3 py-2 text-xs font-bold text-slate-500 w-28">과목</th>
+                <th className="text-center px-3 py-2 text-xs font-bold text-slate-500 w-20">중간</th>
+                <th className="text-center px-3 py-2 text-xs font-bold text-slate-500 w-20">기말</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {GRADE_ROWS.map(row => {
+                const midVal = editing ? draft.grades[row.mid] ?? "" : profile.grades?.[row.mid] ?? "";
+                const finVal = editing ? draft.grades[row.fin] ?? "" : profile.grades?.[row.fin] ?? "";
+                return (
+                  <tr key={row.label} className="hover:bg-slate-50/50">
+                    <td className="px-3 py-1.5 text-xs font-medium text-slate-600">{row.label}</td>
+                    <td className="px-2 py-1.5 text-center">
+                      {editing
+                        ? <input type="number" min="0" max="100" value={midVal}
+                            onChange={e=>setDraft(p=>({...p,grades:{...p.grades,[row.mid]:e.target.value}}))}
+                            className="w-16 text-center rounded-lg border border-slate-200 px-1 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-slate-300"/>
+                        : <span className={`text-xs ${scoreColor(midVal)}`}>{midVal !== "" ? midVal : "-"}</span>
+                      }
+                    </td>
+                    <td className="px-2 py-1.5 text-center">
+                      {editing
+                        ? <input type="number" min="0" max="100" value={finVal}
+                            onChange={e=>setDraft(p=>({...p,grades:{...p.grades,[row.fin]:e.target.value}}))}
+                            className="w-16 text-center rounded-lg border border-slate-200 px-1 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-slate-300"/>
+                        : <span className={`text-xs ${scoreColor(finVal)}`}>{finVal !== "" ? finVal : "-"}</span>
+                      }
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
         {editing && (
-          <div className="pt-2 flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-1">
             <Btn onClick={handleSave} disabled={saving}>{saving?"저장 중...":"저장"}</Btn>
-            <Btn variant="outline" onClick={()=>{ setDraft({school:profile.school||"",grades:{...(profile.grades||{})}}); setEditing(false); }}>취소</Btn>
+            <Btn variant="outline" onClick={cancelEdit}>취소</Btn>
           </div>
         )}
       </Card>
@@ -133,11 +173,10 @@ function StudentProfileTab({ studentId, studentName }) {
 
 function StudentMyPage({ studentHW, studentName, studentId, today }) {
   const [tab, setTab] = useState("stats");
+  const [viewMode, setViewMode] = useState("monthly");
 
   const allChunks = studentHW.flatMap(hw => (hw.chunks||[]).map(c => ({...c, hwTitle: hw.title})));
   const pastChunks = allChunks.filter(c => c.date <= today);
-
-  const [viewMode, setViewMode] = useState("monthly");
 
   const monthlyData = useMemo(() => {
     const map = {};
@@ -241,7 +280,7 @@ function StudentMyPage({ studentHW, studentName, studentId, today }) {
               <div>
                 <div className="flex items-end gap-0.5 h-32">
                   {dailyData.map(d => (
-                    <div key={d.date} className="flex-1 flex flex-col items-center justify-end h-full group relative">
+                    <div key={d.date} className="flex-1 flex flex-col items-center justify-end h-full">
                       <div className={"w-full rounded-sm transition-all " + barColor(d.rate)}
                         style={{height: d.rate !== null ? Math.max(d.rate, 4)+"%" : "4%", opacity: d.total===0?0.2:1}}
                         title={d.total===0 ? d.date+" (숙제없음)" : `${d.date} ${d.rate}% (${d.done}/${d.total})`}/>
