@@ -526,27 +526,105 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
 }
 
 // ── 달력 뷰 ──────────────────────────────────────────────────────────────
-function LessonCalendar({ year, month, lessons, today, onPrev, onNext, onDayClick, onLessonClick, onAddLesson }) {
-  const days = getMonthDays(year, month);
+function LessonCalendar({ lessons, today, onDayClick, onLessonClick, onAddLesson, onPasteLesson }) {
+  const todayDate = new Date(today);
+  const [year, setYear] = React.useState(todayDate.getFullYear());
+  const [month, setMonth] = React.useState(todayDate.getMonth());
+  const [focusedDate, setFocusedDate] = React.useState(today);
+  const [calClipboard, setCalClipboard] = React.useState(null); // [{...lesson}]
+  const [copyFlash, setCopyFlash] = React.useState(false);
+  const containerRef = React.useRef(null);
+
   const DOW = ["일", "월", "화", "수", "목", "금", "토"];
   const monthStr = `${year}-${String(month + 1).padStart(2, "0")}`;
-  const monthLessons = lessons.filter(l => l.date?.startsWith(monthStr));
+
   const lessonsByDate = {};
-  monthLessons.forEach(l => {
+  lessons.forEach(l => {
     if (!lessonsByDate[l.date]) lessonsByDate[l.date] = [];
     lessonsByDate[l.date].push(l);
   });
+
+  const shiftDate = (dateStr, n) => {
+    const d = new Date(dateStr + "T00:00:00");
+    d.setDate(d.getDate() + n);
+    return fmtYMD(d.getFullYear(), d.getMonth(), d.getDate());
+  };
+
+  // 포커스 날짜가 현재 표시 월을 벗어나면 월 자동 이동
+  React.useEffect(() => {
+    const [fy, fm] = focusedDate.split("-").map(Number);
+    if (fy !== year || fm !== month + 1) {
+      setYear(fy);
+      setMonth(fm - 1);
+    }
+  }, [focusedDate]);
+
+  const prevMonth = () => {
+    const newMonth = month === 0 ? 11 : month - 1;
+    const newYear = month === 0 ? year - 1 : year;
+    setYear(newYear); setMonth(newMonth);
+    setFocusedDate(fmtYMD(newYear, newMonth, 1));
+  };
+  const nextMonth = () => {
+    const newMonth = month === 11 ? 0 : month + 1;
+    const newYear = month === 11 ? year + 1 : year;
+    setYear(newYear); setMonth(newMonth);
+    setFocusedDate(fmtYMD(newYear, newMonth, 1));
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "ArrowLeft")  { e.preventDefault(); setFocusedDate(d => shiftDate(d, -1)); return; }
+    if (e.key === "ArrowRight") { e.preventDefault(); setFocusedDate(d => shiftDate(d, 1));  return; }
+    if (e.key === "ArrowUp")    { e.preventDefault(); setFocusedDate(d => shiftDate(d, -7)); return; }
+    if (e.key === "ArrowDown")  { e.preventDefault(); setFocusedDate(d => shiftDate(d, 7));  return; }
+
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      const dayLessons = lessonsByDate[focusedDate] || [];
+      if (dayLessons.length === 1) onLessonClick(dayLessons[0]);
+      else onDayClick(focusedDate);
+      return;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && e.key === "c") {
+      e.preventDefault();
+      const dayLessons = lessonsByDate[focusedDate] || [];
+      if (dayLessons.length > 0) {
+        setCalClipboard(dayLessons);
+        setCopyFlash(true);
+        setTimeout(() => setCopyFlash(false), 900);
+      }
+      return;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && e.key === "v") {
+      e.preventDefault();
+      if (!calClipboard) return;
+      calClipboard.forEach(lesson => onPasteLesson(focusedDate, lesson));
+      return;
+    }
+  };
+
+  const days = getMonthDays(year, month);
 
   return (
     <div className="space-y-4">
       <Card className="p-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
-            <button onClick={onPrev} className="w-8 h-8 rounded-xl border hover:bg-slate-50 flex items-center justify-center text-slate-600 font-bold">‹</button>
+            <button onClick={prevMonth} className="w-8 h-8 rounded-xl border hover:bg-slate-50 flex items-center justify-center text-slate-600 font-bold">‹</button>
             <span className="text-lg font-bold min-w-[7rem] text-center">{year}년 {month + 1}월</span>
-            <button onClick={onNext} className="w-8 h-8 rounded-xl border hover:bg-slate-50 flex items-center justify-center text-slate-600 font-bold">›</button>
+            <button onClick={nextMonth} className="w-8 h-8 rounded-xl border hover:bg-slate-50 flex items-center justify-center text-slate-600 font-bold">›</button>
           </div>
-          <Btn onClick={() => onAddLesson(today)}>+ 수업 등록</Btn>
+          <div className="flex items-center gap-2">
+            {calClipboard && (
+              <span className={`text-[11px] px-2 py-1 rounded-lg border transition ${copyFlash ? "bg-blue-100 text-blue-600 border-blue-200" : "bg-slate-100 text-slate-500 border-slate-200"}`}>
+                {copyFlash ? "복사됨" : `클립보드: ${calClipboard.length}개 수업`}
+              </span>
+            )}
+            <span className="text-[11px] text-slate-400 hidden sm:block">↑↓←→ 이동 · Enter 열기 · Ctrl+C/V 복붙</span>
+            <Btn onClick={() => onAddLesson(focusedDate || today)}>+ 수업 등록</Btn>
+          </div>
         </div>
       </Card>
       <Card className="p-4">
@@ -555,24 +633,34 @@ function LessonCalendar({ year, month, lessons, today, onPrev, onNext, onDayClic
             <div key={d} className={`text-center text-xs font-bold py-2 ${i === 0 ? "text-red-500" : i === 6 ? "text-blue-500" : "text-slate-400"}`}>{d}</div>
           ))}
         </div>
-        <div className="grid grid-cols-7 gap-px bg-slate-100 rounded-xl overflow-hidden border border-slate-100">
+        <div
+          ref={containerRef}
+          tabIndex={0}
+          onKeyDown={handleKeyDown}
+          className="grid grid-cols-7 gap-px bg-slate-100 rounded-xl overflow-hidden border border-slate-100 outline-none"
+        >
           {days.map((day, idx) => {
             if (!day) return <div key={`empty-${idx}`} className="bg-white min-h-[90px]" />;
             const dateStr = fmtYMD(year, month, day);
             const dayLessons = lessonsByDate[dateStr] || [];
             const isToday = dateStr === today;
+            const isFocused = dateStr === focusedDate;
             const dow = idx % 7;
             return (
               <div key={dateStr}
-                className={`bg-white min-h-[90px] p-1.5 cursor-pointer hover:bg-slate-50 transition ${isToday ? "ring-2 ring-inset ring-slate-900" : ""}`}
-                onClick={() => onDayClick(dateStr)}>
-                <div className={`text-xs font-semibold mb-1 w-6 h-6 flex items-center justify-center rounded-full ${isToday ? "bg-slate-900 text-white" : dow === 0 ? "text-red-500" : dow === 6 ? "text-blue-500" : "text-slate-700"}`}>
+                className={`bg-white min-h-[90px] p-1.5 cursor-pointer hover:bg-slate-50 transition
+                  ${isToday ? "ring-2 ring-inset ring-slate-900" : ""}
+                  ${isFocused && !isToday ? "ring-2 ring-inset ring-blue-400 bg-blue-50/40" : ""}
+                  ${isFocused && isToday ? "ring-2 ring-inset ring-blue-500" : ""}`}
+                onClick={() => { setFocusedDate(dateStr); containerRef.current?.focus(); onDayClick(dateStr); }}>
+                <div className={`text-xs font-semibold mb-1 w-6 h-6 flex items-center justify-center rounded-full
+                  ${isFocused && !isToday ? "bg-blue-500 text-white" : isToday ? "bg-slate-900 text-white" : dow === 0 ? "text-red-500" : dow === 6 ? "text-blue-500" : "text-slate-700"}`}>
                   {day}
                 </div>
                 <div className="space-y-0.5">
                   {dayLessons.map(l => (
                     <div key={l._key}
-                      onClick={e => { e.stopPropagation(); onLessonClick(l); }}
+                      onClick={e => { e.stopPropagation(); setFocusedDate(dateStr); containerRef.current?.focus(); onLessonClick(l); }}
                       className="rounded-lg bg-slate-800 text-white px-1.5 py-0.5 text-[10px] font-medium truncate hover:bg-slate-600 transition cursor-pointer">
                       {l.time ? l.time.slice(0, 5) + " " : ""}{l.title} ({(l.studentIds || []).length}명)
                     </div>
@@ -593,9 +681,6 @@ function LessonCalendar({ year, month, lessons, today, onPrev, onNext, onDayClic
 // ── 수업일지 메인 ─────────────────────────────────────────────────────────
 function LessonManager({ students }) {
   const today = todayString();
-  const todayDate = new Date(today);
-  const [year, setYear] = React.useState(todayDate.getFullYear());
-  const [month, setMonth] = React.useState(todayDate.getMonth());
   const [lessons, setLessons] = React.useState([]);
   const [attendance, setAttendance] = React.useState({});
   const [selectedLessonKey, setSelectedLessonKey] = React.useState(null);
@@ -623,8 +708,11 @@ function LessonManager({ students }) {
     }
   };
 
-  const prevMonth = () => { if (month === 0) { setYear(y => y - 1); setMonth(11); } else setMonth(m => m - 1); };
-  const nextMonth = () => { if (month === 11) { setYear(y => y + 1); setMonth(0); } else setMonth(m => m + 1); };
+  const handlePasteLesson = async (date, lesson) => {
+    const { _key, createdAt, date: _d, ...rest } = lesson;
+    const id = "lesson-" + Date.now() + "-" + Math.random().toString(36).slice(2, 5);
+    await db.ref(`lessons/${id}`).set({ ...rest, date, createdAt: today });
+  };
 
   if (currentLesson) {
     return (
@@ -652,11 +740,11 @@ function LessonManager({ students }) {
   return (
     <>
       <LessonCalendar
-        year={year} month={month} lessons={lessons} today={today}
-        onPrev={prevMonth} onNext={nextMonth}
+        lessons={lessons} today={today}
         onDayClick={(date) => setAddModal({ date })}
         onLessonClick={(lesson) => setSelectedLessonKey(lesson._key)}
         onAddLesson={(date) => setAddModal({ date })}
+        onPasteLesson={handlePasteLesson}
       />
       {addModal && (
         <LessonModal
