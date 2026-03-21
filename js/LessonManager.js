@@ -555,6 +555,8 @@ function LessonCalendar({ lessons, today, focusDateOverride, onDayClick, onLesso
   const [undoStack, setUndoStack] = React.useState([]); // { type:'paste'|'delete', data }
   const containerRef = React.useRef(null);
 
+  React.useEffect(() => { containerRef.current?.focus(); }, []);
+
   const DOW = ["일", "월", "화", "수", "목", "금", "토"];
   const monthStr = `${year}-${String(month + 1).padStart(2, "0")}`;
 
