@@ -723,12 +723,11 @@ function LessonCalendar({ lessons, today, focusDateOverride, onDayClick, onLesso
               <div key={dateStr}
                 className={`bg-white min-h-[90px] p-1.5 cursor-pointer hover:bg-slate-50 transition
                   ${isToday ? "ring-2 ring-inset ring-slate-900" : ""}
-                  ${isFocused && !isToday ? "ring-2 ring-inset ring-blue-400 bg-blue-50/40" : ""}
-                  ${isFocused && isToday ? "ring-2 ring-inset ring-blue-500" : ""}`}
+                  ${isFocused ? "ring-2 ring-inset ring-blue-500 bg-blue-50/50" : isToday ? "ring-2 ring-inset ring-slate-900" : ""}`}
                 onClick={() => { setFocusedDate(dateStr); containerRef.current?.focus(); }}
                 onDoubleClick={() => onDayClick(dateStr)}>
                 <div className={`text-xs font-semibold mb-1 w-6 h-6 flex items-center justify-center rounded-full
-                  ${isFocused && !isToday ? "bg-blue-500 text-white" : isToday ? "bg-slate-900 text-white" : dow === 0 ? "text-red-500" : dow === 6 ? "text-blue-500" : "text-slate-700"}`}>
+                  ${isFocused ? "bg-blue-500 text-white" : isToday ? "bg-slate-900 text-white" : dow === 0 ? "text-red-500" : dow === 6 ? "text-blue-500" : "text-slate-700"}`}>
                   {day}
                 </div>
                 <div className="space-y-0.5">
