@@ -74,12 +74,40 @@ function TagSelectorModal({ studentName, currentTags, onToggle, onClose }) {
 
   const handleKeyDown = (e) => {
     if (e.key === "Escape") { onClose(); return; }
-    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+    if (e.key === "ArrowRight") {
       e.preventDefault();
       setFocusedIdx(i => Math.min(i + 1, BEHAVIOR_TAGS.length - 1));
-    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+    } else if (e.key === "ArrowLeft") {
       e.preventDefault();
       setFocusedIdx(i => Math.max(i - 1, 0));
+    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const allEls = Array.from(bodyRef.current?.querySelectorAll("[data-tagidx]") || []);
+      const curEl = bodyRef.current?.querySelector(`[data-tagidx="${focusedIdx}"]`);
+      if (!curEl) return;
+      const curRect = curEl.getBoundingClientRect();
+      const curMidX = curRect.left + curRect.width / 2;
+      if (e.key === "ArrowDown") {
+        const below = allEls.filter(el => el.getBoundingClientRect().top > curRect.bottom - 4);
+        if (!below.length) return;
+        const minTop = Math.min(...below.map(el => el.getBoundingClientRect().top));
+        const sameRow = below.filter(el => el.getBoundingClientRect().top <= minTop + 10);
+        const best = sameRow.reduce((a, b) => {
+          const aRect = a.getBoundingClientRect(); const bRect = b.getBoundingClientRect();
+          return Math.abs(aRect.left + aRect.width/2 - curMidX) <= Math.abs(bRect.left + bRect.width/2 - curMidX) ? a : b;
+        });
+        setFocusedIdx(Number(best.dataset.tagidx));
+      } else {
+        const above = allEls.filter(el => el.getBoundingClientRect().bottom < curRect.top + 4);
+        if (!above.length) return;
+        const maxBottom = Math.max(...above.map(el => el.getBoundingClientRect().bottom));
+        const sameRow = above.filter(el => el.getBoundingClientRect().bottom >= maxBottom - 10);
+        const best = sameRow.reduce((a, b) => {
+          const aRect = a.getBoundingClientRect(); const bRect = b.getBoundingClientRect();
+          return Math.abs(aRect.left + aRect.width/2 - curMidX) <= Math.abs(bRect.left + bRect.width/2 - curMidX) ? a : b;
+        });
+        setFocusedIdx(Number(best.dataset.tagidx));
+      }
     } else if (e.key === " ") {
       e.preventDefault();
       onToggle(BEHAVIOR_TAGS[focusedIdx].name);
