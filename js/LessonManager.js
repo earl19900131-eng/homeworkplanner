@@ -219,7 +219,7 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
   const [evalValue, setEvalValue] = React.useState("");
   const [tagModal, setTagModal] = React.useState(null);       // studentId
   const [tagModalOriginal, setTagModalOriginal] = React.useState([]); // 모달 열릴 때 태그 스냅샷
-  const [focusedCell, setFocusedCell] = React.useState(null); // { row, col }
+  const [focusedCell, setFocusedCell] = React.useState({ row: 0, col: 0 }); // { row, col }
   const [clipboard, setClipboard] = React.useState(null);     // { type:'hw'|'tags', value }
   const [copyFlash, setCopyFlash] = React.useState(false);
   const [undoStack, setUndoStack] = React.useState([]);        // [{ studentId, field, value }]
