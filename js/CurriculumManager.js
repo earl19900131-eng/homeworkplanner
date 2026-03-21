@@ -625,6 +625,117 @@ function CurriculumVisualEditor({ boardId, students, materials }) {
   );
 }
 
+// ── 평가 관리 탭 ──────────────────────────────────────────────────────────────
+function AssessmentsTab() {
+  const TYPES = ["단원평가", "중간고사", "기말고사", "모의고사", "수행평가", "기타"];
+  const SUBJECTS = ["중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"];
+  const empty = { name: "", subject: "공통수학1", type: "단원평가", date: "", totalQuestions: "", maxScore: "" };
+  const [form, setForm] = React.useState(empty);
+  const [editId, setEditId] = React.useState(null);
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState("");
+  const [assessments, setAssessments] = React.useState([]);
+
+  React.useEffect(() => {
+    const ref = db.ref("assessments");
+    ref.on("value", snap => {
+      const data = snap.val();
+      setAssessments(data ? Object.values(data).sort((a,b) => (b.date||"").localeCompare(a.date||"")) : []);
+    });
+    return () => ref.off();
+  }, []);
+
+  const handleSave = async () => {
+    if (!form.name.trim()) { setError("평가명을 입력해 주세요."); return; }
+    setSaving(true); setError("");
+    const data = {
+      name: form.name.trim(), subject: form.subject, type: form.type,
+      date: form.date, totalQuestions: Number(form.totalQuestions) || 0,
+      maxScore: Number(form.maxScore) || 0,
+    };
+    try {
+      if (editId) { await db.ref(`assessments/${editId}`).update(data); }
+      else { const id = Date.now().toString(); await db.ref(`assessments/${id}`).set({ id, ...data }); }
+      setForm(empty); setEditId(null);
+    } catch(e) { setError("저장 실패: " + e.message); }
+    setSaving(false);
+  };
+
+  const handleEdit = (a) => {
+    setForm({ name: a.name, subject: a.subject, type: a.type, date: a.date||"", totalQuestions: a.totalQuestions||"", maxScore: a.maxScore||"" });
+    setEditId(a.id);
+  };
+
+  return (
+    <div className="space-y-5">
+      <Card className="p-5 space-y-4">
+        <h2 className="text-lg font-bold">{editId ? "평가 수정" : "평가 추가"}</h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="space-y-1.5 sm:col-span-2 lg:col-span-3">
+            <Lbl>평가명</Lbl>
+            <Inp value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="예: 1단원 단원평가"/>
+          </div>
+          <div className="space-y-1.5">
+            <Lbl>과목</Lbl>
+            <select value={form.subject} onChange={e=>setForm({...form,subject:e.target.value})}
+              className="w-full rounded-xl border border-input px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300">
+              {SUBJECTS.map(s=><option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Lbl>유형</Lbl>
+            <select value={form.type} onChange={e=>setForm({...form,type:e.target.value})}
+              className="w-full rounded-xl border border-input px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300">
+              {TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Lbl>날짜</Lbl>
+            <Inp type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/>
+          </div>
+          <div className="space-y-1.5">
+            <Lbl>총 문항 수</Lbl>
+            <Inp type="number" value={form.totalQuestions} onChange={e=>setForm({...form,totalQuestions:e.target.value})} placeholder="20"/>
+          </div>
+          <div className="space-y-1.5">
+            <Lbl>만점</Lbl>
+            <Inp type="number" value={form.maxScore} onChange={e=>setForm({...form,maxScore:e.target.value})} placeholder="100"/>
+          </div>
+        </div>
+        {error && <AlertBox className="bg-red-50 text-red-700">{error}</AlertBox>}
+        <div className="flex gap-2">
+          <Btn onClick={handleSave} disabled={saving}>{saving?"저장 중...":(editId?"수정 완료":"평가 추가")}</Btn>
+          {editId && <Btn variant="outline" onClick={()=>{ setEditId(null); setForm(empty); setError(""); }}>취소</Btn>}
+        </div>
+      </Card>
+
+      <Card className="p-5 space-y-3">
+        <h2 className="text-lg font-bold">등록된 평가 ({assessments.length})</h2>
+        {assessments.length === 0
+          ? <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-400 text-center">아직 등록된 평가가 없습니다.</div>
+          : <div className="space-y-2">
+              {assessments.map(a => (
+                <div key={a.id} className="flex items-center gap-3 rounded-2xl border px-4 py-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium">{a.name}</span>
+                      <Badge variant="secondary">{a.type}</Badge>
+                    </div>
+                    <div className="text-xs text-slate-500 mt-0.5">
+                      {a.subject}{a.date ? " · " + a.date : ""}{a.totalQuestions ? " · " + a.totalQuestions + "문항" : ""}{a.maxScore ? " · 만점 " + a.maxScore : ""}
+                    </div>
+                  </div>
+                  <Btn variant="outline" size="sm" onClick={()=>handleEdit(a)}>수정</Btn>
+                  <Btn variant="outline" size="sm" onClick={async()=>{ if(!confirm("삭제?")) return; await db.ref(`assessments/${a.id}`).remove(); }}>삭제</Btn>
+                </div>
+              ))}
+            </div>
+        }
+      </Card>
+    </div>
+  );
+}
+
 // ── 커리큘럼 매니저 (선생님용) ───────────────────────────────────────────────
 function CurriculumManager({ students, materials }) {
   const [subTab, setSubTab] = React.useState("editor");
@@ -668,7 +779,7 @@ function CurriculumManager({ students, materials }) {
     <div className="space-y-4">
       {/* 메인 탭 */}
       <div className="flex gap-2 bg-white rounded-2xl shadow-sm p-1">
-        {[["editor","🗺️ 커리큘럼 편집"],["materials","📚 교재 관리"]].map(([tab,label])=>(
+        {[["editor","🗺️ 커리큘럼 편집"],["materials","📚 교재 관리"],["assessments","📝 평가 관리"]].map(([tab,label])=>(
           <button key={tab} onClick={()=>setSubTab(tab)}
             className={`flex-1 py-2.5 text-sm font-medium rounded-xl transition ${subTab===tab?"bg-slate-900 text-white":"text-slate-500 hover:text-slate-700"}`}>
             {label}
@@ -729,6 +840,7 @@ function CurriculumManager({ students, materials }) {
         </div>
       )}
       {subTab === "materials" && <MaterialsTab materials={materials}/>}
+      {subTab === "assessments" && <AssessmentsTab/>}
     </div>
   );
 }
