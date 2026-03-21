@@ -627,13 +627,22 @@ function CurriculumVisualEditor({ boardId, students, materials }) {
 
 // ── 평가 관리 탭 ──────────────────────────────────────────────────────────────
 function AssessmentsTab() {
-  const [step, setStep] = React.useState("select"); // "select" | "daily_test"
+  const SUBJECTS = ["중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"];
+  const COL_KEYS  = ["num","subject","major","middle","minor"];
+  const COL_HEADS = ["소단원 번호","과목","대단원명","중단원명","소단원명"];
+  const COL_PH    = ["01","공통수학1","다항식","다항식의 연산","다항식의 덧셈"];
+
+  const [step, setStep] = React.useState("select");
   const [testName, setTestName] = React.useState("");
   const [editId, setEditId] = React.useState(null);
-  const emptyRow = () => ({ num: "", subject: "", major: "", middle: "", minor: "" });
+  const emptyRow = () => ({ num:"", subject:"공통수학1", major:"", middle:"", minor:"" });
   const [rows, setRows] = React.useState([emptyRow()]);
   const [saving, setSaving] = React.useState(false);
   const [assessments, setAssessments] = React.useState([]);
+  const [focusedCell, setFocusedCell] = React.useState({ row:0, col:0 });
+  const [editingCell, setEditingCell] = React.useState(null);
+  const containerRef = React.useRef(null);
+  const inputRef = React.useRef(null);
 
   React.useEffect(() => {
     const ref = db.ref("assessments");
@@ -644,22 +653,73 @@ function AssessmentsTab() {
     return () => ref.off();
   }, []);
 
+  // 편집 셀 열릴 때 인풋에 포커스
+  React.useEffect(() => {
+    if (editingCell) { setTimeout(() => { inputRef.current?.focus(); inputRef.current?.select && inputRef.current.select(); }, 0); }
+  }, [editingCell]);
+
+  // step 바뀔 때 테이블 컨테이너 포커스
+  React.useEffect(() => {
+    if (step === "daily_test") { setTimeout(() => containerRef.current?.focus(), 0); }
+  }, [step]);
+
   const updateRow = (i, key, val) => setRows(r => r.map((row, idx) => idx === i ? {...row, [key]: val} : row));
-  const removeRow = (i) => setRows(r => r.filter((_, idx) => idx !== i));
+  const removeRow = (i) => {
+    setRows(r => r.filter((_, idx) => idx !== i));
+    setFocusedCell(fc => ({ row: Math.max(0, fc.row - (fc.row >= i ? 1 : 0)), col: fc.col }));
+    setEditingCell(null);
+    containerRef.current?.focus();
+  };
 
-  const startCreate = () => { setStep("daily_test"); setEditId(null); setTestName(""); setRows([emptyRow()]); };
+  const confirmEdit = (moveDown = true) => {
+    const { row, col } = editingCell || focusedCell;
+    setEditingCell(null);
+    if (moveDown) {
+      const nextRow = row + 1;
+      if (nextRow >= rows.length) setRows(r => [...r, emptyRow()]);
+      setFocusedCell({ row: nextRow, col });
+      // 바로 아래 셀도 편집 모드로
+      setTimeout(() => { setEditingCell({ row: nextRow, col }); }, 0);
+    } else {
+      setFocusedCell({ row, col });
+      containerRef.current?.focus();
+    }
+  };
 
-  const startEdit = (a) => {
-    setStep("daily_test");
-    setEditId(a.id);
-    setTestName(a.name);
-    setRows((a.units && a.units.length) ? a.units : [emptyRow()]);
+  const handleContainerKeyDown = (e) => {
+    if (editingCell) return;
+    const { row, col } = focusedCell;
+    const lastRow = rows.length - 1;
+    if (e.key === "ArrowUp")    { e.preventDefault(); setFocusedCell({ row: Math.max(0, row-1), col }); }
+    if (e.key === "ArrowDown")  { e.preventDefault(); setFocusedCell({ row: Math.min(lastRow, row+1), col }); }
+    if (e.key === "ArrowLeft")  { e.preventDefault(); setFocusedCell({ row, col: Math.max(0, col-1) }); }
+    if (e.key === "ArrowRight") { e.preventDefault(); setFocusedCell({ row, col: Math.min(4, col+1) }); }
+    if (e.key === "Tab")        { e.preventDefault(); setFocusedCell({ row, col: col < 4 ? col+1 : col }); }
+    if (e.key === "Enter" || e.key === "F2") { e.preventDefault(); setEditingCell({ row, col }); }
+    if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); updateRow(row, COL_KEYS[col], col === 1 ? "공통수학1" : ""); }
+  };
+
+  const handleInputKeyDown = (e, row, col) => {
+    if (e.key === "Enter")  { e.preventDefault(); confirmEdit(true); }
+    if (e.key === "Escape") { e.preventDefault(); setEditingCell(null); setTimeout(() => containerRef.current?.focus(), 0); }
+    if (e.key === "Tab")    { e.preventDefault(); confirmEdit(false); setFocusedCell({ row, col: col < 4 ? col+1 : col }); }
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault(); confirmEdit(false);
+      setFocusedCell({ row: e.key === "ArrowUp" ? Math.max(0,row-1) : Math.min(rows.length-1,row+1), col });
+    }
+  };
+
+  const startCreate = () => { setStep("daily_test"); setEditId(null); setTestName(""); setRows([emptyRow()]); setFocusedCell({row:0,col:0}); setEditingCell(null); };
+  const startEditAssessment = (a) => {
+    setStep("daily_test"); setEditId(a.id); setTestName(a.name);
+    setRows((a.units && a.units.length) ? a.units.map(u=>({...emptyRow(),...u})) : [emptyRow()]);
+    setFocusedCell({row:0,col:0}); setEditingCell(null);
   };
 
   const handleSave = async () => {
     if (!testName.trim()) { alert("테스트 제목을 입력해 주세요."); return; }
     setSaving(true);
-    const data = { type: "일일테스트", name: testName.trim(), createdAt: todayString(), units: rows };
+    const data = { type:"일일테스트", name:testName.trim(), createdAt:todayString(), units:rows };
     try {
       if (editId) { await db.ref(`assessments/${editId}`).update(data); }
       else { const id = Date.now().toString(); await db.ref(`assessments/${id}`).set({ id, ...data }); }
@@ -670,7 +730,6 @@ function AssessmentsTab() {
 
   // ── 일일테스트 만들기 화면 ──
   if (step === "daily_test") {
-    const CELL = "border border-slate-200 px-2 py-1.5 text-sm outline-none focus:ring-1 focus:ring-blue-400 w-full";
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3">
@@ -684,25 +743,54 @@ function AssessmentsTab() {
             <Inp value={testName} onChange={e=>setTestName(e.target.value)} placeholder="예: 3월 1주차 일일테스트"/>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <div ref={containerRef} tabIndex={0} onKeyDown={handleContainerKeyDown}
+            className="overflow-x-auto rounded-xl border border-slate-200 outline-none"
+            onClick={() => containerRef.current?.focus()}>
             <table className="text-sm border-collapse w-full">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200">
-                  {["소단원 번호","과목","대단원명","중단원명","소단원명",""].map((h,i)=>(
-                    <th key={i} className={`text-left px-3 py-2.5 text-xs font-semibold text-slate-500 whitespace-nowrap ${i===5?"w-8":""}`}>{h}</th>
-                  ))}
+                  {COL_HEADS.map((h,i) => <th key={i} className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 whitespace-nowrap">{h}</th>)}
+                  <th className="w-8"/>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, i) => (
-                  <tr key={i} className="border-b border-slate-100 last:border-0">
-                    <td className="p-1"><input className={CELL} value={row.num} onChange={e=>updateRow(i,"num",e.target.value)} placeholder="01"/></td>
-                    <td className="p-1"><input className={CELL} value={row.subject} onChange={e=>updateRow(i,"subject",e.target.value)} placeholder="공통수학1"/></td>
-                    <td className="p-1"><input className={CELL} value={row.major} onChange={e=>updateRow(i,"major",e.target.value)} placeholder="다항식"/></td>
-                    <td className="p-1"><input className={CELL} value={row.middle} onChange={e=>updateRow(i,"middle",e.target.value)} placeholder="다항식의 연산"/></td>
-                    <td className="p-1"><input className={CELL} value={row.minor} onChange={e=>updateRow(i,"minor",e.target.value)} placeholder="다항식의 덧셈"/></td>
-                    <td className="p-1 text-center">
-                      <button type="button" onClick={()=>removeRow(i)} className="text-slate-300 hover:text-red-400 text-lg leading-none px-1">×</button>
+                {rows.map((row, rowIdx) => (
+                  <tr key={rowIdx} className="border-b border-slate-100 last:border-0">
+                    {COL_KEYS.map((key, colIdx) => {
+                      const isFocused = focusedCell.row === rowIdx && focusedCell.col === colIdx;
+                      const isEditing = editingCell?.row === rowIdx && editingCell?.col === colIdx;
+                      const isSubject = key === "subject";
+                      return (
+                        <td key={colIdx}
+                          className={`p-0 relative ${isFocused && !isEditing ? "bg-blue-50" : ""}`}
+                          onClick={(e) => { e.stopPropagation(); setFocusedCell({row:rowIdx,col:colIdx}); if (!isEditing) containerRef.current?.focus(); }}
+                          onDoubleClick={(e) => { e.stopPropagation(); setFocusedCell({row:rowIdx,col:colIdx}); setEditingCell({row:rowIdx,col:colIdx}); }}>
+                          {isEditing ? (
+                            isSubject ? (
+                              <select ref={inputRef} value={row[key]}
+                                onChange={e => { updateRow(rowIdx, key, e.target.value); confirmEdit(true); }}
+                                onKeyDown={e => handleInputKeyDown(e, rowIdx, colIdx)}
+                                onBlur={() => { setEditingCell(null); setTimeout(()=>containerRef.current?.focus(),0); }}
+                                className="w-full border-0 border-b-2 border-blue-500 px-3 py-1.5 text-sm bg-white outline-none">
+                                {SUBJECTS.map(s=><option key={s} value={s}>{s}</option>)}
+                              </select>
+                            ) : (
+                              <input ref={inputRef} value={row[key]}
+                                onChange={e => updateRow(rowIdx, key, e.target.value)}
+                                onKeyDown={e => handleInputKeyDown(e, rowIdx, colIdx)}
+                                onBlur={() => { setEditingCell(null); setTimeout(()=>containerRef.current?.focus(),0); }}
+                                className="w-full border-0 border-b-2 border-blue-500 px-3 py-1.5 text-sm bg-white outline-none"/>
+                            )
+                          ) : (
+                            <div className={`px-3 py-1.5 min-h-[34px] cursor-default select-none ${isFocused ? "ring-2 ring-inset ring-blue-500" : ""}`}>
+                              {row[key] ? <span>{row[key]}</span> : <span className="text-slate-300 text-xs">{COL_PH[colIdx]}</span>}
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })}
+                    <td className="p-1 text-center w-8">
+                      <button type="button" onClick={()=>removeRow(rowIdx)} className="text-slate-300 hover:text-red-400 text-lg leading-none px-1">×</button>
                     </td>
                   </tr>
                 ))}
@@ -710,8 +798,8 @@ function AssessmentsTab() {
             </table>
           </div>
 
-          <div className="flex gap-2 flex-wrap">
-            <button type="button" onClick={()=>setRows(r=>[...r, emptyRow()])}
+          <div className="flex gap-2 flex-wrap items-center">
+            <button type="button" onClick={()=>{ setRows(r=>[...r, emptyRow()]); setFocusedCell({row:rows.length,col:0}); setTimeout(()=>containerRef.current?.focus(),0); }}
               className="text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-1.5 rounded-xl border border-blue-200 hover:bg-blue-50 transition">
               + 행 추가
             </button>
@@ -755,7 +843,7 @@ function AssessmentsTab() {
                       {a.createdAt}{a.units ? " · " + a.units.length + "개 소단원" : ""}
                     </div>
                   </div>
-                  <Btn variant="outline" size="sm" onClick={()=>startEdit(a)}>수정</Btn>
+                  <Btn variant="outline" size="sm" onClick={()=>startEditAssessment(a)}>수정</Btn>
                   <Btn variant="outline" size="sm" onClick={async()=>{ if(!confirm("삭제?")) return; await db.ref(`assessments/${a.id}`).remove(); }}>삭제</Btn>
                 </div>
               ))}
