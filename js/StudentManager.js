@@ -7,7 +7,8 @@ function StudentManager({ students, homeworks }) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState(null);
-  const [editPin, setEditPin] = useState({});
+  const [editingCell, setEditingCell] = useState(null); // { studentId, field }
+  const [editValue, setEditValue] = useState("");
   const [expandedEdit, setExpandedEdit] = useState(null);
   const [bulkText, setBulkText] = useState("");
   const [bulkPreview, setBulkPreview] = useState([]);
@@ -16,7 +17,7 @@ function StudentManager({ students, homeworks }) {
   const [profiles, setProfiles] = useState({});
   const [assessments, setAssessments] = useState([]);
   const [focusedRow, setFocusedRow] = useState(0);
-  const tableRef = React.useRef(null);
+  const tableRef = React.useRef(null); // kept for potential future use
 
   useEffect(() => {
     const ref = db.ref("studentProfiles");
@@ -101,11 +102,28 @@ function StudentManager({ students, homeworks }) {
     setSaving(false);
   };
 
-  const updatePin = async (studentId, newPinVal) => {
-    if (!newPinVal || newPinVal.length < 4) { alert("PIN은 4자리 이상이어야 합니다."); return; }
+  const startEdit = (studentId, field, currentVal) => {
+    setEditingCell({ studentId, field });
+    setEditValue(String(currentVal || ""));
+  };
+
+  const saveCell = async (studentId, field, val) => {
+    setEditingCell(null);
     try {
-      await db.ref(`students/${studentId}/pin`).set(newPinVal);
-      setEditPin(prev => { const n={...prev}; delete n[studentId]; return n; });
+      if (field === "name") {
+        if (!val.trim()) return;
+        await db.ref(`students/${studentId}/name`).set(val.trim());
+      } else if (field === "className") {
+        await db.ref(`students/${studentId}/className`).set(val.trim() || "미정");
+      } else if (field === "school") {
+        await db.ref(`studentProfiles/${studentId}/school`).set(val.trim());
+      } else if (field === "birthYear") {
+        await db.ref(`studentProfiles/${studentId}/birthYear`).set(val);
+        await db.ref(`students/${studentId}/className`).set(gradeFromBirthYear(val) || "미정");
+      } else if (field === "pin") {
+        if (!val || val.length < 4) { alert("PIN은 4자리 이상이어야 합니다."); return; }
+        await db.ref(`students/${studentId}/pin`).set(val);
+      }
     } catch(e) { alert("저장 실패: " + e.message); }
   };
 
@@ -227,7 +245,7 @@ function StudentManager({ students, homeworks }) {
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">숙제</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">현행평가</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">상태</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">관리</th>
+                    <th className="px-4 py-2.5 w-16"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -237,45 +255,62 @@ function StudentManager({ students, homeworks }) {
                     const isLocked = profile?.locked;
                     const hasProfile = profile && (profile.school || profile.birthYear || Object.values(profile.grades||{}).some(v=>v!==""));
                     const isConfirming = deleteConfirm === s.id;
-                    const isEditingPin = editPin[s.id] !== undefined;
                     const isExpanded = expandedEdit === s.id;
+                    const ec = editingCell;
+                    const isEdit = (field) => ec?.studentId === s.id && ec?.field === field;
+
+                    const EditCell = ({ field, value, className: cls="", inputCls="w-24", children }) => (
+                      isEdit(field) ? (
+                        <input autoFocus value={editValue} onChange={e=>setEditValue(e.target.value)}
+                          onKeyDown={e=>{ if(e.key==="Enter"){ e.preventDefault(); saveCell(s.id,field,editValue); } if(e.key==="Escape") setEditingCell(null); }}
+                          onBlur={()=>saveCell(s.id,field,editValue)}
+                          className={`border-b-2 border-blue-400 bg-transparent outline-none text-sm px-0.5 ${inputCls}`}/>
+                      ) : (
+                        <div onClick={()=>startEdit(s.id,field,value)}
+                          className={`cursor-text hover:bg-blue-50 rounded px-1 -mx-1 min-h-[20px] ${cls}`}>
+                          {children || <span className="text-slate-300">-</span>}
+                        </div>
+                      )
+                    );
+
                     return (
                       <React.Fragment key={s.id}>
-                        <tr className="border-b border-slate-100 hover:bg-slate-50 transition">
+                        <tr className="border-b border-slate-100 hover:bg-slate-50/50 transition">
                           <td className="px-4 py-2.5 text-xs text-slate-400">{rowIdx + 1}</td>
-                          <td className="px-4 py-2.5">
-                            <div className="flex items-center gap-2">
-                              <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600 shrink-0">{s.name[0]}</div>
-                              <span className="font-semibold">{s.name}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-2.5"><Badge variant="secondary">{s.className}</Badge></td>
-                          <td className="px-4 py-2.5 text-slate-500 text-xs">{profile?.school || "-"}</td>
-                          <td className="px-4 py-2.5 text-slate-500 text-xs">{profile?.birthYear ? profile.birthYear + "년" : "-"}</td>
-                          <td className="px-3 py-2">
-                            {isEditingPin ? (
-                              <div className="flex items-center gap-1">
-                                <input value={editPin[s.id]} onChange={e=>setEditPin(p=>({...p,[s.id]:e.target.value}))}
-                                  onKeyDown={e=>{ if(e.key==="Enter") updatePin(s.id,editPin[s.id]); if(e.key==="Escape") setEditPin(p=>{const n={...p};delete n[s.id];return n;}); }}
-                                  className="border border-slate-200 rounded-lg px-2 py-1 text-xs w-20 outline-none focus:ring-1 focus:ring-blue-300" autoFocus/>
-                                <button onClick={()=>updatePin(s.id,editPin[s.id])} className="text-blue-500 hover:text-blue-700 text-xs font-bold">✓</button>
-                                <button onClick={()=>setEditPin(p=>{const n={...p};delete n[s.id];return n;})} className="text-slate-400 hover:text-slate-600 text-xs">✕</button>
+                          <td className="px-4 py-2">
+                            <EditCell field="name" value={s.name} inputCls="w-28 font-semibold">
+                              <div className="flex items-center gap-2">
+                                <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600 shrink-0">{s.name[0]}</div>
+                                <span className="font-semibold">{s.name}</span>
                               </div>
-                            ) : (
-                              <button onClick={()=>setEditPin(p=>({...p,[s.id]:s.pin}))}
-                                className="font-mono text-xs text-slate-500 hover:text-blue-600 hover:underline cursor-pointer">
-                                {s.pin}
-                              </button>
-                            )}
+                            </EditCell>
                           </td>
-                          <td className="px-4 py-2.5 text-slate-500 text-xs">{hwCount}</td>
+                          <td className="px-4 py-2">
+                            <EditCell field="className" value={s.className} inputCls="w-20">
+                              <Badge variant="secondary">{s.className}</Badge>
+                            </EditCell>
+                          </td>
+                          <td className="px-4 py-2 text-xs text-slate-500">
+                            <EditCell field="school" value={profile?.school||""} inputCls="w-28">
+                              {profile?.school || <span className="text-slate-300">-</span>}
+                            </EditCell>
+                          </td>
+                          <td className="px-4 py-2 text-xs text-slate-500">
+                            <EditCell field="birthYear" value={profile?.birthYear||""} inputCls="w-20">
+                              {profile?.birthYear ? profile.birthYear+"년" : <span className="text-slate-300">-</span>}
+                            </EditCell>
+                          </td>
+                          <td className="px-4 py-2">
+                            <EditCell field="pin" value={s.pin} cls="font-mono" inputCls="w-20 font-mono">
+                              <span className="font-mono text-xs text-slate-500">{s.pin}</span>
+                            </EditCell>
+                          </td>
+                          <td className="px-4 py-2.5 text-xs text-slate-500">{hwCount}</td>
                           <td className="px-3 py-2">
-                            <select
-                              value={profile?.currentAssessment || ""}
-                              onChange={e => updateCurrentAssessment(s.id, e.target.value)}
+                            <select value={profile?.currentAssessment || ""} onChange={e=>updateCurrentAssessment(s.id,e.target.value)}
                               className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-1 focus:ring-blue-300 max-w-[160px]">
                               <option value="">-</option>
-                              {assessments.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                              {assessments.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
                             </select>
                           </td>
                           <td className="px-4 py-2.5">
@@ -293,20 +328,18 @@ function StudentManager({ students, homeworks }) {
                                 <button onClick={()=>setDeleteConfirm(null)} className="text-xs text-slate-400 hover:text-slate-600">취소</button>
                               </div>
                             ) : (
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-2">
                                 {hasProfile && (
                                   <button onClick={()=>toggleProfileLock(s.id,isLocked)}
-                                    className="text-slate-400 hover:text-emerald-600 text-xs px-1" title={isLocked?"확정 해제":"프로필 확정"}>
+                                    className="text-slate-400 hover:text-emerald-600" title={isLocked?"확정 해제":"프로필 확정"}>
                                     {isLocked ? "🔓" : "🔒"}
                                   </button>
                                 )}
-                                <button onClick={()=>setExpandedEdit(isExpanded?null:s.id)}
-                                  className="text-xs text-slate-400 hover:text-blue-600 px-1.5 py-0.5 rounded border border-slate-200 hover:border-blue-300">
-                                  {isExpanded ? "닫기" : "수정"}
-                                </button>
-                                <button onClick={()=>setDeleteConfirm(s.id)}
-                                  className="text-xs text-slate-400 hover:text-red-500 px-1.5 py-0.5 rounded border border-slate-200 hover:border-red-200">
-                                  삭제
+                                <button onClick={()=>setDeleteConfirm(s.id)} title="삭제"
+                                  className="text-slate-300 hover:text-red-500 transition">
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                                  </svg>
                                 </button>
                               </div>
                             )}
