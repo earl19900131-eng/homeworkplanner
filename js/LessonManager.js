@@ -526,13 +526,14 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
 }
 
 // ── 달력 뷰 ──────────────────────────────────────────────────────────────
-function LessonCalendar({ lessons, today, onDayClick, onLessonClick, onAddLesson, onPasteLesson }) {
+function LessonCalendar({ lessons, today, onDayClick, onLessonClick, onAddLesson, onPasteLesson, onDeleteLesson }) {
   const todayDate = new Date(today);
   const [year, setYear] = React.useState(todayDate.getFullYear());
   const [month, setMonth] = React.useState(todayDate.getMonth());
   const [focusedDate, setFocusedDate] = React.useState(today);
   const [calClipboard, setCalClipboard] = React.useState(null); // [{...lesson}]
   const [copyFlash, setCopyFlash] = React.useState(false);
+  const [undoStack, setUndoStack] = React.useState([]); // { type:'paste'|'delete', data }
   const containerRef = React.useRef(null);
 
   const DOW = ["일", "월", "화", "수", "목", "금", "토"];
@@ -572,6 +573,42 @@ function LessonCalendar({ lessons, today, onDayClick, onLessonClick, onAddLesson
     setFocusedDate(fmtYMD(newYear, newMonth, 1));
   };
 
+  const pushUndo = (entry) =>
+    setUndoStack(prev => [...prev.slice(-29), entry]);
+
+  const undoAction = async () => {
+    if (undoStack.length === 0) return;
+    const last = undoStack[undoStack.length - 1];
+    setUndoStack(prev => prev.slice(0, -1));
+    if (last.type === "paste") {
+      // 붙여넣기 취소 → 만든 수업들 삭제
+      for (const key of last.keys) await onDeleteLesson(key);
+    } else if (last.type === "delete") {
+      // 삭제 취소 → 수업들 복원
+      for (const lesson of last.lessons) {
+        const { _key, ...data } = lesson;
+        await db.ref(`lessons/${_key}`).set(data);
+      }
+    }
+  };
+
+  const handlePaste = async () => {
+    if (!calClipboard) return;
+    const newKeys = [];
+    for (const lesson of calClipboard) {
+      const id = await onPasteLesson(focusedDate, lesson);
+      if (id) newKeys.push(id);
+    }
+    if (newKeys.length > 0) pushUndo({ type: "paste", keys: newKeys });
+  };
+
+  const handleDelete = async () => {
+    const dayLessons = lessonsByDate[focusedDate] || [];
+    if (dayLessons.length === 0) return;
+    pushUndo({ type: "delete", lessons: dayLessons.map(l => ({ ...l })) });
+    for (const l of dayLessons) await onDeleteLesson(l._key);
+  };
+
   const handleKeyDown = (e) => {
     if (e.key === "ArrowLeft")  { e.preventDefault(); setFocusedDate(d => shiftDate(d, -1)); return; }
     if (e.key === "ArrowRight") { e.preventDefault(); setFocusedDate(d => shiftDate(d, 1));  return; }
@@ -583,6 +620,18 @@ function LessonCalendar({ lessons, today, onDayClick, onLessonClick, onAddLesson
       const dayLessons = lessonsByDate[focusedDate] || [];
       if (dayLessons.length === 1) onLessonClick(dayLessons[0]);
       else onDayClick(focusedDate);
+      return;
+    }
+
+    if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      handleDelete();
+      return;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+      e.preventDefault();
+      undoAction();
       return;
     }
 
@@ -599,8 +648,7 @@ function LessonCalendar({ lessons, today, onDayClick, onLessonClick, onAddLesson
 
     if ((e.ctrlKey || e.metaKey) && e.key === "v") {
       e.preventDefault();
-      if (!calClipboard) return;
-      calClipboard.forEach(lesson => onPasteLesson(focusedDate, lesson));
+      handlePaste();
       return;
     }
   };
@@ -622,7 +670,13 @@ function LessonCalendar({ lessons, today, onDayClick, onLessonClick, onAddLesson
                 {copyFlash ? "복사됨" : `클립보드: ${calClipboard.length}개 수업`}
               </span>
             )}
-            <span className="text-[11px] text-slate-400 hidden sm:block">↑↓←→ 이동 · Enter 열기 · Ctrl+C/V 복붙</span>
+            {undoStack.length > 0 && (
+              <button onClick={undoAction}
+                className="text-[11px] px-2 py-1 rounded-lg border bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100 transition">
+                ↩ 실행취소 ({undoStack.length})
+              </button>
+            )}
+            <span className="text-[11px] text-slate-400 hidden sm:block">↑↓←→ · Del · Ctrl+C/V/Z</span>
             <Btn onClick={() => onAddLesson(focusedDate || today)}>+ 수업 등록</Btn>
           </div>
         </div>
@@ -712,6 +766,12 @@ function LessonManager({ students }) {
     const { _key, createdAt, date: _d, ...rest } = lesson;
     const id = "lesson-" + Date.now() + "-" + Math.random().toString(36).slice(2, 5);
     await db.ref(`lessons/${id}`).set({ ...rest, date, createdAt: today });
+    return id;
+  };
+
+  const handleDeleteLesson = async (key) => {
+    await db.ref(`lessons/${key}`).remove();
+    await db.ref(`lessonAttendance/${key}`).remove();
   };
 
   if (currentLesson) {
@@ -745,6 +805,7 @@ function LessonManager({ students }) {
         onLessonClick={(lesson) => setSelectedLessonKey(lesson._key)}
         onAddLesson={(date) => setAddModal({ date })}
         onPasteLesson={handlePasteLesson}
+        onDeleteLesson={handleDeleteLesson}
       />
       {addModal && (
         <LessonModal
