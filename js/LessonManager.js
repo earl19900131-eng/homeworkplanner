@@ -61,12 +61,30 @@ function fmtYMD(year, month, day) {
 // ── 태그 선택 모달 (즉시 적용, 저장 버튼 없음) ──────────────────────────
 function TagSelectorModal({ studentName, currentTags, onToggle, onClose }) {
   const { xp, cp } = calcPoints(currentTags);
+  const [focusedIdx, setFocusedIdx] = React.useState(0);
+  const bodyRef = React.useRef(null);
 
+  React.useEffect(() => { bodyRef.current?.focus(); }, []);
+
+  // 포커스 태그가 스크롤 범위 밖이면 스크롤
   React.useEffect(() => {
-    const handler = (e) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [onClose]);
+    const el = bodyRef.current?.querySelector(`[data-tagidx="${focusedIdx}"]`);
+    el?.scrollIntoView({ block: "nearest" });
+  }, [focusedIdx]);
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Escape") { onClose(); return; }
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+      e.preventDefault();
+      setFocusedIdx(i => Math.min(i + 1, BEHAVIOR_TAGS.length - 1));
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      e.preventDefault();
+      setFocusedIdx(i => Math.max(i - 1, 0));
+    } else if (e.key === " ") {
+      e.preventDefault();
+      onToggle(BEHAVIOR_TAGS[focusedIdx].name);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4" onClick={onClose}>
@@ -82,23 +100,29 @@ function TagSelectorModal({ studentName, currentTags, onToggle, onClose }) {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[11px] text-slate-400">Esc · 바깥 클릭으로 닫기</span>
+              <span className="text-[11px] text-slate-400">↑↓←→ 이동 · Space 선택 · Esc 닫기</span>
               <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
             </div>
           </div>
         </div>
 
-        <div className="overflow-y-auto flex-1 p-5 space-y-4">
+        <div ref={bodyRef} tabIndex={0} onKeyDown={handleKeyDown}
+          className="overflow-y-auto flex-1 p-5 space-y-4 outline-none">
           {TAG_GROUPS.map(group => (
             <div key={group}>
               <div className="text-xs font-bold text-slate-400 tracking-wide mb-2">{group}</div>
               <div className="flex flex-wrap gap-1.5">
                 {BEHAVIOR_TAGS.filter(t => t.group === group).map(tag => {
+                  const idx = BEHAVIOR_TAGS.findIndex(b => b.name === tag.name);
                   const sel = currentTags.includes(tag.name);
+                  const isFocused = focusedIdx === idx;
                   const negXP = tag.xp < 0;
                   return (
-                    <button key={tag.name} type="button" onClick={() => onToggle(tag.name)}
-                      className={`px-2.5 py-1.5 rounded-xl text-xs font-medium border transition flex items-center gap-1 ${sel ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-600 border-slate-200 hover:border-slate-400"}`}>
+                    <button key={tag.name} type="button" data-tagidx={idx}
+                      onClick={() => { setFocusedIdx(idx); onToggle(tag.name); }}
+                      className={`px-2.5 py-1.5 rounded-xl text-xs font-medium border transition flex items-center gap-1
+                        ${sel ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-600 border-slate-200 hover:border-slate-400"}
+                        ${isFocused ? "ring-2 ring-blue-400 ring-offset-1" : ""}`}>
                       <span>{tag.name}</span>
                       <span className={`text-[9px] font-normal ${sel ? "text-slate-400" : negXP ? "text-red-400" : "text-emerald-500"}`}>
                         {tag.xp !== 0 ? (tag.xp > 0 ? "+" : "") + tag.xp + "xp" : ""}
