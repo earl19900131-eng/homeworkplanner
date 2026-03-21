@@ -138,8 +138,15 @@ function StudentManager({ students, homeworks }) {
   };
 
   const classes = [...new Set(students.map(s => s.className))].sort();
-  const sortedStudents = [...students].sort((a, b) =>
-    a.className.localeCompare(b.className) || a.name.localeCompare(b.name));
+  const schools = [...new Set(Object.values(profiles).map(p => p.school).filter(Boolean))].sort();
+
+  const [filterClass, setFilterClass] = useState("");
+  const [filterSchool, setFilterSchool] = useState("");
+
+  const sortedStudents = [...students]
+    .filter(s => !filterClass || s.className === filterClass)
+    .filter(s => !filterSchool || (profiles[s.id]?.school || "") === filterSchool)
+    .sort((a, b) => a.className.localeCompare(b.className) || a.name.localeCompare(b.name));
 
   const handleTableKeyDown = (e) => {
     if (e.key === "ArrowUp")   { e.preventDefault(); setFocusedRow(r => Math.max(r - 1, 0)); }
@@ -220,13 +227,28 @@ function StudentManager({ students, homeworks }) {
 
       {/* 학생 목록 */}
       <Card className="p-0 overflow-hidden">
-        <div className="p-5 flex items-center justify-between flex-wrap gap-2 border-b border-slate-100">
-          <div>
+        <div className="p-4 flex items-center gap-3 flex-wrap border-b border-slate-100">
+          <div className="flex-1 min-w-0">
             <h2 className="text-lg font-bold">학생 목록</h2>
-            <p className="text-sm text-slate-500">총 {students.length}명 등록됨</p>
+            <p className="text-sm text-slate-500">{sortedStudents.length === students.length ? `총 ${students.length}명` : `${sortedStudents.length}명 (전체 ${students.length}명)`}</p>
           </div>
-          <div className="flex gap-1.5 flex-wrap">
-            {classes.map(c=><Badge key={c} variant="secondary">{c} {students.filter(s=>s.className===c).length}명</Badge>)}
+          <div className="flex items-center gap-2 flex-wrap">
+            <select value={filterClass} onChange={e=>setFilterClass(e.target.value)}
+              className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white outline-none focus:ring-1 focus:ring-blue-300">
+              <option value="">전체 학년</option>
+              {classes.map(c=><option key={c} value={c}>{c} ({students.filter(s=>s.className===c).length}명)</option>)}
+            </select>
+            <select value={filterSchool} onChange={e=>setFilterSchool(e.target.value)}
+              className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white outline-none focus:ring-1 focus:ring-blue-300">
+              <option value="">전체 학교</option>
+              {schools.map(sc=><option key={sc} value={sc}>{sc}</option>)}
+            </select>
+            {(filterClass || filterSchool) && (
+              <button onClick={()=>{ setFilterClass(""); setFilterSchool(""); }}
+                className="text-xs text-slate-400 hover:text-slate-700 px-2 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50">
+                초기화
+              </button>
+            )}
           </div>
         </div>
 
