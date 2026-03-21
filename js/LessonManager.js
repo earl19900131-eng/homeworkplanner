@@ -127,6 +127,12 @@ function LessonModal({ lesson, students, onClose, onSave }) {
   const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState("");
 
+  React.useEffect(() => {
+    const handler = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
+
   const toggleStudent = (id) =>
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
@@ -310,6 +316,7 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
 
   const handleKeyDown = (e) => {
     if (editingHW || editingEval || tagModal) return;
+    if (e.key === "Backspace" && !focusedCell) { e.preventDefault(); onBack(); return; }
     if (!focusedCell) return;
     const { row, col } = focusedCell;
     const maxRow = lessonStudents.length - 1;
@@ -526,11 +533,20 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
 }
 
 // ── 달력 뷰 ──────────────────────────────────────────────────────────────
-function LessonCalendar({ lessons, today, onDayClick, onLessonClick, onAddLesson, onPasteLesson, onDeleteLesson }) {
+function LessonCalendar({ lessons, today, focusDateOverride, onDayClick, onLessonClick, onAddLesson, onPasteLesson, onDeleteLesson }) {
   const todayDate = new Date(today);
   const [year, setYear] = React.useState(todayDate.getFullYear());
   const [month, setMonth] = React.useState(todayDate.getMonth());
   const [focusedDate, setFocusedDate] = React.useState(today);
+
+  React.useEffect(() => {
+    if (!focusDateOverride) return;
+    const [fy, fm] = focusDateOverride.split("-").map(Number);
+    setFocusedDate(focusDateOverride);
+    setYear(fy);
+    setMonth(fm - 1);
+    setTimeout(() => containerRef.current?.focus(), 50);
+  }, [focusDateOverride]);
   const [calClipboard, setCalClipboard] = React.useState(null); // [{...lesson}]
   const [copyFlash, setCopyFlash] = React.useState(false);
   const [undoStack, setUndoStack] = React.useState([]); // { type:'paste'|'delete', data }
@@ -691,7 +707,7 @@ function LessonCalendar({ lessons, today, onDayClick, onLessonClick, onAddLesson
           ref={containerRef}
           tabIndex={0}
           onKeyDown={handleKeyDown}
-          className="grid grid-cols-7 gap-px bg-slate-100 rounded-xl overflow-hidden border border-slate-100 outline-none focus:ring-2 focus:ring-blue-300 focus:ring-offset-2 rounded-xl"
+          className="grid grid-cols-7 gap-px bg-slate-100 rounded-xl overflow-hidden border border-slate-100 outline-none"
         >
           {days.map((day, idx) => {
             if (!day) return <div key={`empty-${idx}`} className="bg-white min-h-[90px]" />;
@@ -740,6 +756,13 @@ function LessonManager({ students }) {
   const [attendance, setAttendance] = React.useState({});
   const [selectedLessonKey, setSelectedLessonKey] = React.useState(null);
   const [addModal, setAddModal] = React.useState(null);
+  const [calendarFocusDate, setCalendarFocusDate] = React.useState(null);
+
+  const handleBack = () => {
+    const lesson = lessons.find(l => l._key === selectedLessonKey);
+    if (lesson) setCalendarFocusDate(lesson.date);
+    setSelectedLessonKey(null);
+  };
 
   React.useEffect(() => {
     const lRef = db.ref("lessons");
@@ -783,7 +806,7 @@ function LessonManager({ students }) {
           students={students}
           attendance={attendance}
           allAttendance={attendance}
-          onBack={() => setSelectedLessonKey(null)}
+          onBack={handleBack}
           onEdit={() => setAddModal({ date: currentLesson.date, lesson: currentLesson })}
         />
         {addModal && (
@@ -802,6 +825,7 @@ function LessonManager({ students }) {
     <>
       <LessonCalendar
         lessons={lessons} today={today}
+        focusDateOverride={calendarFocusDate}
         onDayClick={(date) => setAddModal({ date })}
         onLessonClick={(lesson) => setSelectedLessonKey(lesson._key)}
         onAddLesson={(date) => setAddModal({ date })}
