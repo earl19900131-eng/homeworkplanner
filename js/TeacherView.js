@@ -149,7 +149,7 @@ function ClassGroupList({ teacherStats, teacherViewId, setTeacherViewId, homewor
           </div>
         </div>
       )}
-      <div className="space-y-1 max-h-144 overflow-y-auto pr-0.5" style={{maxHeight:"36rem"}}>
+      <div className="space-y-1 pr-0.5">
         {filtered.length === 0
           ? <div className="text-sm text-slate-400 text-center py-4">해당하는 학생이 없습니다.</div>
           : filtered.map(s=>(
