@@ -1,26 +1,10 @@
 // ── 수업일지 ────────────────────────────────────────────────────────────────
 
-// 달력 헬퍼
-function getMonthDays(year, month) {
-  // month: 0-based
-  const first = new Date(year, month, 1);
-  const last = new Date(year, month + 1, 0);
-  const days = [];
-  // 앞 빈칸 (일요일 시작)
-  for (let i = 0; i < first.getDay(); i++) days.push(null);
-  for (let d = 1; d <= last.getDate(); d++) days.push(d);
-  return days;
-}
-
-function fmtYMD(year, month, day) {
-  return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-}
-
 const STATUS_OPTIONS = [
-  { value: "출석", label: "출석", color: "bg-emerald-100 text-emerald-700 border-emerald-200" },
-  { value: "지각", label: "지각", color: "bg-amber-100 text-amber-700 border-amber-200" },
-  { value: "결석", label: "결석", color: "bg-red-100 text-red-700 border-red-200" },
-  { value: "조퇴", label: "조퇴", color: "bg-purple-100 text-purple-700 border-purple-200" },
+  { value: "출석", color: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+  { value: "지각", color: "bg-amber-100 text-amber-700 border-amber-200" },
+  { value: "결석", color: "bg-red-100 text-red-700 border-red-200" },
+  { value: "조퇴", color: "bg-purple-100 text-purple-700 border-purple-200" },
 ];
 
 function statusStyle(val) {
@@ -37,10 +21,15 @@ function LessonModal({ lesson, students, onClose, onSave }) {
   const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState("");
 
-  const toggleStudent = (id) => {
-    setSelectedIds(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    );
+  const toggleStudent = (id) =>
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  const selectClass = (cls) => {
+    const ids = students.filter(s => s.className === cls).map(s => s.id);
+    const allSelected = ids.every(id => selectedIds.includes(id));
+    setSelectedIds(prev => allSelected
+      ? prev.filter(id => !ids.includes(id))
+      : [...new Set([...prev, ...ids])]);
   };
 
   const classes = [...new Set(students.map(s => s.className))].sort();
@@ -53,9 +42,7 @@ function LessonModal({ lesson, students, onClose, onSave }) {
     try {
       await onSave({ title: title.trim(), date, time, studentIds: selectedIds });
       onClose();
-    } catch (e) {
-      setErr("저장 실패: " + e.message);
-    }
+    } catch (e) { setErr("저장 실패: " + e.message); }
     setSaving(false);
   };
 
@@ -74,45 +61,44 @@ function LessonModal({ lesson, students, onClose, onSave }) {
             <Inp value={title} onChange={e => setTitle(e.target.value)} placeholder="예: 수학 특강" />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Lbl>날짜</Lbl>
-              <Inp type="date" value={date} onChange={e => setDate(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Lbl>시간 (선택)</Lbl>
-              <Inp type="time" value={time} onChange={e => setTime(e.target.value)} />
-            </div>
+            <div className="space-y-1.5"><Lbl>날짜</Lbl><Inp type="date" value={date} onChange={e => setDate(e.target.value)} /></div>
+            <div className="space-y-1.5"><Lbl>시간 (선택)</Lbl><Inp type="time" value={time} onChange={e => setTime(e.target.value)} /></div>
           </div>
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-3">
           <Lbl>포함 학생</Lbl>
-          {classes.map(cls => (
-            <div key={cls}>
-              <div className="text-xs font-bold text-slate-400 px-1 pb-1 tracking-wide">{cls}</div>
-              <div className="flex flex-wrap gap-2">
-                {students.filter(s => s.className === cls).sort((a, b) => a.name.localeCompare(b.name)).map(s => {
-                  const selected = selectedIds.includes(s.id);
-                  return (
-                    <button key={s.id} type="button" onClick={() => toggleStudent(s.id)}
-                      className={`px-3 py-1.5 rounded-xl text-sm font-medium border transition ${selected
-                        ? "bg-slate-900 text-white border-slate-900"
-                        : "bg-white text-slate-600 border-slate-200 hover:border-slate-400"}`}>
-                      {s.name}
-                    </button>
-                  );
-                })}
+          {classes.map(cls => {
+            const clsIds = students.filter(s => s.className === cls).map(s => s.id);
+            const allSel = clsIds.every(id => selectedIds.includes(id));
+            return (
+              <div key={cls}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-xs font-bold text-slate-400 tracking-wide">{cls}</span>
+                  <button type="button" onClick={() => selectClass(cls)}
+                    className={`text-[10px] px-2 py-0.5 rounded-lg border transition ${allSel ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-500 border-slate-200 hover:border-slate-400"}`}>
+                    {allSel ? "전체 해제" : "전체 선택"}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {students.filter(s => s.className === cls).sort((a, b) => a.name.localeCompare(b.name)).map(s => {
+                    const sel = selectedIds.includes(s.id);
+                    return (
+                      <button key={s.id} type="button" onClick={() => toggleStudent(s.id)}
+                        className={`px-3 py-1.5 rounded-xl text-sm font-medium border transition ${sel ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-600 border-slate-200 hover:border-slate-400"}`}>
+                        {s.name}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {err && <AlertBox className="bg-red-50 text-red-700">{err}</AlertBox>}
-
         <div className="flex gap-2">
-          <Btn onClick={handleSave} disabled={saving} className="flex-1">
-            {saving ? "저장 중..." : isNew ? "✅ 수업 등록" : "저장"}
-          </Btn>
+          <Btn onClick={handleSave} disabled={saving} className="flex-1">{saving ? "저장 중..." : isNew ? "✅ 수업 등록" : "저장"}</Btn>
           <Btn variant="outline" onClick={onClose}>취소</Btn>
         </div>
       </div>
@@ -120,109 +106,24 @@ function LessonModal({ lesson, students, onClose, onSave }) {
   );
 }
 
-// ── 출석 편집 모달 ────────────────────────────────────────────────────────
-function AttendanceModal({ lesson, students, attendance, onClose }) {
-  const [records, setRecords] = React.useState(() => {
-    const init = {};
-    (lesson.studentIds || []).forEach(id => {
-      init[id] = attendance[id] || { status: "출석", memo: "" };
-    });
-    return init;
-  });
-  const [saving, setSaving] = React.useState(false);
-
-  const setStatus = (id, status) => setRecords(r => ({ ...r, [id]: { ...r[id], status } }));
-  const setMemo = (id, memo) => setRecords(r => ({ ...r, [id]: { ...r[id], memo } }));
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const updates = {};
-      Object.entries(records).forEach(([id, rec]) => {
-        updates[`lessonAttendance/${lesson._key}/${id}`] = rec;
-      });
-      await db.ref().update(updates);
-      onClose();
-    } catch (e) {
-      alert("저장 실패: " + e.message);
-    }
-    setSaving(false);
-  };
-
-  const lessonStudents = (lesson.studentIds || []).map(id => students.find(s => s.id === id)).filter(Boolean);
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-5 max-h-[90vh] overflow-y-auto"
-        onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold">{lesson.title}</h2>
-            <p className="text-sm text-slate-500">{lesson.date}{lesson.time ? " · " + lesson.time : ""} · {lessonStudents.length}명</p>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
-        </div>
-
-        <div className="space-y-3">
-          {lessonStudents.map(s => {
-            const rec = records[s.id] || { status: "출석", memo: "" };
-            return (
-              <div key={s.id} className="rounded-2xl border px-4 py-3 space-y-2">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600 shrink-0">{s.name[0]}</div>
-                    <span className="font-semibold text-sm">{s.name}</span>
-                    <span className="text-xs text-slate-400">{s.className}</span>
-                  </div>
-                  <div className="flex gap-1.5 flex-wrap">
-                    {STATUS_OPTIONS.map(opt => (
-                      <button key={opt.value} type="button" onClick={() => setStatus(s.id, opt.value)}
-                        className={`px-2.5 py-1 rounded-xl text-xs font-medium border transition ${rec.status === opt.value ? opt.color : "bg-white text-slate-400 border-slate-200 hover:border-slate-300"}`}>
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <input value={rec.memo || ""} onChange={e => setMemo(s.id, e.target.value)}
-                  placeholder="메모 (선택)"
-                  className="w-full border border-slate-200 rounded-xl px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-slate-300" />
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="flex gap-2">
-          <Btn onClick={handleSave} disabled={saving} className="flex-1">
-            {saving ? "저장 중..." : "💾 출석 저장"}
-          </Btn>
-          <Btn variant="outline" onClick={onClose}>닫기</Btn>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── 수업일지 메인 컴포넌트 ─────────────────────────────────────────────────
+// ── 수업일지 메인 ─────────────────────────────────────────────────────────
 function LessonManager({ students }) {
   const today = todayString();
   const todayDate = new Date(today);
   const [year, setYear] = React.useState(todayDate.getFullYear());
-  const [month, setMonth] = React.useState(todayDate.getMonth()); // 0-based
+  const [month, setMonth] = React.useState(todayDate.getMonth());
   const [lessons, setLessons] = React.useState([]);
   const [attendance, setAttendance] = React.useState({});
-  const [addModal, setAddModal] = React.useState(null); // null | { date, lesson? }
-  const [attendModal, setAttendModal] = React.useState(null); // null | lesson
-  const [deleteConfirm, setDeleteConfirm] = React.useState(null);
-  const [viewMode, setViewMode] = React.useState("calendar"); // "calendar" | "list"
+  const [addModal, setAddModal] = React.useState(null);
+  const [editingCell, setEditingCell] = React.useState(null); // { lessonKey, studentId, field }
+  const [editValue, setEditValue] = React.useState("");
 
-  // Firebase 구독
   React.useEffect(() => {
     const lRef = db.ref("lessons");
     lRef.on("value", snap => {
       const data = snap.val();
       if (data) {
         const arr = Object.entries(data).map(([key, val]) => ({ ...val, _key: key }));
-        arr.sort((a, b) => b.date.localeCompare(a.date));
         setLessons(arr);
       } else setLessons([]);
     });
@@ -231,195 +132,233 @@ function LessonManager({ students }) {
     return () => { lRef.off(); aRef.off(); };
   }, []);
 
+  const monthStr = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const monthLessons = lessons
+    .filter(l => l.date?.startsWith(monthStr))
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.time || "").localeCompare(b.time || ""));
+
+  const sortedStudents = [...students].sort((a, b) =>
+    a.className.localeCompare(b.className) || a.name.localeCompare(b.name));
+
+  const prevMonth = () => { if (month === 0) { setYear(y => y - 1); setMonth(11); } else setMonth(m => m - 1); };
+  const nextMonth = () => { if (month === 11) { setYear(y => y + 1); setMonth(0); } else setMonth(m => m + 1); };
+
   const handleSaveLesson = async (data) => {
     if (addModal?.lesson) {
-      // 수정
       await db.ref(`lessons/${addModal.lesson._key}`).update(data);
     } else {
-      // 신규
       const id = "lesson-" + Date.now();
       await db.ref(`lessons/${id}`).set({ ...data, createdAt: today });
     }
   };
 
-  const handleDelete = async (key) => {
-    try {
-      await db.ref(`lessons/${key}`).remove();
-      await db.ref(`lessonAttendance/${key}`).remove();
-      setDeleteConfirm(null);
-    } catch (e) {
-      alert("삭제 실패: " + e.message);
+  const handleDeleteLesson = async (key) => {
+    if (!window.confirm("이 수업을 삭제할까요? 출석 기록도 함께 삭제됩니다.")) return;
+    await db.ref(`lessons/${key}`).remove();
+    await db.ref(`lessonAttendance/${key}`).remove();
+  };
+
+  // 태그 클릭 시 순환
+  const cycleTag = async (lessonKey, studentId, current) => {
+    const opts = ["출석", "지각", "결석", "조퇴", null];
+    const idx = opts.indexOf(current || null);
+    const next = opts[(idx + 1) % opts.length];
+    await db.ref(`lessonAttendance/${lessonKey}/${studentId}/status`).set(next);
+  };
+
+  const startEdit = (lessonKey, studentId, field, current) => {
+    setEditingCell({ lessonKey, studentId, field });
+    setEditValue(current ?? "");
+  };
+
+  const saveCell = async (lessonKey, studentId, field, val) => {
+    const value = (field === "xp" || field === "cp")
+      ? (val === "" ? null : Number(val))
+      : (val === "" ? null : val);
+    if (value === null) {
+      await db.ref(`lessonAttendance/${lessonKey}/${studentId}/${field}`).remove();
+    } else {
+      await db.ref(`lessonAttendance/${lessonKey}/${studentId}/${field}`).set(value);
     }
+    setEditingCell(null);
   };
 
-  // 이번 달 수업들
-  const monthStr = `${year}-${String(month + 1).padStart(2, "0")}`;
-  const monthLessons = lessons.filter(l => l.date && l.date.startsWith(monthStr));
+  const isEditing = (lessonKey, studentId, field) =>
+    editingCell?.lessonKey === lessonKey && editingCell?.studentId === studentId && editingCell?.field === field;
 
-  // 날짜별 수업 맵
-  const lessonsByDate = {};
-  monthLessons.forEach(l => {
-    if (!lessonsByDate[l.date]) lessonsByDate[l.date] = [];
-    lessonsByDate[l.date].push(l);
-  });
-
-  const days = getMonthDays(year, month);
-  const DOW = ["일", "월", "화", "수", "목", "금", "토"];
-
-  const prevMonth = () => { if (month === 0) { setYear(y => y - 1); setMonth(11); } else setMonth(m => m - 1); };
-  const nextMonth = () => { if (month === 11) { setYear(y => y + 1); setMonth(0); } else setMonth(m => m + 1); };
-
-  // 수업별 출석 요약
-  const getAttendSummary = (lessonKey, studentIds) => {
-    const rec = attendance[lessonKey] || {};
-    const counts = { 출석: 0, 지각: 0, 결석: 0, 조퇴: 0, 미기록: 0 };
-    (studentIds || []).forEach(id => {
-      const s = rec[id]?.status;
-      if (s && counts[s] !== undefined) counts[s]++;
-      else counts["미기록"]++;
-    });
-    return counts;
-  };
+  // 날짜 포맷: "2026-03-21" → "0321"
+  const fmtMMDD = (date) => date?.slice(5).replace("-", "") ?? "";
 
   return (
     <div className="space-y-4">
       {/* 헤더 */}
-      <Card className="p-5">
+      <Card className="p-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
-            <button onClick={prevMonth} className="w-8 h-8 rounded-xl border hover:bg-slate-50 flex items-center justify-center text-slate-600">‹</button>
-            <h2 className="text-xl font-bold min-w-[7rem] text-center">{year}년 {month + 1}월</h2>
-            <button onClick={nextMonth} className="w-8 h-8 rounded-xl border hover:bg-slate-50 flex items-center justify-center text-slate-600">›</button>
+            <button onClick={prevMonth} className="w-8 h-8 rounded-xl border hover:bg-slate-50 flex items-center justify-center text-slate-600 font-bold">‹</button>
+            <span className="text-lg font-bold min-w-[7rem] text-center">{year}년 {month + 1}월</span>
+            <button onClick={nextMonth} className="w-8 h-8 rounded-xl border hover:bg-slate-50 flex items-center justify-center text-slate-600 font-bold">›</button>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="flex gap-1 bg-slate-100 rounded-xl p-0.5">
-              {[["calendar", "달력"], ["list", "목록"]].map(([v, l]) => (
-                <button key={v} onClick={() => setViewMode(v)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${viewMode === v ? "bg-white shadow-sm" : "text-slate-500"}`}>
-                  {l}
-                </button>
-              ))}
-            </div>
-            <Btn onClick={() => setAddModal({ date: today })}>+ 수업 등록</Btn>
-          </div>
+          <Btn onClick={() => setAddModal({ date: today })}>+ 수업 등록</Btn>
         </div>
       </Card>
 
-      {viewMode === "calendar" ? (
-        <Card className="p-4">
-          {/* 요일 헤더 */}
-          <div className="grid grid-cols-7 mb-1">
-            {DOW.map((d, i) => (
-              <div key={d} className={`text-center text-xs font-bold py-2 ${i === 0 ? "text-red-500" : i === 6 ? "text-blue-500" : "text-slate-400"}`}>{d}</div>
-            ))}
-          </div>
-          {/* 날짜 그리드 */}
-          <div className="grid grid-cols-7 gap-px bg-slate-100 rounded-xl overflow-hidden border border-slate-100">
-            {days.map((day, idx) => {
-              if (!day) return <div key={`empty-${idx}`} className="bg-white min-h-[80px]" />;
-              const dateStr = fmtYMD(year, month, day);
-              const dayLessons = lessonsByDate[dateStr] || [];
-              const isToday = dateStr === today;
-              const dow = (idx) % 7;
-              const isSun = dow === 0;
-              const isSat = dow === 6;
-              return (
-                <div key={dateStr}
-                  className={`bg-white min-h-[80px] p-1.5 cursor-pointer hover:bg-slate-50 transition relative ${isToday ? "ring-2 ring-inset ring-slate-900" : ""}`}
-                  onClick={() => setAddModal({ date: dateStr })}>
-                  <div className={`text-xs font-semibold mb-1 w-6 h-6 flex items-center justify-center rounded-full ${isToday ? "bg-slate-900 text-white" : isSun ? "text-red-500" : isSat ? "text-blue-500" : "text-slate-700"}`}>
-                    {day}
-                  </div>
-                  <div className="space-y-0.5">
-                    {dayLessons.map(l => {
-                      const cnt = (l.studentIds || []).length;
-                      return (
-                        <div key={l._key}
-                          onClick={e => { e.stopPropagation(); setAttendModal(l); }}
-                          className="rounded-lg bg-slate-800 text-white px-1.5 py-0.5 text-[10px] font-medium truncate hover:bg-slate-700 transition">
-                          {l.time ? l.time.slice(0, 5) + " " : ""}{l.title} ({cnt}명)
-                        </div>
-                      );
-                    })}
-                    {dayLessons.length === 0 && (
-                      <div className="text-[10px] text-slate-300 text-center mt-3">+</div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      ) : (
-        // 목록 뷰
-        <div className="space-y-2">
-          {lessons.length === 0 ? (
-            <Card className="p-8 text-center text-sm text-slate-400">등록된 수업이 없습니다.</Card>
-          ) : (
-            lessons.map(l => {
-              const summary = getAttendSummary(l._key, l.studentIds);
-              const total = (l.studentIds || []).length;
-              const isConfirming = deleteConfirm === l._key;
-              return (
-                <Card key={l._key} className="p-4">
-                  <div className="flex items-center justify-between flex-wrap gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="text-center">
-                        <div className="text-xs text-slate-400">{l.date?.slice(5)}</div>
-                        {l.time && <div className="text-xs text-slate-500 font-medium">{l.time.slice(0, 5)}</div>}
-                      </div>
-                      <div>
-                        <div className="font-semibold text-sm">{l.title}</div>
-                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                          <span className="text-xs text-slate-400">{total}명</span>
-                          {summary.출석 > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-lg bg-emerald-100 text-emerald-700 border border-emerald-200">출석 {summary.출석}</span>}
-                          {summary.지각 > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-lg bg-amber-100 text-amber-700 border border-amber-200">지각 {summary.지각}</span>}
-                          {summary.결석 > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-lg bg-red-100 text-red-700 border border-red-200">결석 {summary.결석}</span>}
-                          {summary.조퇴 > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-lg bg-purple-100 text-purple-700 border border-purple-200">조퇴 {summary.조퇴}</span>}
-                          {summary.미기록 > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-lg bg-slate-100 text-slate-500 border border-slate-200">미기록 {summary.미기록}</span>}
-                        </div>
-                      </div>
+      {/* 표 */}
+      <Card className="p-0 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="text-sm border-collapse" style={{ minWidth: monthLessons.length > 0 ? `${140 + monthLessons.length * 260}px` : "100%" }}>
+            <thead>
+              {/* 수업명 행 */}
+              <tr className="bg-slate-50">
+                <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3 text-left text-xs font-bold text-slate-500 border-b border-r border-slate-200 min-w-[130px]">
+                  학생
+                </th>
+                {monthLessons.length === 0 ? (
+                  <th className="px-6 py-3 text-xs text-slate-400 border-b font-normal">
+                    이번 달 수업이 없습니다. <button onClick={() => setAddModal({ date: today })} className="text-slate-600 font-medium underline">수업 등록</button>
+                  </th>
+                ) : monthLessons.map(l => (
+                  <th key={l._key} colSpan={4}
+                    className="px-3 py-2.5 text-center text-xs font-bold text-slate-700 border-b border-r border-slate-200">
+                    <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                      <span className="font-bold">{fmtMMDD(l.date)}</span>
+                      <span className="text-slate-500 font-medium">{l.title}</span>
+                      {l.time && <span className="text-slate-400 font-normal">{l.time.slice(0, 5)}</span>}
+                      <button onClick={() => setAddModal({ date: l.date, lesson: l })}
+                        className="text-slate-300 hover:text-slate-600 text-xs transition ml-0.5">✏️</button>
+                      <button onClick={() => handleDeleteLesson(l._key)}
+                        className="text-slate-300 hover:text-red-500 text-sm font-bold transition leading-none">×</button>
                     </div>
-                    <div className="flex gap-2 items-center">
-                      {isConfirming ? (
-                        <>
-                          <span className="text-xs text-red-600">삭제할까요?</span>
-                          <Btn variant="danger" size="sm" onClick={() => handleDelete(l._key)}>확인</Btn>
-                          <Btn variant="outline" size="sm" onClick={() => setDeleteConfirm(null)}>취소</Btn>
-                        </>
-                      ) : (
-                        <>
-                          <Btn size="sm" onClick={() => setAttendModal(l)}>출석 기록</Btn>
-                          <Btn variant="outline" size="sm" onClick={() => setAddModal({ date: l.date, lesson: l })}>수정</Btn>
-                          <Btn variant="danger" size="sm" onClick={() => setDeleteConfirm(l._key)}>삭제</Btn>
-                        </>
-                      )}
+                  </th>
+                ))}
+              </tr>
+              {/* 서브컬럼 행 */}
+              {monthLessons.length > 0 && (
+                <tr className="bg-slate-50/70">
+                  <th className="sticky left-0 z-10 bg-slate-50 border-b border-r border-slate-200" />
+                  {monthLessons.map(l => (
+                    <React.Fragment key={l._key}>
+                      {[
+                        [fmtMMDD(l.date) + " 현행", "w-[100px]"],
+                        [fmtMMDD(l.date) + " 태그", "w-[64px]"],
+                        [fmtMMDD(l.date) + " XP", "w-[56px]"],
+                        [fmtMMDD(l.date) + " CP", "w-[56px]"],
+                      ].map(([label, w]) => (
+                        <th key={label} className={`${w} px-2 py-2 text-[10px] font-semibold text-slate-400 border-b border-r border-slate-100 text-center whitespace-nowrap`}>
+                          {label}
+                        </th>
+                      ))}
+                    </React.Fragment>
+                  ))}
+                </tr>
+              )}
+            </thead>
+            <tbody>
+              {sortedStudents.map((s, si) => (
+                <tr key={s.id} className={`hover:bg-slate-50/80 transition ${si % 2 === 0 ? "bg-white" : "bg-slate-50/30"}`}>
+                  {/* 학생 이름 (sticky) */}
+                  <td className="sticky left-0 z-10 bg-inherit px-4 py-2.5 border-b border-r border-slate-200 whitespace-nowrap">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600 shrink-0">{s.name[0]}</div>
+                      <span className="font-semibold text-sm">{s.name}</span>
+                      <span className="text-[10px] text-slate-400">{s.className}</span>
                     </div>
-                  </div>
-                </Card>
-              );
-            })
-          )}
-        </div>
-      )}
+                  </td>
 
-      {/* 수업 등록/편집 모달 */}
+                  {/* 수업별 셀 */}
+                  {monthLessons.map(l => {
+                    const inLesson = (l.studentIds || []).includes(s.id);
+                    const rec = attendance[l._key]?.[s.id] || {};
+
+                    if (!inLesson) {
+                      return (
+                        <React.Fragment key={l._key}>
+                          {[0, 1, 2, 3].map(i => (
+                            <td key={i} className="border-b border-r border-slate-100 bg-slate-50/50 text-center text-slate-200 text-xs py-2">—</td>
+                          ))}
+                        </React.Fragment>
+                      );
+                    }
+
+                    return (
+                      <React.Fragment key={l._key}>
+                        {/* 현행 */}
+                        <td className="border-b border-r border-slate-100 px-2 py-2 cursor-text"
+                          onClick={() => !isEditing(l._key, s.id, "현행") && startEdit(l._key, s.id, "현행", rec.현행)}>
+                          {isEditing(l._key, s.id, "현행") ? (
+                            <input autoFocus value={editValue} onChange={e => setEditValue(e.target.value)}
+                              onBlur={() => saveCell(l._key, s.id, "현행", editValue)}
+                              onKeyDown={e => { if (e.key === "Enter") saveCell(l._key, s.id, "현행", editValue); if (e.key === "Escape") setEditingCell(null); }}
+                              className="w-full text-xs border-b border-slate-400 outline-none bg-transparent" />
+                          ) : (
+                            <span className="text-xs text-slate-600 block truncate max-w-[90px]">
+                              {rec.현행 || <span className="text-slate-300">—</span>}
+                            </span>
+                          )}
+                        </td>
+
+                        {/* 태그 */}
+                        <td className="border-b border-r border-slate-100 text-center cursor-pointer py-2 px-1"
+                          onClick={() => cycleTag(l._key, s.id, rec.status)}>
+                          {rec.status ? (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded-lg border font-medium ${statusStyle(rec.status)}`}>{rec.status}</span>
+                          ) : (
+                            <span className="text-[10px] text-slate-300 hover:text-slate-400">클릭</span>
+                          )}
+                        </td>
+
+                        {/* XP */}
+                        <td className="border-b border-r border-slate-100 text-center cursor-text py-2 px-1"
+                          onClick={() => !isEditing(l._key, s.id, "xp") && startEdit(l._key, s.id, "xp", rec.xp)}>
+                          {isEditing(l._key, s.id, "xp") ? (
+                            <input autoFocus type="number" value={editValue} onChange={e => setEditValue(e.target.value)}
+                              onBlur={() => saveCell(l._key, s.id, "xp", editValue)}
+                              onKeyDown={e => { if (e.key === "Enter") saveCell(l._key, s.id, "xp", editValue); if (e.key === "Escape") setEditingCell(null); }}
+                              className="w-12 text-xs text-center border-b border-slate-400 outline-none bg-transparent" />
+                          ) : (
+                            <span className="text-xs text-slate-600">
+                              {rec.xp != null ? rec.xp : <span className="text-slate-300">—</span>}
+                            </span>
+                          )}
+                        </td>
+
+                        {/* CP */}
+                        <td className="border-b border-r border-slate-100 text-center cursor-text py-2 px-1"
+                          onClick={() => !isEditing(l._key, s.id, "cp") && startEdit(l._key, s.id, "cp", rec.cp)}>
+                          {isEditing(l._key, s.id, "cp") ? (
+                            <input autoFocus type="number" value={editValue} onChange={e => setEditValue(e.target.value)}
+                              onBlur={() => saveCell(l._key, s.id, "cp", editValue)}
+                              onKeyDown={e => { if (e.key === "Enter") saveCell(l._key, s.id, "cp", editValue); if (e.key === "Escape") setEditingCell(null); }}
+                              className="w-12 text-xs text-center border-b border-slate-400 outline-none bg-transparent" />
+                          ) : (
+                            <span className="text-xs text-slate-600">
+                              {rec.cp != null ? rec.cp : <span className="text-slate-300">—</span>}
+                            </span>
+                          )}
+                        </td>
+                      </React.Fragment>
+                    );
+                  })}
+                </tr>
+              ))}
+              {students.length === 0 && (
+                <tr>
+                  <td colSpan={1 + monthLessons.length * 4} className="p-8 text-center text-sm text-slate-400">
+                    학생을 먼저 등록해 주세요.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
       {addModal && (
         <LessonModal
           lesson={addModal.lesson || { date: addModal.date, studentIds: [] }}
           students={students}
           onClose={() => setAddModal(null)}
           onSave={handleSaveLesson}
-        />
-      )}
-
-      {/* 출석 기록 모달 */}
-      {attendModal && (
-        <AttendanceModal
-          lesson={attendModal}
-          students={students}
-          attendance={attendance[attendModal._key] || {}}
-          onClose={() => setAttendModal(null)}
         />
       )}
     </div>
