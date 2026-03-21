@@ -14,12 +14,16 @@ function StudentManager({ students, homeworks }) {
   const [bulkErr, setBulkErr] = useState("");
   const [bulkTab, setBulkTab] = useState("single");
   const [profiles, setProfiles] = useState({});
+  const [focusedRow, setFocusedRow] = useState(0);
+  const tableRef = React.useRef(null);
 
   useEffect(() => {
     const ref = db.ref("studentProfiles");
     ref.on("value", snap => setProfiles(snap.val() || {}));
     return () => ref.off();
   }, []);
+
+  useEffect(() => { tableRef.current?.focus(); }, []);
 
   const newAutoGrade = gradeFromBirthYear(newBirthYear);
 
@@ -101,6 +105,13 @@ function StudentManager({ students, homeworks }) {
   };
 
   const classes = [...new Set(students.map(s => s.className))].sort();
+  const sortedStudents = [...students].sort((a, b) =>
+    a.className.localeCompare(b.className) || a.name.localeCompare(b.name));
+
+  const handleTableKeyDown = (e) => {
+    if (e.key === "ArrowUp")   { e.preventDefault(); setFocusedRow(r => Math.max(r - 1, 0)); }
+    if (e.key === "ArrowDown") { e.preventDefault(); setFocusedRow(r => Math.min(r + 1, sortedStudents.length - 1)); }
+  };
 
   return (
     <div className="space-y-6">
@@ -175,8 +186,8 @@ function StudentManager({ students, homeworks }) {
       </Card>
 
       {/* 학생 목록 */}
-      <Card className="p-5 space-y-4">
-        <div className="flex items-center justify-between flex-wrap gap-2">
+      <Card className="p-0 overflow-hidden">
+        <div className="p-5 flex items-center justify-between flex-wrap gap-2 border-b border-slate-100">
           <div>
             <h2 className="text-lg font-bold">학생 목록</h2>
             <p className="text-sm text-slate-500">총 {students.length}명 등록됨</p>
@@ -187,74 +198,103 @@ function StudentManager({ students, homeworks }) {
         </div>
 
         {students.length === 0
-          ? <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-slate-400">아직 등록된 학생이 없습니다.</div>
-          : classes.map(cls=>(
-            <div key={cls}>
-              <div className="text-xs font-bold text-slate-400 px-1 pb-2 pt-1 tracking-wide">{cls} · {students.filter(s=>s.className===cls).length}명</div>
-              <div className="space-y-1.5">
-                {students.filter(s=>s.className===cls).sort((a,b)=>a.name.localeCompare(b.name)).map(s=>{
-                  const hwCount = homeworks.filter(hw=>hw.studentId===s.id).length;
-                  const isConfirming = deleteConfirm === s.id;
-                  const isEditingPin = editPin[s.id] !== undefined;
-                  const isExpanded = expandedEdit === s.id;
-                  const profile = profiles[s.id];
-                  const isLocked = profile?.locked;
-                  const hasProfile = profile && (profile.school || profile.birthYear || Object.values(profile.grades||{}).some(v=>v!==""));
-                  return (
-                    <div key={s.id} className={`rounded-2xl border transition ${isConfirming?"border-red-300 bg-red-50":isLocked?"border-emerald-200 bg-emerald-50/30":"bg-white"}`}>
-                      <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-sm font-bold text-slate-600 shrink-0">{s.name[0]}</div>
-                          <div>
+          ? <div className="p-8 text-center text-sm text-slate-400 border border-dashed m-4 rounded-2xl">아직 등록된 학생이 없습니다.</div>
+          : <div ref={tableRef} tabIndex={0} onKeyDown={handleTableKeyDown} className="outline-none overflow-x-auto">
+              <table className="text-sm border-collapse w-full">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100">
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 w-8">#</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">이름</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">학년</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">학교</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">출생연도</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">PIN</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">숙제</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">상태</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedStudents.map((s, rowIdx) => {
+                    const hwCount = homeworks.filter(hw => hw.studentId === s.id).length;
+                    const profile = profiles[s.id];
+                    const isLocked = profile?.locked;
+                    const hasProfile = profile && (profile.school || profile.birthYear || Object.values(profile.grades||{}).some(v=>v!==""));
+                    const isFocused = focusedRow === rowIdx;
+                    const isConfirming = deleteConfirm === s.id;
+                    const isEditingPin = editPin[s.id] !== undefined;
+                    const isExpanded = expandedEdit === s.id;
+                    return (
+                      <React.Fragment key={s.id}>
+                        <tr
+                          onClick={() => { setFocusedRow(rowIdx); tableRef.current?.focus(); }}
+                          className={`border-b border-slate-50 cursor-pointer transition ${isFocused ? "bg-blue-50" : "hover:bg-slate-50"}`}
+                        >
+                          <td className={`px-4 py-2.5 text-xs text-slate-400 ${isFocused ? "border-l-2 border-blue-500" : ""}`}>{rowIdx + 1}</td>
+                          <td className="px-4 py-2.5">
                             <div className="flex items-center gap-2">
-                              <div className="font-semibold text-sm">{s.name}</div>
-                              {isLocked && <span className="text-xs text-emerald-600 font-medium">🔒 확정</span>}
-                              {hasProfile && !isLocked && <span className="text-xs text-amber-600 font-medium">📝 미확정</span>}
+                              <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600 shrink-0">{s.name[0]}</div>
+                              <span className="font-semibold">{s.name}</span>
                             </div>
-                            <div className="text-xs text-slate-400">PIN: {s.pin} · 숙제 {hwCount}개{profile?.school ? " · "+profile.school : ""}{profile?.birthYear ? " · "+profile.birthYear+"년생" : ""}</div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {isConfirming ? (
-                            <>
-                              <span className="text-xs text-red-600">숙제 {hwCount}개도 삭제됩니다.</span>
-                              <Btn variant="danger" size="sm" onClick={()=>deleteStudent(s.id)} disabled={saving}>확인</Btn>
-                              <Btn variant="outline" size="sm" onClick={()=>setDeleteConfirm(null)}>취소</Btn>
-                            </>
-                          ) : isEditingPin ? (
-                            <>
-                              <input value={editPin[s.id]} onChange={e=>setEditPin(p=>({...p,[s.id]:e.target.value}))}
-                                className="border border-slate-200 rounded-xl px-2 py-1 text-xs w-24 outline-none focus:ring-1 focus:ring-slate-300" placeholder="새 PIN"/>
-                              <Btn size="sm" onClick={()=>updatePin(s.id, editPin[s.id])}>저장</Btn>
-                              <Btn variant="outline" size="sm" onClick={()=>setEditPin(p=>{const n={...p};delete n[s.id];return n;})}>취소</Btn>
-                            </>
-                          ) : (
-                            <>
-                              {hasProfile && (
-                                <Btn size="sm" variant={isLocked?"outline":"default"} onClick={()=>toggleProfileLock(s.id, isLocked)}>
-                                  {isLocked ? "🔓 확정 해제" : "🔒 프로필 확정"}
-                                </Btn>
+                          </td>
+                          <td className="px-4 py-2.5"><Badge variant="secondary">{s.className}</Badge></td>
+                          <td className="px-4 py-2.5 text-slate-500">{profile?.school || "-"}</td>
+                          <td className="px-4 py-2.5 text-slate-500">{profile?.birthYear ? profile.birthYear + "년" : "-"}</td>
+                          <td className="px-4 py-2.5 font-mono text-slate-500 text-xs">{s.pin}</td>
+                          <td className="px-4 py-2.5 text-slate-500">{hwCount}</td>
+                          <td className="px-4 py-2.5">
+                            {isLocked
+                              ? <span className="text-xs text-emerald-600 font-medium">🔒 확정</span>
+                              : hasProfile
+                                ? <span className="text-xs text-amber-600 font-medium">📝 미확정</span>
+                                : <span className="text-xs text-slate-300">-</span>}
+                          </td>
+                        </tr>
+                        {isFocused && (
+                          <tr className="bg-blue-50/60">
+                            <td colSpan={8} className="px-4 py-2 border-b border-blue-100">
+                              {isConfirming ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-red-600">숙제 {hwCount}개도 삭제됩니다. 정말 삭제할까요?</span>
+                                  <Btn variant="danger" size="sm" onClick={()=>deleteStudent(s.id)} disabled={saving}>확인</Btn>
+                                  <Btn variant="outline" size="sm" onClick={()=>setDeleteConfirm(null)}>취소</Btn>
+                                </div>
+                              ) : isEditingPin ? (
+                                <div className="flex items-center gap-2">
+                                  <input value={editPin[s.id]} onChange={e=>setEditPin(p=>({...p,[s.id]:e.target.value}))}
+                                    className="border border-slate-200 rounded-xl px-2 py-1 text-xs w-24 outline-none focus:ring-1 focus:ring-slate-300" placeholder="새 PIN"/>
+                                  <Btn size="sm" onClick={()=>updatePin(s.id, editPin[s.id])}>저장</Btn>
+                                  <Btn variant="outline" size="sm" onClick={()=>setEditPin(p=>{const n={...p};delete n[s.id];return n;})}>취소</Btn>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  {hasProfile && (
+                                    <Btn size="sm" variant={isLocked?"outline":"default"} onClick={()=>toggleProfileLock(s.id, isLocked)}>
+                                      {isLocked ? "🔓 확정 해제" : "🔒 프로필 확정"}
+                                    </Btn>
+                                  )}
+                                  <Btn variant="outline" size="sm" onClick={()=>setExpandedEdit(isExpanded ? null : s.id)}>
+                                    {isExpanded ? "닫기" : "수정"}
+                                  </Btn>
+                                  <Btn variant="outline" size="sm" onClick={()=>setEditPin(p=>({...p,[s.id]:s.pin}))}>PIN</Btn>
+                                  <Btn variant="danger" size="sm" onClick={()=>setDeleteConfirm(s.id)}>삭제</Btn>
+                                </div>
                               )}
-                              <Btn variant="outline" size="sm" onClick={()=>setExpandedEdit(isExpanded ? null : s.id)}>
-                                {isExpanded ? "닫기" : "수정"}
-                              </Btn>
-                              <Btn variant="outline" size="sm" onClick={()=>setEditPin(p=>({...p,[s.id]:s.pin}))}>PIN</Btn>
-                              <Btn variant="danger" size="sm" onClick={()=>setDeleteConfirm(s.id)}>삭제</Btn>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      {isExpanded && (
-                        <div className="border-t px-4 pb-4 pt-3">
-                          <StudentProfileTab studentId={s.id} studentName={s.name} teacherMode={true}/>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                            </td>
+                          </tr>
+                        )}
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={8} className="px-4 pb-4 pt-2 border-b bg-slate-50/80">
+                              <StudentProfileTab studentId={s.id} studentName={s.name} teacherMode={true}/>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-          ))
         }
       </Card>
     </div>
