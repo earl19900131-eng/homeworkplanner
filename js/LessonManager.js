@@ -206,12 +206,16 @@ function LessonModal({ lesson, students, onClose, onSave }) {
 }
 
 // ── 수업 상세 표 ──────────────────────────────────────────────────────────
+// col: 0=현행숙제, 1=행동태그
 function LessonDetailView({ lesson, students, attendance, allAttendance, onBack, onEdit }) {
-  const [editingHW, setEditingHW] = React.useState(null); // studentId
+  const [editingHW, setEditingHW] = React.useState(null);
   const [hwValue, setHwValue] = React.useState("");
-  const [tagModal, setTagModal] = React.useState(null); // studentId
+  const [tagModal, setTagModal] = React.useState(null);
+  const [focusedCell, setFocusedCell] = React.useState(null); // { row, col }
+  const [clipboard, setClipboard] = React.useState(null);     // { type:'hw'|'tags', value }
+  const [copyFlash, setCopyFlash] = React.useState(false);
+  const containerRef = React.useRef(null);
 
-  // 이 수업에 포함된 학생만
   const lessonStudents = (lesson.studentIds || [])
     .map(id => students.find(s => s.id === id))
     .filter(Boolean)
@@ -219,7 +223,6 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
 
   const rec = attendance[lesson._key] || {};
 
-  // 학생별 누적 XP/CP (전체 수업 합산)
   const cumulativeTotals = React.useMemo(() => {
     const totals = {};
     Object.values(allAttendance).forEach(lessonRec => {
@@ -232,17 +235,71 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
     return totals;
   }, [allAttendance]);
 
+  const refocusContainer = () => setTimeout(() => containerRef.current?.focus(), 30);
+
   const saveHW = async (studentId, val) => {
     if (val === "") await db.ref(`lessonAttendance/${lesson._key}/${studentId}/현행숙제`).remove();
     else await db.ref(`lessonAttendance/${lesson._key}/${studentId}/현행숙제`).set(val);
     setEditingHW(null);
+    refocusContainer();
   };
 
   const saveTags = async (studentId, tags) => {
     const { xp, cp } = calcPoints(tags);
     await db.ref(`lessonAttendance/${lesson._key}/${studentId}`).update({ tags, xp, cp });
     setTagModal(null);
+    refocusContainer();
   };
+
+  const selectCell = (row, col) => {
+    setFocusedCell({ row, col });
+    containerRef.current?.focus();
+  };
+
+  const handleKeyDown = (e) => {
+    // 편집 중이거나 모달 열린 경우엔 네비게이션 무시
+    if (editingHW || tagModal) return;
+    if (!focusedCell) return;
+    const { row, col } = focusedCell;
+    const maxRow = lessonStudents.length - 1;
+
+    if (e.key === "ArrowUp")    { e.preventDefault(); if (row > 0)     setFocusedCell({ row: row - 1, col }); return; }
+    if (e.key === "ArrowDown")  { e.preventDefault(); if (row < maxRow) setFocusedCell({ row: row + 1, col }); return; }
+    if (e.key === "ArrowLeft")  { e.preventDefault(); if (col > 0)      setFocusedCell({ row, col: col - 1 }); return; }
+    if (e.key === "ArrowRight") { e.preventDefault(); if (col < 1)      setFocusedCell({ row, col: col + 1 }); return; }
+    if (e.key === "Escape")     { setFocusedCell(null); return; }
+
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      const s = lessonStudents[row];
+      const sRec = rec[s.id] || {};
+      if (col === 0) { setEditingHW(s.id); setHwValue(sRec.현행숙제 || ""); }
+      if (col === 1) { setTagModal(s.id); }
+      return;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && e.key === "c") {
+      e.preventDefault();
+      const s = lessonStudents[row];
+      const sRec = rec[s.id] || {};
+      if (col === 0) setClipboard({ type: "hw",   value: sRec.현행숙제 || "" });
+      if (col === 1) setClipboard({ type: "tags", value: [...(sRec.tags || [])] });
+      setCopyFlash(true);
+      setTimeout(() => setCopyFlash(false), 900);
+      return;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && e.key === "v") {
+      e.preventDefault();
+      if (!clipboard) return;
+      const s = lessonStudents[row];
+      if (col === 0 && clipboard.type === "hw")   saveHW(s.id, clipboard.value);
+      if (col === 1 && clipboard.type === "tags") saveTags(s.id, clipboard.value);
+      return;
+    }
+  };
+
+  const isFocused = (row, col) => focusedCell?.row === row && focusedCell?.col === col;
 
   const tagModalStudent = tagModal ? students.find(s => s.id === tagModal) : null;
 
@@ -259,13 +316,26 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
               <div className="text-sm text-slate-500">{lesson.date}{lesson.time ? " · " + lesson.time.slice(0, 5) : ""} · {lessonStudents.length}명</div>
             </div>
           </div>
-          <Btn variant="outline" size="sm" onClick={onEdit}>✏️ 수업 편집</Btn>
+          <div className="flex items-center gap-2">
+            {clipboard && (
+              <span className={`text-[11px] px-2 py-1 rounded-lg border transition ${copyFlash ? "bg-blue-100 text-blue-600 border-blue-200" : "bg-slate-100 text-slate-500 border-slate-200"}`}>
+                {copyFlash ? "복사됨" : `클립보드: ${clipboard.type === "hw" ? "현행숙제" : "태그"}`}
+              </span>
+            )}
+            <span className="text-[11px] text-slate-400 hidden sm:block">↑↓←→ 이동 · Enter 편집 · Ctrl+C/V 복붙</span>
+            <Btn variant="outline" size="sm" onClick={onEdit}>✏️ 수업 편집</Btn>
+          </div>
         </div>
       </Card>
 
       {/* 표 */}
       <Card className="p-0 overflow-hidden">
-        <div className="overflow-x-auto">
+        <div
+          ref={containerRef}
+          tabIndex={0}
+          onKeyDown={handleKeyDown}
+          className="overflow-x-auto outline-none"
+        >
           <table className="text-sm border-collapse w-full">
             <thead>
               <tr className="bg-slate-50">
@@ -283,8 +353,10 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
                 const { xp, cp } = calcPoints(tags);
                 const total = cumulativeTotals[s.id] || { xp: 0, cp: 0 };
 
+                const focusRing = "ring-2 ring-inset ring-blue-400 bg-blue-50/60";
+
                 return (
-                  <tr key={s.id} className={`hover:bg-slate-50/80 transition ${si % 2 === 0 ? "bg-white" : "bg-slate-50/30"}`}>
+                  <tr key={s.id} className={si % 2 === 0 ? "bg-white" : "bg-slate-50/30"}>
                     {/* 학생 이름 */}
                     <td className="sticky left-0 z-10 bg-inherit px-4 py-3 border-b border-r border-slate-200 whitespace-nowrap">
                       <div className="flex items-center gap-2">
@@ -302,23 +374,28 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
                     </td>
 
                     {/* 현행숙제 */}
-                    <td className="border-b border-r border-slate-100 px-3 py-2.5 cursor-text"
-                      onClick={() => { if (editingHW !== s.id) { setEditingHW(s.id); setHwValue(sRec.현행숙제 || ""); } }}>
+                    <td
+                      className={`border-b border-r border-slate-100 px-3 py-2.5 cursor-text transition ${isFocused(si, 0) ? focusRing : ""}`}
+                      onClick={() => {
+                        selectCell(si, 0);
+                        if (editingHW !== s.id) { setEditingHW(s.id); setHwValue(sRec.현행숙제 || ""); }
+                      }}>
                       {editingHW === s.id ? (
                         <input autoFocus value={hwValue} onChange={e => setHwValue(e.target.value)}
                           onBlur={() => saveHW(s.id, hwValue)}
-                          onKeyDown={e => { if (e.key === "Enter") saveHW(s.id, hwValue); if (e.key === "Escape") setEditingHW(null); }}
+                          onKeyDown={e => { if (e.key === "Enter") saveHW(s.id, hwValue); if (e.key === "Escape") { setEditingHW(null); refocusContainer(); } }}
                           className="w-full text-xs border-b border-slate-400 outline-none bg-transparent py-0.5" />
                       ) : (
                         <span className="text-xs text-slate-600 block">
-                          {sRec.현행숙제 || <span className="text-slate-300">클릭하여 입력</span>}
+                          {sRec.현행숙제 || <span className="text-slate-300">입력</span>}
                         </span>
                       )}
                     </td>
 
                     {/* 행동태그 */}
-                    <td className="border-b border-r border-slate-100 px-3 py-2 cursor-pointer"
-                      onClick={() => setTagModal(s.id)}>
+                    <td
+                      className={`border-b border-r border-slate-100 px-3 py-2 cursor-pointer transition ${isFocused(si, 1) ? focusRing : ""}`}
+                      onClick={() => { selectCell(si, 1); setTagModal(s.id); }}>
                       {tags.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
                           {tags.map(name => {
@@ -333,24 +410,22 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
                           })}
                         </div>
                       ) : (
-                        <span className="text-[11px] text-slate-300 hover:text-slate-400">클릭하여 태그 선택</span>
+                        <span className="text-[11px] text-slate-300">태그 선택</span>
                       )}
                     </td>
 
                     {/* 획득 XP */}
                     <td className="border-b border-r border-slate-100 text-center py-2.5 px-3">
-                      {tags.length > 0 ? (
-                        <span className={`text-sm font-bold ${xp >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                          {xp >= 0 ? "+" : ""}{xp}
-                        </span>
-                      ) : <span className="text-slate-300 text-xs">—</span>}
+                      {tags.length > 0
+                        ? <span className={`text-sm font-bold ${xp >= 0 ? "text-emerald-600" : "text-red-600"}`}>{xp >= 0 ? "+" : ""}{xp}</span>
+                        : <span className="text-slate-300 text-xs">—</span>}
                     </td>
 
                     {/* 획득 CP */}
                     <td className="border-b border-slate-100 text-center py-2.5 px-3">
-                      {tags.length > 0 ? (
-                        <span className="text-sm font-bold text-blue-600">+{cp}</span>
-                      ) : <span className="text-slate-300 text-xs">—</span>}
+                      {tags.length > 0
+                        ? <span className="text-sm font-bold text-blue-600">+{cp}</span>
+                        : <span className="text-slate-300 text-xs">—</span>}
                     </td>
                   </tr>
                 );
@@ -360,13 +435,12 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
         </div>
       </Card>
 
-      {/* 태그 선택 모달 */}
       {tagModal && tagModalStudent && (
         <TagSelectorModal
           studentName={tagModalStudent.name}
           selectedTags={rec[tagModal]?.tags || []}
           onSave={(tags) => saveTags(tagModal, tags)}
-          onClose={() => setTagModal(null)}
+          onClose={() => { setTagModal(null); refocusContainer(); }}
         />
       )}
     </div>
