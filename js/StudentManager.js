@@ -214,7 +214,7 @@ function StudentManager({ students, homeworks }) {
 
         {students.length === 0
           ? <div className="p-8 text-center text-sm text-slate-400 border border-dashed m-4 rounded-2xl">아직 등록된 학생이 없습니다.</div>
-          : <div ref={tableRef} tabIndex={0} onKeyDown={handleTableKeyDown} className="outline-none overflow-x-auto">
+          : <div className="overflow-x-auto">
               <table className="text-sm border-collapse w-full">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-100">
@@ -227,6 +227,7 @@ function StudentManager({ students, homeworks }) {
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">숙제</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">현행평가</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">상태</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">관리</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -235,17 +236,13 @@ function StudentManager({ students, homeworks }) {
                     const profile = profiles[s.id];
                     const isLocked = profile?.locked;
                     const hasProfile = profile && (profile.school || profile.birthYear || Object.values(profile.grades||{}).some(v=>v!==""));
-                    const isFocused = focusedRow === rowIdx;
                     const isConfirming = deleteConfirm === s.id;
                     const isEditingPin = editPin[s.id] !== undefined;
                     const isExpanded = expandedEdit === s.id;
                     return (
                       <React.Fragment key={s.id}>
-                        <tr
-                          onClick={() => { setFocusedRow(rowIdx); tableRef.current?.focus(); }}
-                          className={`border-b border-slate-50 cursor-pointer transition ${isFocused ? "bg-blue-50" : "hover:bg-slate-50"}`}
-                        >
-                          <td className={`px-4 py-2.5 text-xs text-slate-400 ${isFocused ? "border-l-2 border-blue-500" : ""}`}>{rowIdx + 1}</td>
+                        <tr className="border-b border-slate-100 hover:bg-slate-50 transition">
+                          <td className="px-4 py-2.5 text-xs text-slate-400">{rowIdx + 1}</td>
                           <td className="px-4 py-2.5">
                             <div className="flex items-center gap-2">
                               <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600 shrink-0">{s.name[0]}</div>
@@ -253,18 +250,33 @@ function StudentManager({ students, homeworks }) {
                             </div>
                           </td>
                           <td className="px-4 py-2.5"><Badge variant="secondary">{s.className}</Badge></td>
-                          <td className="px-4 py-2.5 text-slate-500">{profile?.school || "-"}</td>
-                          <td className="px-4 py-2.5 text-slate-500">{profile?.birthYear ? profile.birthYear + "년" : "-"}</td>
-                          <td className="px-4 py-2.5 font-mono text-slate-500 text-xs">{s.pin}</td>
-                          <td className="px-4 py-2.5 text-slate-500">{hwCount}</td>
-                          <td className="px-4 py-2.5">
-                            {(() => {
-                              const ca = profile?.currentAssessment;
-                              const a = ca && assessments.find(x => x.id === ca);
-                              return a
-                                ? <span className="text-xs text-blue-600 font-medium truncate max-w-[120px] block">{a.name}</span>
-                                : <span className="text-xs text-slate-300">-</span>;
-                            })()}
+                          <td className="px-4 py-2.5 text-slate-500 text-xs">{profile?.school || "-"}</td>
+                          <td className="px-4 py-2.5 text-slate-500 text-xs">{profile?.birthYear ? profile.birthYear + "년" : "-"}</td>
+                          <td className="px-3 py-2">
+                            {isEditingPin ? (
+                              <div className="flex items-center gap-1">
+                                <input value={editPin[s.id]} onChange={e=>setEditPin(p=>({...p,[s.id]:e.target.value}))}
+                                  onKeyDown={e=>{ if(e.key==="Enter") updatePin(s.id,editPin[s.id]); if(e.key==="Escape") setEditPin(p=>{const n={...p};delete n[s.id];return n;}); }}
+                                  className="border border-slate-200 rounded-lg px-2 py-1 text-xs w-20 outline-none focus:ring-1 focus:ring-blue-300" autoFocus/>
+                                <button onClick={()=>updatePin(s.id,editPin[s.id])} className="text-blue-500 hover:text-blue-700 text-xs font-bold">✓</button>
+                                <button onClick={()=>setEditPin(p=>{const n={...p};delete n[s.id];return n;})} className="text-slate-400 hover:text-slate-600 text-xs">✕</button>
+                              </div>
+                            ) : (
+                              <button onClick={()=>setEditPin(p=>({...p,[s.id]:s.pin}))}
+                                className="font-mono text-xs text-slate-500 hover:text-blue-600 hover:underline cursor-pointer">
+                                {s.pin}
+                              </button>
+                            )}
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-500 text-xs">{hwCount}</td>
+                          <td className="px-3 py-2">
+                            <select
+                              value={profile?.currentAssessment || ""}
+                              onChange={e => updateCurrentAssessment(s.id, e.target.value)}
+                              className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-1 focus:ring-blue-300 max-w-[160px]">
+                              <option value="">-</option>
+                              {assessments.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                            </select>
                           </td>
                           <td className="px-4 py-2.5">
                             {isLocked
@@ -273,53 +285,36 @@ function StudentManager({ students, homeworks }) {
                                 ? <span className="text-xs text-amber-600 font-medium">📝 미확정</span>
                                 : <span className="text-xs text-slate-300">-</span>}
                           </td>
+                          <td className="px-3 py-2">
+                            {isConfirming ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs text-red-500">삭제?</span>
+                                <button onClick={()=>deleteStudent(s.id)} disabled={saving} className="text-xs text-red-600 font-semibold hover:text-red-800">확인</button>
+                                <button onClick={()=>setDeleteConfirm(null)} className="text-xs text-slate-400 hover:text-slate-600">취소</button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5">
+                                {hasProfile && (
+                                  <button onClick={()=>toggleProfileLock(s.id,isLocked)}
+                                    className="text-slate-400 hover:text-emerald-600 text-xs px-1" title={isLocked?"확정 해제":"프로필 확정"}>
+                                    {isLocked ? "🔓" : "🔒"}
+                                  </button>
+                                )}
+                                <button onClick={()=>setExpandedEdit(isExpanded?null:s.id)}
+                                  className="text-xs text-slate-400 hover:text-blue-600 px-1.5 py-0.5 rounded border border-slate-200 hover:border-blue-300">
+                                  {isExpanded ? "닫기" : "수정"}
+                                </button>
+                                <button onClick={()=>setDeleteConfirm(s.id)}
+                                  className="text-xs text-slate-400 hover:text-red-500 px-1.5 py-0.5 rounded border border-slate-200 hover:border-red-200">
+                                  삭제
+                                </button>
+                              </div>
+                            )}
+                          </td>
                         </tr>
-                        {isFocused && (
-                          <tr className="bg-blue-50/60">
-                            <td colSpan={9} className="px-4 py-2 border-b border-blue-100">
-                              {isConfirming ? (
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs text-red-600">숙제 {hwCount}개도 삭제됩니다. 정말 삭제할까요?</span>
-                                  <Btn variant="danger" size="sm" onClick={()=>deleteStudent(s.id)} disabled={saving}>확인</Btn>
-                                  <Btn variant="outline" size="sm" onClick={()=>setDeleteConfirm(null)}>취소</Btn>
-                                </div>
-                              ) : isEditingPin ? (
-                                <div className="flex items-center gap-2">
-                                  <input value={editPin[s.id]} onChange={e=>setEditPin(p=>({...p,[s.id]:e.target.value}))}
-                                    className="border border-slate-200 rounded-xl px-2 py-1 text-xs w-24 outline-none focus:ring-1 focus:ring-slate-300" placeholder="새 PIN"/>
-                                  <Btn size="sm" onClick={()=>updatePin(s.id, editPin[s.id])}>저장</Btn>
-                                  <Btn variant="outline" size="sm" onClick={()=>setEditPin(p=>{const n={...p};delete n[s.id];return n;})}>취소</Btn>
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-xs text-slate-500 shrink-0">현행평가</span>
-                                  <select
-                                    value={profile?.currentAssessment || ""}
-                                    onChange={e => updateCurrentAssessment(s.id, e.target.value)}
-                                    onClick={e => e.stopPropagation()}
-                                    className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-1 focus:ring-blue-300 max-w-[180px]">
-                                    <option value="">-- 선택 안 함 --</option>
-                                    {assessments.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                                  </select>
-                                  <div className="w-px h-4 bg-slate-200 mx-1"/>
-                                  {hasProfile && (
-                                    <Btn size="sm" variant={isLocked?"outline":"default"} onClick={()=>toggleProfileLock(s.id, isLocked)}>
-                                      {isLocked ? "🔓 확정 해제" : "🔒 프로필 확정"}
-                                    </Btn>
-                                  )}
-                                  <Btn variant="outline" size="sm" onClick={()=>setExpandedEdit(isExpanded ? null : s.id)}>
-                                    {isExpanded ? "닫기" : "수정"}
-                                  </Btn>
-                                  <Btn variant="outline" size="sm" onClick={()=>setEditPin(p=>({...p,[s.id]:s.pin}))}>PIN</Btn>
-                                  <Btn variant="danger" size="sm" onClick={()=>setDeleteConfirm(s.id)}>삭제</Btn>
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        )}
                         {isExpanded && (
                           <tr>
-                            <td colSpan={9} className="px-4 pb-4 pt-2 border-b bg-slate-50/80">
+                            <td colSpan={10} className="px-4 pb-4 pt-2 border-b bg-slate-50/80">
                               <StudentProfileTab studentId={s.id} studentName={s.name} teacherMode={true}/>
                             </td>
                           </tr>
