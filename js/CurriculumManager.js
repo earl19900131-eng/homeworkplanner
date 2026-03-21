@@ -628,61 +628,12 @@ function CurriculumVisualEditor({ boardId, students, materials }) {
 // ── 평가 관리 탭 ──────────────────────────────────────────────────────────────
 function AssessmentsTab() {
   const SUBJECTS = ["중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"];
-  const COL_KEYS  = ["num","subject","major","middle","minor"];
-  const COL_HEADS = ["소단원 번호","과목","대단원명","중단원명","소단원명"];
-  const COL_PH    = ["01","공통수학1","다항식","다항식의 연산","다항식의 덧셈"];
-
   const [step, setStep] = React.useState("select");
   const [testName, setTestName] = React.useState("");
-  const [editId, setEditId] = React.useState(null);
-  const emptyRow = () => ({ num:"", subject:"공통수학1", major:"", middle:"", minor:"" });
-  const [rows, setRows] = React.useState([emptyRow()]);
+  const [dbEditId, setDbEditId] = React.useState(null);
+  const [tree, setTree] = React.useState([]);
   const [saving, setSaving] = React.useState(false);
   const [assessments, setAssessments] = React.useState([]);
-  const [focusedCell, setFocusedCell] = React.useState({ row:0, col:0 });
-  const [editingCell, setEditingCell] = React.useState(null);
-  const containerRef = React.useRef(null);
-  const inputRef = React.useRef(null);
-  const [fillDrag, setFillDrag] = React.useState(null); // { srcRow, srcCol, endRow }
-  const fillDragRef = React.useRef(null);
-  const rowsRef = React.useRef(rows);
-  React.useEffect(() => { rowsRef.current = rows; }, [rows]);
-
-  // fill drag mouseup (document-level)
-  React.useEffect(() => {
-    const onUp = () => {
-      const d = fillDragRef.current;
-      if (!d) return;
-      const { srcRow, srcCol, endRow } = d;
-      if (endRow > srcRow) {
-        const srcValue = rowsRef.current[srcRow]?.[COL_KEYS[srcCol]] ?? "";
-        const needed = Math.max(0, endRow + 1 - rowsRef.current.length);
-        setRows(r => {
-          const nr = [...r];
-          for (let i = 0; i < needed; i++) nr.push(emptyRow());
-          return nr.map((row, idx) =>
-            idx > srcRow && idx <= endRow ? { ...row, [COL_KEYS[srcCol]]: srcValue } : row
-          );
-        });
-        setFocusedCell({ row: endRow, col: srcCol });
-      }
-      fillDragRef.current = null;
-      setFillDrag(null);
-    };
-    document.addEventListener("mouseup", onUp);
-    return () => document.removeEventListener("mouseup", onUp);
-  }, []);
-
-  const startFillDrag = (e, row, col) => {
-    e.preventDefault(); e.stopPropagation();
-    const d = { srcRow: row, srcCol: col, endRow: row };
-    fillDragRef.current = d; setFillDrag(d);
-  };
-  const onCellMouseEnter = (row, col) => {
-    if (!fillDragRef.current || col !== fillDragRef.current.srcCol || row <= fillDragRef.current.srcRow) return;
-    const d = { ...fillDragRef.current, endRow: row };
-    fillDragRef.current = d; setFillDrag(d);
-  };
 
   React.useEffect(() => {
     const ref = db.ref("assessments");
@@ -693,175 +644,110 @@ function AssessmentsTab() {
     return () => ref.off();
   }, []);
 
-  // 편집 셀 열릴 때 인풋에 포커스
-  React.useEffect(() => {
-    if (editingCell) { setTimeout(() => { inputRef.current?.focus(); inputRef.current?.select && inputRef.current.select(); }, 0); }
-  }, [editingCell]);
+  const nid = () => genId();
+  const emptyMajor  = () => ({ id: nid(), major: "", subject: "공통수학1", open: true, middles: [] });
+  const emptyMiddle = () => ({ id: nid(), middle: "", open: true, minors: [] });
+  const emptyMinor  = () => ({ id: nid(), num: "", minor: "" });
 
-  // step 바뀔 때 테이블 컨테이너 포커스
-  React.useEffect(() => {
-    if (step === "daily_test") { setTimeout(() => containerRef.current?.focus(), 0); }
-  }, [step]);
+  const updMajor  = (mId, u)            => setTree(t => t.map(m => m.id===mId ? {...m,...u} : m));
+  const delMajor  = (mId)               => setTree(t => t.filter(m => m.id!==mId));
+  const addMiddle = (mId)               => setTree(t => t.map(m => m.id===mId ? {...m, middles:[...m.middles, emptyMiddle()]} : m));
+  const updMiddle = (mId,midId,u)       => setTree(t => t.map(m => m.id===mId ? {...m, middles:m.middles.map(d => d.id===midId ? {...d,...u} : d)} : m));
+  const delMiddle = (mId,midId)         => setTree(t => t.map(m => m.id===mId ? {...m, middles:m.middles.filter(d => d.id!==midId)} : m));
+  const addMinor  = (mId,midId)         => setTree(t => t.map(m => m.id===mId ? {...m, middles:m.middles.map(d => d.id===midId ? {...d, minors:[...d.minors, emptyMinor()]} : d)} : m));
+  const updMinor  = (mId,midId,minId,u) => setTree(t => t.map(m => m.id===mId ? {...m, middles:m.middles.map(d => d.id===midId ? {...d, minors:d.minors.map(n => n.id===minId ? {...n,...u} : n)} : d)} : m));
+  const delMinor  = (mId,midId,minId)   => setTree(t => t.map(m => m.id===mId ? {...m, middles:m.middles.map(d => d.id===midId ? {...d, minors:d.minors.filter(n => n.id!==minId)} : d)} : m));
 
-  const updateRow = (i, key, val) => setRows(r => r.map((row, idx) => idx === i ? {...row, [key]: val} : row));
-  const removeRow = (i) => {
-    setRows(r => r.filter((_, idx) => idx !== i));
-    setFocusedCell(fc => ({ row: Math.max(0, fc.row - (fc.row >= i ? 1 : 0)), col: fc.col }));
-    setEditingCell(null);
-    containerRef.current?.focus();
-  };
-
-  const confirmEdit = (moveDown = true) => {
-    const { row, col } = editingCell || focusedCell;
-    setEditingCell(null);
-    if (moveDown) {
-      const nextRow = row + 1;
-      if (nextRow >= rows.length) setRows(r => [...r, emptyRow()]);
-      setFocusedCell({ row: nextRow, col });
-      // 바로 아래 셀도 편집 모드로
-      setTimeout(() => { setEditingCell({ row: nextRow, col }); }, 0);
-    } else {
-      setFocusedCell({ row, col });
-      containerRef.current?.focus();
-    }
-  };
-
-  const handleContainerKeyDown = (e) => {
-    if (editingCell) return;
-    const { row, col } = focusedCell;
-    const lastRow = rows.length - 1;
-    if (e.key === "ArrowUp")    { e.preventDefault(); setFocusedCell({ row: Math.max(0, row-1), col }); }
-    if (e.key === "ArrowDown")  { e.preventDefault(); setFocusedCell({ row: Math.min(lastRow, row+1), col }); }
-    if (e.key === "ArrowLeft")  { e.preventDefault(); setFocusedCell({ row, col: Math.max(0, col-1) }); }
-    if (e.key === "ArrowRight") { e.preventDefault(); setFocusedCell({ row, col: Math.min(4, col+1) }); }
-    if (e.key === "Tab")        { e.preventDefault(); setFocusedCell({ row, col: col < 4 ? col+1 : col }); }
-    if (e.key === "Enter" || e.key === "F2") { e.preventDefault(); setEditingCell({ row, col }); }
-    if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); updateRow(row, COL_KEYS[col], col === 1 ? "공통수학1" : ""); }
-  };
-
-  const handleInputKeyDown = (e, row, col) => {
-    if (e.key === "Enter")  { e.preventDefault(); confirmEdit(true); }
-    if (e.key === "Escape") { e.preventDefault(); setEditingCell(null); setTimeout(() => containerRef.current?.focus(), 0); }
-    if (e.key === "Tab")    { e.preventDefault(); confirmEdit(false); setFocusedCell({ row, col: col < 4 ? col+1 : col }); }
-    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-      e.preventDefault(); confirmEdit(false);
-      setFocusedCell({ row: e.key === "ArrowUp" ? Math.max(0,row-1) : Math.min(rows.length-1,row+1), col });
-    }
-  };
-
-  const startCreate = () => { setStep("daily_test"); setEditId(null); setTestName(""); setRows([emptyRow()]); setFocusedCell({row:0,col:0}); setEditingCell(null); };
-  const startEditAssessment = (a) => {
-    setStep("daily_test"); setEditId(a.id); setTestName(a.name);
-    setRows((a.units && a.units.length) ? a.units.map(u=>({...emptyRow(),...u})) : [emptyRow()]);
-    setFocusedCell({row:0,col:0}); setEditingCell(null);
-  };
+  const startCreate = () => { setStep("daily_test"); setDbEditId(null); setTestName(""); setTree([emptyMajor()]); };
+  const startEditAssessment = (a) => { setStep("daily_test"); setDbEditId(a.id); setTestName(a.name); setTree(a.tree || []); };
 
   const handleSave = async () => {
     if (!testName.trim()) { alert("테스트 제목을 입력해 주세요."); return; }
     setSaving(true);
-    const data = { type:"일일테스트", name:testName.trim(), createdAt:todayString(), units:rows };
+    const data = { type: "일일테스트", name: testName.trim(), createdAt: todayString(), tree };
     try {
-      if (editId) { await db.ref(`assessments/${editId}`).update(data); }
+      if (dbEditId) { await db.ref(`assessments/${dbEditId}`).update(data); }
       else { const id = Date.now().toString(); await db.ref(`assessments/${id}`).set({ id, ...data }); }
       setStep("select");
     } catch(e) { alert("저장 실패: " + e.message); }
     setSaving(false);
   };
 
-  // ── 일일테스트 만들기 화면 ──
   if (step === "daily_test") {
+    const INP = "border-0 border-b border-slate-200 px-1 py-0.5 text-sm bg-transparent outline-none focus:border-blue-400 min-w-0 flex-1";
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3">
           <button type="button" onClick={()=>setStep("select")} className="text-sm text-slate-500 hover:text-slate-800">← 뒤로</button>
           <h2 className="text-lg font-bold">일일테스트 만들기</h2>
         </div>
-
         <Card className="p-5 space-y-4">
           <div className="space-y-1.5">
             <Lbl>테스트 제목</Lbl>
             <Inp value={testName} onChange={e=>setTestName(e.target.value)} placeholder="예: 3월 1주차 일일테스트"/>
           </div>
 
-          <div ref={containerRef} tabIndex={0} onKeyDown={handleContainerKeyDown}
-            className="overflow-x-auto rounded-xl border border-slate-200 outline-none"
-            onClick={() => containerRef.current?.focus()}>
-            <table className="text-sm border-collapse w-full">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200">
-                  {COL_HEADS.map((h,i) => <th key={i} className="text-left px-3 py-2.5 text-xs font-semibold text-slate-500 whitespace-nowrap">{h}</th>)}
-                  <th className="w-8"/>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, rowIdx) => (
-                  <tr key={rowIdx} className="border-b border-slate-100 last:border-0">
-                    {COL_KEYS.map((key, colIdx) => {
-                      const isFocused = focusedCell.row === rowIdx && focusedCell.col === colIdx;
-                      const isEditing = editingCell?.row === rowIdx && editingCell?.col === colIdx;
-                      const isSubject = key === "subject";
-                      const isInFillRange = fillDrag && colIdx === fillDrag.srcCol && rowIdx > fillDrag.srcRow && rowIdx <= fillDrag.endRow;
-                      return (
-                        <td key={colIdx}
-                          className={`p-0 relative ${isInFillRange ? "bg-blue-100" : isFocused && !isEditing ? "bg-blue-50" : ""}`}
-                          onMouseEnter={() => onCellMouseEnter(rowIdx, colIdx)}
-                          onClick={(e) => { e.stopPropagation(); setFocusedCell({row:rowIdx,col:colIdx}); if (!isEditing) containerRef.current?.focus(); }}
-                          onDoubleClick={(e) => { e.stopPropagation(); setFocusedCell({row:rowIdx,col:colIdx}); setEditingCell({row:rowIdx,col:colIdx}); }}>
-                          {isEditing ? (
-                            isSubject ? (
-                              <select ref={inputRef} value={row[key]}
-                                onChange={e => { updateRow(rowIdx, key, e.target.value); confirmEdit(true); }}
-                                onKeyDown={e => handleInputKeyDown(e, rowIdx, colIdx)}
-                                onBlur={() => { setEditingCell(null); setTimeout(()=>containerRef.current?.focus(),0); }}
-                                className="w-full border-0 border-b-2 border-blue-500 px-3 py-1.5 text-sm bg-white outline-none">
-                                {SUBJECTS.map(s=><option key={s} value={s}>{s}</option>)}
-                              </select>
-                            ) : (
-                              <input ref={inputRef} value={row[key]}
-                                onChange={e => updateRow(rowIdx, key, e.target.value)}
-                                onKeyDown={e => handleInputKeyDown(e, rowIdx, colIdx)}
-                                onBlur={() => { setEditingCell(null); setTimeout(()=>containerRef.current?.focus(),0); }}
-                                className="w-full border-0 border-b-2 border-blue-500 px-3 py-1.5 text-sm bg-white outline-none"/>
-                            )
-                          ) : (
-                            <div className={`px-3 py-1.5 min-h-[34px] cursor-default select-none relative ${isFocused ? "ring-2 ring-inset ring-blue-500" : ""}`}>
-                              {row[key] ? <span>{row[key]}</span> : <span className="text-slate-300 text-xs">{COL_PH[colIdx]}</span>}
-                              {isFocused && (
-                                <div
-                                  onMouseDown={e => startFillDrag(e, rowIdx, colIdx)}
-                                  className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-blue-500 border-2 border-white cursor-crosshair"
-                                  style={{ transform: "translate(50%,50%)", zIndex: 20 }}
-                                />
-                              )}
-                            </div>
-                          )}
-                        </td>
-                      );
-                    })}
-                    <td className="p-1 text-center w-8">
-                      <button type="button" onClick={()=>removeRow(rowIdx)} className="text-slate-300 hover:text-red-400 text-lg leading-none px-1">×</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-2">
+            {tree.map(major => (
+              <div key={major.id} className="rounded-xl border border-slate-200 overflow-hidden">
+                <div className="flex items-center gap-2 bg-slate-100 px-3 py-2">
+                  <button type="button" onClick={()=>updMajor(major.id,{open:!major.open})} className="text-slate-400 text-xs w-3 shrink-0">{major.open?"▼":"▶"}</button>
+                  <span className="text-[10px] font-bold text-slate-400 shrink-0 tracking-wide">대단원</span>
+                  <input className={INP + " font-semibold"} value={major.major} onChange={e=>updMajor(major.id,{major:e.target.value})} placeholder="대단원명"/>
+                  <select value={major.subject} onChange={e=>updMajor(major.id,{subject:e.target.value})}
+                    className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white outline-none shrink-0 focus:ring-1 focus:ring-blue-300">
+                    {SUBJECTS.map(s=><option key={s} value={s}>{s}</option>)}
+                  </select>
+                  <button type="button" onClick={()=>delMajor(major.id)} className="text-slate-300 hover:text-red-400 ml-1 shrink-0 text-lg leading-none">×</button>
+                </div>
+                {major.open && (
+                  <div className="px-3 py-2 space-y-1.5">
+                    {major.middles.map(middle => (
+                      <div key={middle.id} className="rounded-lg border border-slate-100 overflow-hidden">
+                        <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5">
+                          <button type="button" onClick={()=>updMiddle(major.id,middle.id,{open:!middle.open})} className="text-slate-300 text-xs w-3 shrink-0">{middle.open?"▼":"▶"}</button>
+                          <span className="text-[10px] text-slate-400 shrink-0">중단원</span>
+                          <input className={INP} value={middle.middle} onChange={e=>updMiddle(major.id,middle.id,{middle:e.target.value})} placeholder="중단원명"/>
+                          <button type="button" onClick={()=>delMiddle(major.id,middle.id)} className="text-slate-300 hover:text-red-400 ml-1 shrink-0 text-base leading-none">×</button>
+                        </div>
+                        {middle.open && (
+                          <div className="px-4 py-1.5 space-y-0.5">
+                            {middle.minors.map(minor => (
+                              <div key={minor.id} className="flex items-center gap-2 py-0.5">
+                                <span className="text-slate-200 shrink-0">·</span>
+                                <span className="text-[10px] text-slate-400 shrink-0">소단원</span>
+                                <input className="border-0 border-b border-slate-200 px-1 py-0.5 text-xs bg-transparent outline-none focus:border-blue-400 w-10 shrink-0 text-center" value={minor.num} onChange={e=>updMinor(major.id,middle.id,minor.id,{num:e.target.value})} placeholder="번호"/>
+                                <input className={INP + " text-sm"} value={minor.minor} onChange={e=>updMinor(major.id,middle.id,minor.id,{minor:e.target.value})} placeholder="소단원명"/>
+                                <button type="button" onClick={()=>delMinor(major.id,middle.id,minor.id)} className="text-slate-200 hover:text-red-400 shrink-0 text-base leading-none">×</button>
+                              </div>
+                            ))}
+                            <button type="button" onClick={()=>addMinor(major.id,middle.id)}
+                              className="text-xs text-blue-500 hover:text-blue-700 pl-4 py-0.5">+ 소단원</button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    <button type="button" onClick={()=>addMiddle(major.id)}
+                      className="text-xs text-blue-500 hover:text-blue-700 pl-2 py-0.5">+ 중단원</button>
+                  </div>
+                )}
+              </div>
+            ))}
+            <button type="button" onClick={()=>setTree(t=>[...t,emptyMajor()])}
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-2 rounded-xl border border-dashed border-blue-200 hover:bg-blue-50 transition w-full">
+              + 대단원 추가
+            </button>
           </div>
 
-          <div className="flex gap-2 flex-wrap items-center">
-            <button type="button" onClick={()=>{ setRows(r=>[...r, emptyRow()]); setFocusedCell({row:rows.length,col:0}); setTimeout(()=>containerRef.current?.focus(),0); }}
-              className="text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-1.5 rounded-xl border border-blue-200 hover:bg-blue-50 transition">
-              + 행 추가
-            </button>
-            <div className="flex-1"/>
+          <div className="flex gap-2 justify-end">
             <Btn variant="outline" onClick={()=>setStep("select")}>취소</Btn>
-            <Btn onClick={handleSave} disabled={saving}>{saving?"저장 중...":(editId?"수정 완료":"저장")}</Btn>
+            <Btn onClick={handleSave} disabled={saving}>{saving?"저장 중...":(dbEditId?"수정 완료":"저장")}</Btn>
           </div>
         </Card>
       </div>
     );
   }
 
-  // ── 종류 선택 화면 ──
   return (
     <div className="space-y-5">
       <Card className="p-5 space-y-4">
@@ -875,7 +761,6 @@ function AssessmentsTab() {
           </button>
         </div>
       </Card>
-
       <Card className="p-5 space-y-3">
         <h2 className="text-lg font-bold">등록된 평가 ({assessments.length})</h2>
         {assessments.length === 0
@@ -889,7 +774,7 @@ function AssessmentsTab() {
                       <Badge variant="secondary">{a.type}</Badge>
                     </div>
                     <div className="text-xs text-slate-500 mt-0.5">
-                      {a.createdAt}{a.units ? " · " + a.units.length + "개 소단원" : ""}
+                      {a.createdAt}{a.tree ? " · " + a.tree.length + "개 대단원" : ""}
                     </div>
                   </div>
                   <Btn variant="outline" size="sm" onClick={()=>startEditAssessment(a)}>수정</Btn>
@@ -902,7 +787,6 @@ function AssessmentsTab() {
     </div>
   );
 }
-
 // ── 커리큘럼 매니저 (선생님용) ───────────────────────────────────────────────
 function CurriculumManager({ students, materials }) {
   const [subTab, setSubTab] = React.useState("editor");
