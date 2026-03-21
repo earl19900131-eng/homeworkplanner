@@ -278,6 +278,14 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
       return;
     }
 
+    if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      const s = lessonStudents[row];
+      if (col === 0) saveHW(s.id, "");
+      if (col === 1) saveTags(s.id, []);
+      return;
+    }
+
     if ((e.ctrlKey || e.metaKey) && e.key === "c") {
       e.preventDefault();
       const s = lessonStudents[row];
