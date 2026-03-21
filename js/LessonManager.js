@@ -1,14 +1,48 @@
 // ── 수업일지 ────────────────────────────────────────────────────────────────
 
-const STATUS_OPTIONS = [
-  { value: "출석", color: "bg-emerald-100 text-emerald-700 border-emerald-200" },
-  { value: "지각", color: "bg-amber-100 text-amber-700 border-amber-200" },
-  { value: "결석", color: "bg-red-100 text-red-700 border-red-200" },
-  { value: "조퇴", color: "bg-purple-100 text-purple-700 border-purple-200" },
+const BEHAVIOR_TAGS = [
+  { name: "지각안함",         xp:  3,   cp:   10, group: "출결" },
+  { name: "지각",             xp: -5,   cp:    0, group: "출결" },
+  { name: "출석",             xp: 10,   cp:   30, group: "출결" },
+  { name: "결석",             xp:  0,   cp:    0, group: "출결" },
+  { name: "무단결석",         xp: -50,  cp:    0, group: "출결" },
+  { name: "숙제해옴",         xp:  5,   cp:   40, group: "숙제" },
+  { name: "숙제미이행",       xp: -10,  cp:    0, group: "숙제" },
+  { name: "노트미지참",       xp: -5,   cp:    0, group: "준비물" },
+  { name: "진단평가1",        xp:  3,   cp:   30, group: "진단평가" },
+  { name: "진단평가2",        xp:  3,   cp:   30, group: "진단평가" },
+  { name: "진단평가3",        xp:  3,   cp:   30, group: "진단평가" },
+  { name: "진단평가4",        xp:  3,   cp:   30, group: "진단평가" },
+  { name: "진단평가5",        xp:  3,   cp:   30, group: "진단평가" },
+  { name: "진단평가6",        xp:  3,   cp:   30, group: "진단평가" },
+  { name: "진단평가7",        xp:  3,   cp:   30, group: "진단평가" },
+  { name: "진단평가8",        xp:  3,   cp:   30, group: "진단평가" },
+  { name: "추가숙제1",        xp:  2,   cp:   10, group: "추가숙제" },
+  { name: "추가숙제2",        xp:  2,   cp:   10, group: "추가숙제" },
+  { name: "추가숙제3",        xp:  2,   cp:   10, group: "추가숙제" },
+  { name: "추가숙제4",        xp:  2,   cp:   10, group: "추가숙제" },
+  { name: "지필100점(중등)",   xp: 50,  cp: 1000, group: "지필성적" },
+  { name: "지필90~100(중등)", xp: 45,  cp:  900, group: "지필성적" },
+  { name: "지필80~90(중등)",  xp: 40,  cp:  800, group: "지필성적" },
+  { name: "지필30상승(중고등)",xp: 50,  cp:  500, group: "지필성적" },
+  { name: "지필1등급(9등급)", xp: 50,  cp: 1000, group: "지필성적" },
+  { name: "지필2등급(9등급)", xp: 45,  cp:  900, group: "지필성적" },
+  { name: "지필1등급(5등급)", xp: 50,  cp: 1000, group: "지필성적" },
+  { name: "리뷰이벤트",       xp:  0,  cp:  200, group: "기타" },
+  { name: "100cp",            xp:  0,  cp:  100, group: "기타" },
 ];
 
-function statusStyle(val) {
-  return STATUS_OPTIONS.find(o => o.value === val)?.color ?? "bg-slate-100 text-slate-600 border-slate-200";
+const TAG_GROUPS = [...new Set(BEHAVIOR_TAGS.map(t => t.group))];
+
+function calcPoints(tags) {
+  return (tags || []).reduce(
+    (acc, name) => {
+      const t = BEHAVIOR_TAGS.find(b => b.name === name);
+      if (t) { acc.xp += t.xp; acc.cp += t.cp; }
+      return acc;
+    },
+    { xp: 0, cp: 0 }
+  );
 }
 
 function getMonthDays(year, month) {
@@ -24,8 +58,64 @@ function fmtYMD(year, month, day) {
   return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-function fmtMMDD(date) {
-  return date?.slice(5).replace("-", "") ?? "";
+// ── 태그 선택 모달 ────────────────────────────────────────────────────────
+function TagSelectorModal({ studentName, selectedTags, onSave, onClose }) {
+  const [tags, setTags] = React.useState(selectedTags || []);
+
+  const toggle = (name) =>
+    setTags(prev => prev.includes(name) ? prev.filter(t => t !== name) : [...prev, name]);
+
+  const { xp, cp } = calcPoints(tags);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col"
+        onClick={e => e.stopPropagation()}>
+        <div className="p-5 pb-3 border-b shrink-0">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-bold text-base">{studentName} · 행동태그</h3>
+              <div className="text-sm mt-1 flex gap-3">
+                <span>획득 XP: <span className={`font-bold ${xp >= 0 ? "text-emerald-600" : "text-red-600"}`}>{xp >= 0 ? "+" : ""}{xp}</span></span>
+                <span>획득 CP: <span className="font-bold text-blue-600">+{cp}</span></span>
+              </div>
+            </div>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
+          </div>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-5 space-y-4">
+          {TAG_GROUPS.map(group => (
+            <div key={group}>
+              <div className="text-xs font-bold text-slate-400 tracking-wide mb-2">{group}</div>
+              <div className="flex flex-wrap gap-1.5">
+                {BEHAVIOR_TAGS.filter(t => t.group === group).map(tag => {
+                  const sel = tags.includes(tag.name);
+                  const negXP = tag.xp < 0;
+                  return (
+                    <button key={tag.name} type="button" onClick={() => toggle(tag.name)}
+                      className={`px-2.5 py-1.5 rounded-xl text-xs font-medium border transition flex items-center gap-1 ${sel ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-600 border-slate-200 hover:border-slate-400"}`}>
+                      <span>{tag.name}</span>
+                      <span className={`text-[9px] font-normal ${sel ? "text-slate-400" : negXP ? "text-red-400" : "text-emerald-500"}`}>
+                        {tag.xp !== 0 ? (tag.xp > 0 ? "+" : "") + tag.xp + "xp" : ""}
+                        {tag.xp !== 0 && tag.cp !== 0 ? " " : ""}
+                        {tag.cp !== 0 ? "+" + tag.cp + "cp" : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="p-4 border-t shrink-0 flex gap-2">
+          <Btn onClick={() => onSave(tags)} className="flex-1">✅ 저장</Btn>
+          <Btn variant="outline" onClick={onClose}>취소</Btn>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ── 수업 등록/편집 모달 ────────────────────────────────────────────────────
@@ -56,10 +146,8 @@ function LessonModal({ lesson, students, onClose, onSave }) {
     if (!date) { setErr("날짜를 선택해 주세요."); return; }
     if (selectedIds.length === 0) { setErr("학생을 최소 1명 선택해 주세요."); return; }
     setSaving(true);
-    try {
-      await onSave({ title: title.trim(), date, time, studentIds: selectedIds });
-      onClose();
-    } catch (e) { setErr("저장 실패: " + e.message); }
+    try { await onSave({ title: title.trim(), date, time, studentIds: selectedIds }); onClose(); }
+    catch (e) { setErr("저장 실패: " + e.message); }
     setSaving(false);
   };
 
@@ -117,44 +205,46 @@ function LessonModal({ lesson, students, onClose, onSave }) {
   );
 }
 
-// ── 수업 상세 표 뷰 ───────────────────────────────────────────────────────
-function LessonDetailView({ lesson, students, attendance, onBack, onEdit }) {
-  const [editingCell, setEditingCell] = React.useState(null);
-  const [editValue, setEditValue] = React.useState("");
+// ── 수업 상세 표 ──────────────────────────────────────────────────────────
+function LessonDetailView({ lesson, students, attendance, allAttendance, onBack, onEdit }) {
+  const [editingHW, setEditingHW] = React.useState(null); // studentId
+  const [hwValue, setHwValue] = React.useState("");
+  const [tagModal, setTagModal] = React.useState(null); // studentId
 
-  const sortedStudents = [...students].sort((a, b) =>
-    a.className.localeCompare(b.className) || a.name.localeCompare(b.name));
+  // 이 수업에 포함된 학생만
+  const lessonStudents = (lesson.studentIds || [])
+    .map(id => students.find(s => s.id === id))
+    .filter(Boolean)
+    .sort((a, b) => a.className.localeCompare(b.className) || a.name.localeCompare(b.name));
 
   const rec = attendance[lesson._key] || {};
 
-  const cycleTag = async (studentId, current) => {
-    const opts = ["출석", "지각", "결석", "조퇴", null];
-    const idx = opts.indexOf(current || null);
-    const next = opts[(idx + 1) % opts.length];
-    await db.ref(`lessonAttendance/${lesson._key}/${studentId}/status`).set(next);
+  // 학생별 누적 XP/CP (전체 수업 합산)
+  const cumulativeTotals = React.useMemo(() => {
+    const totals = {};
+    Object.values(allAttendance).forEach(lessonRec => {
+      Object.entries(lessonRec).forEach(([studentId, r]) => {
+        if (!totals[studentId]) totals[studentId] = { xp: 0, cp: 0 };
+        totals[studentId].xp += Number(r.xp) || 0;
+        totals[studentId].cp += Number(r.cp) || 0;
+      });
+    });
+    return totals;
+  }, [allAttendance]);
+
+  const saveHW = async (studentId, val) => {
+    if (val === "") await db.ref(`lessonAttendance/${lesson._key}/${studentId}/현행숙제`).remove();
+    else await db.ref(`lessonAttendance/${lesson._key}/${studentId}/현행숙제`).set(val);
+    setEditingHW(null);
   };
 
-  const startEdit = (studentId, field, current) => {
-    setEditingCell({ studentId, field });
-    setEditValue(current ?? "");
+  const saveTags = async (studentId, tags) => {
+    const { xp, cp } = calcPoints(tags);
+    await db.ref(`lessonAttendance/${lesson._key}/${studentId}`).update({ tags, xp, cp });
+    setTagModal(null);
   };
 
-  const saveCell = async (studentId, field, val) => {
-    const value = (field === "xp" || field === "cp")
-      ? (val === "" ? null : Number(val))
-      : (val === "" ? null : val);
-    if (value === null) {
-      await db.ref(`lessonAttendance/${lesson._key}/${studentId}/${field}`).remove();
-    } else {
-      await db.ref(`lessonAttendance/${lesson._key}/${studentId}/${field}`).set(value);
-    }
-    setEditingCell(null);
-  };
-
-  const isEditing = (studentId, field) =>
-    editingCell?.studentId === studentId && editingCell?.field === field;
-
-  const mmdd = fmtMMDD(lesson.date);
+  const tagModalStudent = tagModal ? students.find(s => s.id === tagModal) : null;
 
   return (
     <div className="space-y-4">
@@ -166,7 +256,7 @@ function LessonDetailView({ lesson, students, attendance, onBack, onEdit }) {
               className="w-8 h-8 rounded-xl border hover:bg-slate-50 flex items-center justify-center text-slate-600 font-bold text-lg">‹</button>
             <div>
               <div className="font-bold text-base">{lesson.title}</div>
-              <div className="text-sm text-slate-500">{lesson.date}{lesson.time ? " · " + lesson.time.slice(0, 5) : ""} · {(lesson.studentIds || []).length}명</div>
+              <div className="text-sm text-slate-500">{lesson.date}{lesson.time ? " · " + lesson.time.slice(0, 5) : ""} · {lessonStudents.length}명</div>
             </div>
           </div>
           <Btn variant="outline" size="sm" onClick={onEdit}>✏️ 수업 편집</Btn>
@@ -179,83 +269,89 @@ function LessonDetailView({ lesson, students, attendance, onBack, onEdit }) {
           <table className="text-sm border-collapse w-full">
             <thead>
               <tr className="bg-slate-50">
-                <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3 text-left text-xs font-bold text-slate-500 border-b border-r border-slate-200 min-w-[130px]">학생</th>
-                <th className="px-3 py-3 text-center text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[110px]">{mmdd} 현행</th>
-                <th className="px-3 py-3 text-center text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[72px]">{mmdd} 태그</th>
-                <th className="px-3 py-3 text-center text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[64px]">{mmdd} XP</th>
-                <th className="px-3 py-3 text-center text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[64px]">{mmdd} CP</th>
+                <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3 text-left text-xs font-bold text-slate-500 border-b border-r border-slate-200 min-w-[140px]">학생</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[160px]">현행숙제</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[200px]">행동태그</th>
+                <th className="px-4 py-3 text-center text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[80px]">획득 XP</th>
+                <th className="px-4 py-3 text-center text-xs font-bold text-slate-600 border-b border-slate-200 min-w-[80px]">획득 CP</th>
               </tr>
             </thead>
             <tbody>
-              {sortedStudents.map((s, si) => {
-                const inLesson = (lesson.studentIds || []).includes(s.id);
+              {lessonStudents.map((s, si) => {
                 const sRec = rec[s.id] || {};
+                const tags = sRec.tags || [];
+                const { xp, cp } = calcPoints(tags);
+                const total = cumulativeTotals[s.id] || { xp: 0, cp: 0 };
+
                 return (
                   <tr key={s.id} className={`hover:bg-slate-50/80 transition ${si % 2 === 0 ? "bg-white" : "bg-slate-50/30"}`}>
-                    {/* 이름 */}
-                    <td className="sticky left-0 z-10 bg-inherit px-4 py-2.5 border-b border-r border-slate-200 whitespace-nowrap">
+                    {/* 학생 이름 */}
+                    <td className="sticky left-0 z-10 bg-inherit px-4 py-3 border-b border-r border-slate-200 whitespace-nowrap">
                       <div className="flex items-center gap-2">
-                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${inLesson ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-400"}`}>{s.name[0]}</div>
-                        <span className={`font-semibold text-sm ${inLesson ? "" : "text-slate-400"}`}>{s.name}</span>
-                        <span className="text-[10px] text-slate-400">{s.className}</span>
+                        <div className="w-7 h-7 rounded-full bg-slate-800 text-white flex items-center justify-center text-xs font-bold shrink-0">{s.name[0]}</div>
+                        <div>
+                          <div className="font-semibold text-sm">{s.name}</div>
+                          <div className="text-[10px] text-slate-400 flex gap-2">
+                            <span>{s.className}</span>
+                            <span className="text-slate-300">|</span>
+                            <span>누적 <span className="text-emerald-600 font-medium">{total.xp >= 0 ? "+" : ""}{total.xp}XP</span></span>
+                            <span className="text-blue-600 font-medium">+{total.cp}CP</span>
+                          </div>
+                        </div>
                       </div>
                     </td>
 
-                    {!inLesson ? (
-                      [0,1,2,3].map(i => (
-                        <td key={i} className="border-b border-r border-slate-100 bg-slate-50/50 text-center text-slate-200 text-xs py-2.5">—</td>
-                      ))
-                    ) : (
-                      <>
-                        {/* 현행 */}
-                        <td className="border-b border-r border-slate-100 px-3 py-2.5 cursor-text"
-                          onClick={() => !isEditing(s.id, "현행") && startEdit(s.id, "현행", sRec.현행)}>
-                          {isEditing(s.id, "현행") ? (
-                            <input autoFocus value={editValue} onChange={e => setEditValue(e.target.value)}
-                              onBlur={() => saveCell(s.id, "현행", editValue)}
-                              onKeyDown={e => { if (e.key === "Enter") saveCell(s.id, "현행", editValue); if (e.key === "Escape") setEditingCell(null); }}
-                              className="w-full text-xs border-b border-slate-400 outline-none bg-transparent" />
-                          ) : (
-                            <span className="text-xs text-slate-600 block truncate">
-                              {sRec.현행 || <span className="text-slate-300">클릭하여 입력</span>}
-                            </span>
-                          )}
-                        </td>
-                        {/* 태그 */}
-                        <td className="border-b border-r border-slate-100 text-center cursor-pointer py-2.5 px-2"
-                          onClick={() => cycleTag(s.id, sRec.status)}>
-                          {sRec.status ? (
-                            <span className={`text-[11px] px-2 py-0.5 rounded-lg border font-medium ${statusStyle(sRec.status)}`}>{sRec.status}</span>
-                          ) : (
-                            <span className="text-[11px] text-slate-300 hover:text-slate-400">클릭</span>
-                          )}
-                        </td>
-                        {/* XP */}
-                        <td className="border-b border-r border-slate-100 text-center cursor-text py-2.5 px-2"
-                          onClick={() => !isEditing(s.id, "xp") && startEdit(s.id, "xp", sRec.xp)}>
-                          {isEditing(s.id, "xp") ? (
-                            <input autoFocus type="number" value={editValue} onChange={e => setEditValue(e.target.value)}
-                              onBlur={() => saveCell(s.id, "xp", editValue)}
-                              onKeyDown={e => { if (e.key === "Enter") saveCell(s.id, "xp", editValue); if (e.key === "Escape") setEditingCell(null); }}
-                              className="w-14 text-xs text-center border-b border-slate-400 outline-none bg-transparent" />
-                          ) : (
-                            <span className="text-xs text-slate-600">{sRec.xp != null ? sRec.xp : <span className="text-slate-300">—</span>}</span>
-                          )}
-                        </td>
-                        {/* CP */}
-                        <td className="border-b border-r border-slate-100 text-center cursor-text py-2.5 px-2"
-                          onClick={() => !isEditing(s.id, "cp") && startEdit(s.id, "cp", sRec.cp)}>
-                          {isEditing(s.id, "cp") ? (
-                            <input autoFocus type="number" value={editValue} onChange={e => setEditValue(e.target.value)}
-                              onBlur={() => saveCell(s.id, "cp", editValue)}
-                              onKeyDown={e => { if (e.key === "Enter") saveCell(s.id, "cp", editValue); if (e.key === "Escape") setEditingCell(null); }}
-                              className="w-14 text-xs text-center border-b border-slate-400 outline-none bg-transparent" />
-                          ) : (
-                            <span className="text-xs text-slate-600">{sRec.cp != null ? sRec.cp : <span className="text-slate-300">—</span>}</span>
-                          )}
-                        </td>
-                      </>
-                    )}
+                    {/* 현행숙제 */}
+                    <td className="border-b border-r border-slate-100 px-3 py-2.5 cursor-text"
+                      onClick={() => { if (editingHW !== s.id) { setEditingHW(s.id); setHwValue(sRec.현행숙제 || ""); } }}>
+                      {editingHW === s.id ? (
+                        <input autoFocus value={hwValue} onChange={e => setHwValue(e.target.value)}
+                          onBlur={() => saveHW(s.id, hwValue)}
+                          onKeyDown={e => { if (e.key === "Enter") saveHW(s.id, hwValue); if (e.key === "Escape") setEditingHW(null); }}
+                          className="w-full text-xs border-b border-slate-400 outline-none bg-transparent py-0.5" />
+                      ) : (
+                        <span className="text-xs text-slate-600 block">
+                          {sRec.현행숙제 || <span className="text-slate-300">클릭하여 입력</span>}
+                        </span>
+                      )}
+                    </td>
+
+                    {/* 행동태그 */}
+                    <td className="border-b border-r border-slate-100 px-3 py-2 cursor-pointer"
+                      onClick={() => setTagModal(s.id)}>
+                      {tags.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {tags.map(name => {
+                            const t = BEHAVIOR_TAGS.find(b => b.name === name);
+                            const neg = t && t.xp < 0;
+                            return (
+                              <span key={name}
+                                className={`text-[10px] px-1.5 py-0.5 rounded-lg border font-medium ${neg ? "bg-red-50 text-red-600 border-red-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>
+                                {name}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-slate-300 hover:text-slate-400">클릭하여 태그 선택</span>
+                      )}
+                    </td>
+
+                    {/* 획득 XP */}
+                    <td className="border-b border-r border-slate-100 text-center py-2.5 px-3">
+                      {tags.length > 0 ? (
+                        <span className={`text-sm font-bold ${xp >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                          {xp >= 0 ? "+" : ""}{xp}
+                        </span>
+                      ) : <span className="text-slate-300 text-xs">—</span>}
+                    </td>
+
+                    {/* 획득 CP */}
+                    <td className="border-b border-slate-100 text-center py-2.5 px-3">
+                      {tags.length > 0 ? (
+                        <span className="text-sm font-bold text-blue-600">+{cp}</span>
+                      ) : <span className="text-slate-300 text-xs">—</span>}
+                    </td>
                   </tr>
                 );
               })}
@@ -263,6 +359,16 @@ function LessonDetailView({ lesson, students, attendance, onBack, onEdit }) {
           </table>
         </div>
       </Card>
+
+      {/* 태그 선택 모달 */}
+      {tagModal && tagModalStudent && (
+        <TagSelectorModal
+          studentName={tagModalStudent.name}
+          selectedTags={rec[tagModal]?.tags || []}
+          onSave={(tags) => saveTags(tagModal, tags)}
+          onClose={() => setTagModal(null)}
+        />
+      )}
     </div>
   );
 }
@@ -273,7 +379,6 @@ function LessonCalendar({ year, month, lessons, today, onPrev, onNext, onDayClic
   const DOW = ["일", "월", "화", "수", "목", "금", "토"];
   const monthStr = `${year}-${String(month + 1).padStart(2, "0")}`;
   const monthLessons = lessons.filter(l => l.date?.startsWith(monthStr));
-
   const lessonsByDate = {};
   monthLessons.forEach(l => {
     if (!lessonsByDate[l.date]) lessonsByDate[l.date] = [];
@@ -292,7 +397,6 @@ function LessonCalendar({ year, month, lessons, today, onPrev, onNext, onDayClic
           <Btn onClick={() => onAddLesson(today)}>+ 수업 등록</Btn>
         </div>
       </Card>
-
       <Card className="p-4">
         <div className="grid grid-cols-7 mb-1">
           {DOW.map((d, i) => (
@@ -342,7 +446,7 @@ function LessonManager({ students }) {
   const [month, setMonth] = React.useState(todayDate.getMonth());
   const [lessons, setLessons] = React.useState([]);
   const [attendance, setAttendance] = React.useState({});
-  const [selectedLesson, setSelectedLesson] = React.useState(null); // null = 달력, lesson = 상세
+  const [selectedLessonKey, setSelectedLessonKey] = React.useState(null);
   const [addModal, setAddModal] = React.useState(null);
 
   React.useEffect(() => {
@@ -356,10 +460,7 @@ function LessonManager({ students }) {
     return () => { lRef.off(); aRef.off(); };
   }, []);
 
-  // selectedLesson은 key로만 추적, 최신 데이터는 lessons에서 가져옴
-  const currentLesson = selectedLesson
-    ? lessons.find(l => l._key === selectedLesson) ?? null
-    : null;
+  const currentLesson = selectedLessonKey ? lessons.find(l => l._key === selectedLessonKey) ?? null : null;
 
   const handleSaveLesson = async (data) => {
     if (addModal?.lesson) {
@@ -373,7 +474,6 @@ function LessonManager({ students }) {
   const prevMonth = () => { if (month === 0) { setYear(y => y - 1); setMonth(11); } else setMonth(m => m - 1); };
   const nextMonth = () => { if (month === 11) { setYear(y => y + 1); setMonth(0); } else setMonth(m => m + 1); };
 
-  // 상세 뷰
   if (currentLesson) {
     return (
       <>
@@ -381,7 +481,8 @@ function LessonManager({ students }) {
           lesson={currentLesson}
           students={students}
           attendance={attendance}
-          onBack={() => setSelectedLesson(null)}
+          allAttendance={attendance}
+          onBack={() => setSelectedLessonKey(null)}
           onEdit={() => setAddModal({ date: currentLesson.date, lesson: currentLesson })}
         />
         {addModal && (
@@ -396,14 +497,13 @@ function LessonManager({ students }) {
     );
   }
 
-  // 달력 뷰 (기본)
   return (
     <>
       <LessonCalendar
         year={year} month={month} lessons={lessons} today={today}
         onPrev={prevMonth} onNext={nextMonth}
         onDayClick={(date) => setAddModal({ date })}
-        onLessonClick={(lesson) => setSelectedLesson(lesson._key)}
+        onLessonClick={(lesson) => setSelectedLessonKey(lesson._key)}
         onAddLesson={(date) => setAddModal({ date })}
       />
       {addModal && (
