@@ -29,6 +29,15 @@ const scoreColor = (v) => {
   return "text-red-600 font-bold";
 };
 
+const gradeColor = (v) => {
+  if (!v) return "text-slate-400";
+  const s = String(v).toUpperCase();
+  if (s === "A" || s === "1") return "text-emerald-600 font-bold";
+  if (s === "B" || s === "2" || s === "3") return "text-blue-600 font-bold";
+  if (s === "C" || s === "4" || s === "5") return "text-amber-600 font-bold";
+  return "text-red-600 font-bold";
+};
+
 function StudentProfileTab({ studentId, studentName }) {
   const [profile, setProfile] = useState(null);
   const [draft, setDraft] = useState(null);
@@ -116,44 +125,61 @@ function StudentProfileTab({ studentId, studentName }) {
 
       <Card className="p-5 space-y-3">
         <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold">학교 성적</h2>
-            <p className="text-xs text-slate-400 mt-0.5">0~100점 입력</p>
-          </div>
+          <h2 className="text-lg font-bold">학교 성적</h2>
           {!locked && !editing && <Btn size="sm" variant="outline" onClick={()=>setEditing(true)}>수정</Btn>}
         </div>
-        <div className="rounded-xl border overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="rounded-xl border overflow-x-auto">
+          <table className="w-full text-xs min-w-[560px]">
             <thead>
               <tr className="bg-slate-50 border-b">
-                <th className="text-left px-3 py-2 text-xs font-bold text-slate-500 w-28">과목</th>
-                <th className="text-center px-3 py-2 text-xs font-bold text-slate-500 w-20">중간</th>
-                <th className="text-center px-3 py-2 text-xs font-bold text-slate-500 w-20">기말</th>
+                <th className="text-left px-3 py-2 font-bold text-slate-500 w-24" rowSpan={2}>과목</th>
+                <th className="text-center px-2 py-1.5 font-bold text-slate-600 border-l border-slate-200" colSpan={3}>중간</th>
+                <th className="text-center px-2 py-1.5 font-bold text-slate-600 border-l border-slate-200" colSpan={3}>기말</th>
+              </tr>
+              <tr className="bg-slate-50 border-b">
+                <th className="text-center px-2 py-1 font-medium text-slate-400 border-l border-slate-200 w-16">원점수</th>
+                <th className="text-center px-2 py-1 font-medium text-slate-400 w-14">등수</th>
+                <th className="text-center px-2 py-1 font-medium text-slate-400 w-14">등급</th>
+                <th className="text-center px-2 py-1 font-medium text-slate-400 border-l border-slate-200 w-16">원점수</th>
+                <th className="text-center px-2 py-1 font-medium text-slate-400 w-14">등수</th>
+                <th className="text-center px-2 py-1 font-medium text-slate-400 w-14">등급</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {GRADE_ROWS.map(row => {
-                const midVal = editing ? draft.grades[row.mid] ?? "" : profile.grades?.[row.mid] ?? "";
-                const finVal = editing ? draft.grades[row.fin] ?? "" : profile.grades?.[row.fin] ?? "";
+                const g = editing ? draft.grades : (profile.grades || {});
+                const mk = row.mid, fk = row.fin;
+                const fields = [
+                  { key: mk,           type: "number", borderL: true },
+                  { key: mk+"-rank",   type: "number", borderL: false },
+                  { key: mk+"-grade",  type: "text",   borderL: false },
+                  { key: fk,           type: "number", borderL: true },
+                  { key: fk+"-rank",   type: "number", borderL: false },
+                  { key: fk+"-grade",  type: "text",   borderL: false },
+                ];
                 return (
                   <tr key={row.label} className="hover:bg-slate-50/50">
-                    <td className="px-3 py-1.5 text-xs font-medium text-slate-600">{row.label}</td>
-                    <td className="px-2 py-1.5 text-center">
-                      {editing
-                        ? <input type="number" min="0" max="100" value={midVal}
-                            onChange={e=>setDraft(p=>({...p,grades:{...p.grades,[row.mid]:e.target.value}}))}
-                            className="w-16 text-center rounded-lg border border-slate-200 px-1 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-slate-300"/>
-                        : <span className={`text-xs ${scoreColor(midVal)}`}>{midVal !== "" ? midVal : "-"}</span>
-                      }
-                    </td>
-                    <td className="px-2 py-1.5 text-center">
-                      {editing
-                        ? <input type="number" min="0" max="100" value={finVal}
-                            onChange={e=>setDraft(p=>({...p,grades:{...p.grades,[row.fin]:e.target.value}}))}
-                            className="w-16 text-center rounded-lg border border-slate-200 px-1 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-slate-300"/>
-                        : <span className={`text-xs ${scoreColor(finVal)}`}>{finVal !== "" ? finVal : "-"}</span>
-                      }
-                    </td>
+                    <td className="px-3 py-1.5 font-medium text-slate-600">{row.label}</td>
+                    {fields.map(f => {
+                      const val = g[f.key] ?? "";
+                      const isGrade = f.key.endsWith("-grade");
+                      const isScore = !f.key.endsWith("-rank") && !isGrade;
+                      return (
+                        <td key={f.key} className={"py-1 text-center " + (f.borderL ? "border-l border-slate-200 px-2" : "px-1")}>
+                          {editing
+                            ? <input
+                                type={f.type} min={f.type==="number"?"0":undefined} max={isScore?"100":undefined}
+                                value={val}
+                                onChange={e=>setDraft(p=>({...p,grades:{...p.grades,[f.key]:e.target.value}}))}
+                                className="w-full text-center rounded-lg border border-slate-200 px-1 py-1 focus:outline-none focus:ring-1 focus:ring-slate-300 text-xs"
+                              />
+                            : <span className={isGrade ? gradeColor(val) : isScore ? scoreColor(val) : (val ? "text-slate-600 font-medium" : "text-slate-400")}>
+                                {val !== "" ? val : "-"}
+                              </span>
+                          }
+                        </td>
+                      );
+                    })}
                   </tr>
                 );
               })}
