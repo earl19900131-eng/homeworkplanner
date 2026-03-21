@@ -17,7 +17,7 @@ function gradeFromBirthYear(birthYear) {
   if (!birthYear) return null;
   const currentYear = new Date().getFullYear();
   const koreanAge = currentYear - Number(birthYear) + 1;
-  return { 13:"중1", 14:"중2", 15:"중3", 16:"고1", 17:"고2", 18:"고3" }[koreanAge] || null;
+  return { 14:"중1", 15:"중2", 16:"중3", 17:"고1", 18:"고2", 19:"고3" }[koreanAge] || null;
 }
 
 const scoreColor = (v) => {
@@ -86,7 +86,7 @@ function StudentProfileTab({ studentId, studentName }) {
             </div>
           )}
         </div>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-4">
           <div className="space-y-1.5">
             <Lbl>이름</Lbl>
             <div className="rounded-xl border bg-slate-50 px-3 py-2 text-sm text-slate-700">{studentName}</div>
@@ -101,17 +101,17 @@ function StudentProfileTab({ studentId, studentName }) {
           <div className="space-y-1.5">
             <Lbl>출생연도</Lbl>
             {editing
-              ? <Inp type="number" value={draft.birthYear} onChange={e=>setDraft(p=>({...p,birthYear:e.target.value}))} placeholder="예: 2011"/>
+              ? <Inp type="number" value={draft.birthYear} onChange={e=>setDraft(p=>({...p,birthYear:e.target.value}))} placeholder="예: 2010"/>
               : <div className="rounded-xl border bg-slate-50 px-3 py-2 text-sm text-slate-700">{profile.birthYear || <span className="text-slate-400">미입력</span>}</div>
             }
           </div>
-        </div>
-        {autoGrade && (
-          <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 text-sm text-blue-700">
-            📚 자동 산출 학년: <span className="font-bold">{autoGrade}</span>
-            {editing && <span className="text-xs text-blue-500 ml-1">(저장 시 적용됩니다)</span>}
+          <div className="space-y-1.5">
+            <Lbl>학년</Lbl>
+            <div className="rounded-xl border bg-slate-50 px-3 py-2 text-sm text-slate-700 font-medium">
+              {autoGrade || <span className="text-slate-400">-</span>}
+            </div>
           </div>
-        )}
+        </div>
       </Card>
 
       <Card className="p-5 space-y-3">
