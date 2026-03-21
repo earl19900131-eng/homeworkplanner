@@ -1,13 +1,14 @@
 // ── 학생 관리 탭 (선생님용) ────────────────────────────────────────────────────
 function StudentManager({ students, homeworks }) {
   const [newName, setNewName] = useState("");
-  const [newClass, setNewClass] = useState("중1");
+  const [newBirthYear, setNewBirthYear] = useState("");
+  const [newSchool, setNewSchool] = useState("");
   const [newPin, setNewPin] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [editPin, setEditPin] = useState({});
-  const [editInfo, setEditInfo] = useState({});
+  const [expandedEdit, setExpandedEdit] = useState(null);
   const [bulkText, setBulkText] = useState("");
   const [bulkPreview, setBulkPreview] = useState([]);
   const [bulkErr, setBulkErr] = useState("");
@@ -20,16 +21,19 @@ function StudentManager({ students, homeworks }) {
     return () => ref.off();
   }, []);
 
+  const newAutoGrade = gradeFromBirthYear(newBirthYear);
+
   const addStudent = async () => {
     if (!newName.trim()) { setErr("이름을 입력해 주세요."); return; }
-    if (!newClass.trim()) { setErr("학년을 선택해 주세요."); return; }
     if (!newPin.trim() || newPin.length < 4) { setErr("PIN은 4자리 이상 입력해 주세요."); return; }
-    if (students.some(s => s.name === newName.trim() && s.className === newClass.trim())) { setErr("같은 이름+반 학생이 이미 있습니다."); return; }
+    const className = newAutoGrade || "미정";
+    if (students.some(s => s.name === newName.trim() && s.className === className)) { setErr("같은 이름+학년 학생이 이미 있습니다."); return; }
     setSaving(true);
     const id = "student-" + genId();
     try {
-      await db.ref(`students/${id}`).set({ id, name: newName.trim(), className: newClass.trim(), pin: newPin.trim(), role: "student", createdAt: todayString() });
-      setNewName(""); setNewClass(""); setNewPin(""); setErr("");
+      await db.ref(`students/${id}`).set({ id, name: newName.trim(), className, pin: newPin.trim(), role: "student", createdAt: todayString() });
+      await db.ref(`studentProfiles/${id}`).set({ school: newSchool.trim(), birthYear: newBirthYear, grades: {}, locked: false });
+      setNewName(""); setNewBirthYear(""); setNewSchool(""); setNewPin(""); setErr("");
     } catch(e) { setErr("저장 실패: " + e.message); }
     setSaving(false);
   };
@@ -40,13 +44,14 @@ function StudentManager({ students, homeworks }) {
     const parsed = [];
     const errs = [];
     lines.forEach((line, i) => {
-      const cols = line.includes("	") ? line.split("	") : line.split(",");
+      const cols = line.includes("\t") ? line.split("\t") : line.split(",");
       const name = (cols[0]||"").trim();
-      const className = (cols[1]||"").trim();
-      const pin = (cols[2]||"").trim() || name.slice(0,4).padEnd(4,"0");
+      const birthYear = (cols[1]||"").trim();
+      const school = (cols[2]||"").trim();
+      const pin = (cols[3]||"").trim() || name.slice(0,4).padEnd(4,"0");
       if (!name) { errs.push(`${i+1}행: 이름 없음`); return; }
-      if (!className) { errs.push(`${i+1}행: 반 없음`); return; }
-      parsed.push({ name, className, pin });
+      const className = gradeFromBirthYear(birthYear) || "미정";
+      parsed.push({ name, birthYear, school, pin, className });
     });
     if (errs.length) setBulkErr(errs.join(" / "));
     setBulkPreview(parsed);
@@ -61,6 +66,7 @@ function StudentManager({ students, homeworks }) {
       const id = "student-" + genId();
       try {
         await db.ref(`students/${id}`).set({ id, name:row.name, className:row.className, pin:row.pin, role:"student", createdAt:todayString() });
+        await db.ref(`studentProfiles/${id}`).set({ school:row.school, birthYear:row.birthYear, grades:{}, locked:false });
         added++;
       } catch(e) {}
     }
@@ -73,6 +79,7 @@ function StudentManager({ students, homeworks }) {
     setSaving(true);
     try {
       await db.ref(`students/${studentId}`).remove();
+      await db.ref(`studentProfiles/${studentId}`).remove();
       const toDelete = homeworks.filter(hw => hw.studentId === studentId);
       await Promise.all(toDelete.map(hw => db.ref(`homeworks/${hw._key}`).remove()));
       setDeleteConfirm(null);
@@ -88,33 +95,18 @@ function StudentManager({ students, homeworks }) {
     } catch(e) { alert("저장 실패: " + e.message); }
   };
 
-  const updateInfo = async (studentId, newName, newClass) => {
-    if (!newName.trim()) { alert("이름을 입력해 주세요."); return; }
-    if (!newClass.trim()) { alert("반을 입력해 주세요."); return; }
-    try {
-      await db.ref(`students/${studentId}`).update({ name: newName.trim(), className: newClass.trim() });
-      const toUpdate = homeworks.filter(hw => hw.studentId === studentId);
-      await Promise.all(toUpdate.map(hw => db.ref(`homeworks/${hw._key}/studentName`).set(newName.trim())));
-      setEditInfo(prev => { const n={...prev}; delete n[studentId]; return n; });
-    } catch(e) { alert("저장 실패: " + e.message); }
+  const toggleProfileLock = async (studentId, currentLocked) => {
+    try { await db.ref(`studentProfiles/${studentId}/locked`).set(!currentLocked); }
+    catch(e) { alert("저장 실패: " + e.message); }
   };
 
   const classes = [...new Set(students.map(s => s.className))].sort();
-
-  const toggleProfileLock = async (studentId, currentLocked) => {
-    try {
-      await db.ref(`studentProfiles/${studentId}/locked`).set(!currentLocked);
-    } catch(e) { alert("저장 실패: " + e.message); }
-  };
 
   return (
     <div className="space-y-6">
       {/* 학생 추가 */}
       <Card className="p-5 space-y-4">
-        <div>
-          <h2 className="text-lg font-bold">학생 추가</h2>
-        </div>
-
+        <h2 className="text-lg font-bold">학생 추가</h2>
         <div className="flex gap-2 bg-slate-100 rounded-2xl p-1">
           {[["single","한 명씩"],["bulk","엑셀 일괄 등록"]].map(([t,l])=>(
             <button key={t} type="button" onClick={()=>setBulkTab(t)}
@@ -126,14 +118,16 @@ function StudentManager({ students, homeworks }) {
 
         {bulkTab==="single" ? (
           <div className="space-y-3">
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-1.5"><Lbl>이름</Lbl><Inp value={newName} onChange={e=>setNewName(e.target.value)} placeholder="홍길동" onKeyDown={e=>e.key==="Enter"&&addStudent()}/></div>
-              <div className="space-y-1.5"><Lbl>학년</Lbl>
-                <select value={newClass} onChange={e=>setNewClass(e.target.value)}
-                  className="w-full rounded-xl border border-input px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300">
-                  {["중1","중2","중3","고1","고2","고3"].map(g=><option key={g} value={g}>{g}</option>)}
-                </select>
+              <div className="space-y-1.5">
+                <Lbl>출생연도</Lbl>
+                <div className="flex gap-2 items-center">
+                  <Inp type="number" value={newBirthYear} onChange={e=>setNewBirthYear(e.target.value)} placeholder="예: 2010"/>
+                  {newAutoGrade && <span className="text-xs font-bold text-slate-600 whitespace-nowrap bg-slate-100 rounded-lg px-2 py-1">{newAutoGrade}</span>}
+                </div>
               </div>
+              <div className="space-y-1.5"><Lbl>학교</Lbl><Inp value={newSchool} onChange={e=>setNewSchool(e.target.value)} placeholder="○○중학교"/></div>
               <div className="space-y-1.5"><Lbl>PIN</Lbl><Inp value={newPin} onChange={e=>setNewPin(e.target.value)} placeholder="4자리 이상" onKeyDown={e=>e.key==="Enter"&&addStudent()}/></div>
             </div>
             {err && <AlertBox className="bg-red-50 text-red-700">{err}</AlertBox>}
@@ -143,13 +137,13 @@ function StudentManager({ students, homeworks }) {
           <div className="space-y-3">
             <AlertBox className="bg-blue-50 text-blue-700">
               <div className="font-semibold mb-1">📋 엑셀에서 복사 후 아래에 붙여넣기</div>
-              <div>컬럼 순서: <b>이름 | 반 | PIN</b> (PIN 없으면 이름 앞 4글자로 자동 설정)</div>
-              <div className="mt-1 text-xs opacity-80">예시: 홍길동 → 홍길동0 / 김민준 → 김민준0</div>
+              <div>컬럼 순서: <b>이름 | 출생연도 | 학교 | PIN</b></div>
+              <div className="mt-1 text-xs opacity-80">출생연도에서 학년 자동 계산 · PIN 없으면 이름 앞 4글자로 자동 설정</div>
             </AlertBox>
             <textarea
               value={bulkText}
               onChange={e=>{ setBulkText(e.target.value); parseBulk(e.target.value); }}
-              placeholder={"홍길동  중3A  1234\n김민준  고1B  5678\n..."}
+              placeholder={"홍길동\t2010\t○○고등학교\t1234\n김민준\t2011\t△△중학교\t5678"}
               rows={6}
               className="w-full border border-slate-200 rounded-2xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300 font-mono resize-none"
             />
@@ -161,11 +155,12 @@ function StudentManager({ students, homeworks }) {
                   {bulkPreview.map((row, i) => {
                     const isDup = students.some(s=>s.name===row.name&&s.className===row.className);
                     return (
-                      <div key={i} className={`flex items-center justify-between rounded-xl px-3 py-1.5 text-sm ${isDup?"bg-amber-50 text-amber-700":"bg-white"}`}>
-                        <span className="font-medium">{row.name}</span>
+                      <div key={i} className={`flex items-center gap-2 rounded-xl px-3 py-1.5 text-sm ${isDup?"bg-amber-50 text-amber-700":"bg-white"}`}>
+                        <span className="font-medium w-16 shrink-0">{row.name}</span>
                         <Badge variant="secondary">{row.className}</Badge>
+                        <span className="text-slate-400 text-xs flex-1">{row.school || "-"}</span>
                         <span className="text-slate-400 text-xs">PIN: {row.pin}</span>
-                        {isDup && <span className="text-xs text-amber-600">중복 건너뜀</span>}
+                        {isDup && <span className="text-xs text-amber-600">중복</span>}
                       </div>
                     );
                   })}
@@ -201,12 +196,13 @@ function StudentManager({ students, homeworks }) {
                   const hwCount = homeworks.filter(hw=>hw.studentId===s.id).length;
                   const isConfirming = deleteConfirm === s.id;
                   const isEditingPin = editPin[s.id] !== undefined;
+                  const isExpanded = expandedEdit === s.id;
                   const profile = profiles[s.id];
                   const isLocked = profile?.locked;
-                  const hasProfile = profile && (profile.school || Object.values(profile.grades||{}).some(v=>v!==""));
+                  const hasProfile = profile && (profile.school || profile.birthYear || Object.values(profile.grades||{}).some(v=>v!==""));
                   return (
-                    <div key={s.id} className={`rounded-2xl border px-4 py-3 transition ${isConfirming?"border-red-300 bg-red-50":isLocked?"border-emerald-200 bg-emerald-50/30":"bg-white"}`}>
-                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div key={s.id} className={`rounded-2xl border transition ${isConfirming?"border-red-300 bg-red-50":isLocked?"border-emerald-200 bg-emerald-50/30":"bg-white"}`}>
+                      <div className="flex items-center justify-between gap-3 flex-wrap px-4 py-3">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-sm font-bold text-slate-600 shrink-0">{s.name[0]}</div>
                           <div>
@@ -215,7 +211,7 @@ function StudentManager({ students, homeworks }) {
                               {isLocked && <span className="text-xs text-emerald-600 font-medium">🔒 확정</span>}
                               {hasProfile && !isLocked && <span className="text-xs text-amber-600 font-medium">📝 미확정</span>}
                             </div>
-                            <div className="text-xs text-slate-400">PIN: {s.pin} · 숙제 {hwCount}개{profile?.school ? " · "+profile.school : ""}</div>
+                            <div className="text-xs text-slate-400">PIN: {s.pin} · 숙제 {hwCount}개{profile?.school ? " · "+profile.school : ""}{profile?.birthYear ? " · "+profile.birthYear+"년생" : ""}</div>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 flex-wrap">
@@ -232,17 +228,6 @@ function StudentManager({ students, homeworks }) {
                               <Btn size="sm" onClick={()=>updatePin(s.id, editPin[s.id])}>저장</Btn>
                               <Btn variant="outline" size="sm" onClick={()=>setEditPin(p=>{const n={...p};delete n[s.id];return n;})}>취소</Btn>
                             </>
-                          ) : editInfo[s.id] !== undefined ? (
-                            <>
-                              <input value={editInfo[s.id].name} onChange={e=>setEditInfo(p=>({...p,[s.id]:{...p[s.id],name:e.target.value}}))}
-                                className="border border-slate-200 rounded-xl px-2 py-1 text-xs w-20 outline-none focus:ring-1 focus:ring-slate-300" placeholder="이름"/>
-                              <select value={editInfo[s.id].className} onChange={e=>setEditInfo(p=>({...p,[s.id]:{...p[s.id],className:e.target.value}}))}
-                                className="border border-slate-200 rounded-xl px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-slate-300 bg-white">
-                                {["중1","중2","중3","고1","고2","고3"].map(g=><option key={g} value={g}>{g}</option>)}
-                              </select>
-                              <Btn size="sm" onClick={()=>updateInfo(s.id, editInfo[s.id].name, editInfo[s.id].className)}>저장</Btn>
-                              <Btn variant="outline" size="sm" onClick={()=>setEditInfo(p=>{const n={...p};delete n[s.id];return n;})}>취소</Btn>
-                            </>
                           ) : (
                             <>
                               {hasProfile && (
@@ -250,13 +235,20 @@ function StudentManager({ students, homeworks }) {
                                   {isLocked ? "🔓 확정 해제" : "🔒 프로필 확정"}
                                 </Btn>
                               )}
-                              <Btn variant="outline" size="sm" onClick={()=>setEditInfo(p=>({...p,[s.id]:{name:s.name,className:s.className}}))}>수정</Btn>
+                              <Btn variant="outline" size="sm" onClick={()=>setExpandedEdit(isExpanded ? null : s.id)}>
+                                {isExpanded ? "닫기" : "수정"}
+                              </Btn>
                               <Btn variant="outline" size="sm" onClick={()=>setEditPin(p=>({...p,[s.id]:s.pin}))}>PIN</Btn>
                               <Btn variant="danger" size="sm" onClick={()=>setDeleteConfirm(s.id)}>삭제</Btn>
                             </>
                           )}
                         </div>
                       </div>
+                      {isExpanded && (
+                        <div className="border-t px-4 pb-4 pt-3">
+                          <StudentProfileTab studentId={s.id} studentName={s.name} teacherMode={true}/>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

@@ -38,11 +38,12 @@ const gradeColor = (v) => {
   return "text-red-600 font-bold";
 };
 
-function StudentProfileTab({ studentId, studentName }) {
+function StudentProfileTab({ studentId, studentName, teacherMode = false }) {
   const [profile, setProfile] = useState(null);
   const [draft, setDraft] = useState(null);
+  const [draftName, setDraftName] = useState(studentName);
   const [saving, setSaving] = useState(false);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(teacherMode);
 
   useEffect(() => {
     const ref = db.ref(`studentProfiles/${studentId}`);
@@ -61,19 +62,22 @@ function StudentProfileTab({ studentId, studentName }) {
       await db.ref(`studentProfiles/${studentId}`).update({ school: draft.school, birthYear: draft.birthYear, grades: draft.grades });
       const grade = gradeFromBirthYear(draft.birthYear);
       if (grade) await db.ref(`students/${studentId}/className`).set(grade);
-      setEditing(false);
+      if (teacherMode && draftName.trim()) await db.ref(`students/${studentId}/name`).set(draftName.trim());
+      if (!teacherMode) setEditing(false);
     } catch(e) { alert("저장 실패: " + e.message); }
     setSaving(false);
   };
 
   const cancelEdit = () => {
     setDraft({ school: profile.school||"", birthYear: profile.birthYear||"", grades: {...(profile.grades||{})} });
-    setEditing(false);
+    setDraftName(studentName);
+    if (!teacherMode) setEditing(false);
   };
 
   if (!profile || !draft) return <div className="text-sm text-slate-400 text-center py-8">불러오는 중...</div>;
 
-  const locked = profile.locked;
+  const locked = !teacherMode && profile.locked;
+  const canEdit = teacherMode || !locked;
   const autoGrade = gradeFromBirthYear(editing ? draft.birthYear : profile.birthYear);
 
   return (
@@ -87,29 +91,35 @@ function StudentProfileTab({ studentId, studentName }) {
       <Card className="p-5 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold">기본 정보</h2>
-          {!locked && !editing && <Btn size="sm" variant="outline" onClick={()=>setEditing(true)}>수정</Btn>}
-          {!locked && editing && (
+          {canEdit && !teacherMode && !editing && <Btn size="sm" variant="outline" onClick={()=>setEditing(true)}>수정</Btn>}
+          {canEdit && !teacherMode && editing && (
             <div className="flex gap-1.5">
               <Btn size="sm" onClick={handleSave} disabled={saving}>{saving?"저장 중...":"저장"}</Btn>
               <Btn size="sm" variant="outline" onClick={cancelEdit}>취소</Btn>
             </div>
           )}
+          {teacherMode && (
+            <Btn size="sm" onClick={handleSave} disabled={saving}>{saving?"저장 중...":"저장"}</Btn>
+          )}
         </div>
         <div className="grid gap-3 sm:grid-cols-4">
           <div className="space-y-1.5">
             <Lbl>이름</Lbl>
-            <div className="rounded-xl border bg-slate-50 px-3 py-2 text-sm text-slate-700">{studentName}</div>
+            {teacherMode
+              ? <Inp value={draftName} onChange={e=>setDraftName(e.target.value)}/>
+              : <div className="rounded-xl border bg-slate-50 px-3 py-2 text-sm text-slate-700">{studentName}</div>
+            }
           </div>
           <div className="space-y-1.5">
             <Lbl>학교</Lbl>
-            {editing
+            {(editing || teacherMode)
               ? <Inp value={draft.school} onChange={e=>setDraft(p=>({...p,school:e.target.value}))} placeholder="학교명 입력"/>
               : <div className="rounded-xl border bg-slate-50 px-3 py-2 text-sm text-slate-700">{profile.school || <span className="text-slate-400">미입력</span>}</div>
             }
           </div>
           <div className="space-y-1.5">
             <Lbl>출생연도</Lbl>
-            {editing
+            {(editing || teacherMode)
               ? <Inp type="number" value={draft.birthYear} onChange={e=>setDraft(p=>({...p,birthYear:e.target.value}))} placeholder="예: 2010"/>
               : <div className="rounded-xl border bg-slate-50 px-3 py-2 text-sm text-slate-700">{profile.birthYear || <span className="text-slate-400">미입력</span>}</div>
             }
