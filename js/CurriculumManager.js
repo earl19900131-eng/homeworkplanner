@@ -634,6 +634,7 @@ function AssessmentsTab() {
   const [tree, setTree] = React.useState([]);
   const [saving, setSaving] = React.useState(false);
   const [assessments, setAssessments] = React.useState([]);
+  const [focusTarget, setFocusTarget] = React.useState(null);
 
   React.useEffect(() => {
     const ref = db.ref("assessments");
@@ -644,21 +645,79 @@ function AssessmentsTab() {
     return () => ref.off();
   }, []);
 
+  // 자동 포커스
+  React.useEffect(() => {
+    if (!focusTarget) return;
+    const sel = focusTarget.type === "major"  ? `[data-focus-major="${focusTarget.id}"]`
+              : focusTarget.type === "middle" ? `[data-focus-middle="${focusTarget.id}"]`
+              :                                 `[data-focus-minor="${focusTarget.id}"]`;
+    setTimeout(() => { const el = document.querySelector(sel); el?.focus(); el?.select && el.select(); }, 0);
+    setFocusTarget(null);
+  }, [focusTarget]);
+
   const nid = () => genId();
   const emptyMajor  = () => ({ id: nid(), major: "", subject: "공통수학1", open: true, middles: [] });
   const emptyMiddle = () => ({ id: nid(), middle: "", open: true, minors: [] });
-  const emptyMinor  = () => ({ id: nid(), num: "", minor: "" });
+  const emptyMinor  = () => ({ id: nid(), minor: "" });
 
   const updMajor  = (mId, u)            => setTree(t => t.map(m => m.id===mId ? {...m,...u} : m));
   const delMajor  = (mId)               => setTree(t => t.filter(m => m.id!==mId));
-  const addMiddle = (mId)               => setTree(t => t.map(m => m.id===mId ? {...m, middles:[...m.middles, emptyMiddle()]} : m));
   const updMiddle = (mId,midId,u)       => setTree(t => t.map(m => m.id===mId ? {...m, middles:m.middles.map(d => d.id===midId ? {...d,...u} : d)} : m));
   const delMiddle = (mId,midId)         => setTree(t => t.map(m => m.id===mId ? {...m, middles:m.middles.filter(d => d.id!==midId)} : m));
-  const addMinor  = (mId,midId)         => setTree(t => t.map(m => m.id===mId ? {...m, middles:m.middles.map(d => d.id===midId ? {...d, minors:[...d.minors, emptyMinor()]} : d)} : m));
   const updMinor  = (mId,midId,minId,u) => setTree(t => t.map(m => m.id===mId ? {...m, middles:m.middles.map(d => d.id===midId ? {...d, minors:d.minors.map(n => n.id===minId ? {...n,...u} : n)} : d)} : m));
   const delMinor  = (mId,midId,minId)   => setTree(t => t.map(m => m.id===mId ? {...m, middles:m.middles.map(d => d.id===midId ? {...d, minors:d.minors.filter(n => n.id!==minId)} : d)} : m));
 
-  const startCreate = () => { setStep("daily_test"); setDbEditId(null); setTestName(""); setTree([emptyMajor()]); };
+  // 키보드: 대단원
+  const onMajorKey = (e, majorId) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const nm = emptyMajor();
+      setTree(t => { const i = t.findIndex(m => m.id===majorId); const a=[...t]; a.splice(i+1,0,nm); return a; });
+      setFocusTarget({ type:"major", id: nm.id });
+    } else if (e.key === "Tab" && !e.shiftKey) {
+      e.preventDefault();
+      const nd = emptyMiddle();
+      setTree(t => t.map(m => m.id===majorId ? {...m, open:true, middles:[...m.middles, nd]} : m));
+      setFocusTarget({ type:"middle", id: nd.id });
+    }
+  };
+
+  // 키보드: 중단원
+  const onMiddleKey = (e, majorId, middleId) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const nd = emptyMiddle();
+      setTree(t => t.map(m => m.id===majorId ? { ...m, middles: (() => { const i=m.middles.findIndex(d=>d.id===middleId); const a=[...m.middles]; a.splice(i+1,0,nd); return a; })() } : m));
+      setFocusTarget({ type:"middle", id: nd.id });
+    } else if (e.key === "Tab" && !e.shiftKey) {
+      e.preventDefault();
+      const nn = emptyMinor();
+      setTree(t => t.map(m => m.id===majorId ? {...m, middles:m.middles.map(d => d.id===middleId ? {...d, open:true, minors:[...d.minors, nn]} : d)} : m));
+      setFocusTarget({ type:"minor", id: nn.id });
+    } else if (e.key === "Tab" && e.shiftKey) {
+      e.preventDefault();
+      setFocusTarget({ type:"major", id: majorId });
+    }
+  };
+
+  // 키보드: 소단원
+  const onMinorKey = (e, majorId, middleId, minorId) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const nn = emptyMinor();
+      setTree(t => t.map(m => m.id===majorId ? { ...m, middles:m.middles.map(d => d.id===middleId ? { ...d, minors: (() => { const i=d.minors.findIndex(n=>n.id===minorId); const a=[...d.minors]; a.splice(i+1,0,nn); return a; })() } : d) } : m));
+      setFocusTarget({ type:"minor", id: nn.id });
+    } else if (e.key === "Tab" && e.shiftKey) {
+      e.preventDefault();
+      setFocusTarget({ type:"middle", id: middleId });
+    }
+  };
+
+  const startCreate = () => {
+    const nm = emptyMajor();
+    setStep("daily_test"); setDbEditId(null); setTestName(""); setTree([nm]);
+    setFocusTarget({ type:"major", id: nm.id });
+  };
   const startEditAssessment = (a) => { setStep("daily_test"); setDbEditId(a.id); setTestName(a.name); setTree(a.tree || []); };
 
   const handleSave = async () => {
@@ -687,13 +746,24 @@ function AssessmentsTab() {
             <Inp value={testName} onChange={e=>setTestName(e.target.value)} placeholder="예: 3월 1주차 일일테스트"/>
           </div>
 
+          <div className="space-y-1.5 text-xs text-slate-400 bg-slate-50 rounded-xl px-3 py-2">
+            <span className="font-medium">입력 방법:</span> 제목 입력 후 <kbd className="bg-white border rounded px-1">Enter</kbd> 같은 레벨 추가 · <kbd className="bg-white border rounded px-1">Tab</kbd> 하위 레벨로 · <kbd className="bg-white border rounded px-1">Shift+Tab</kbd> 상위 레벨로
+          </div>
+
           <div className="space-y-2">
-            {tree.map(major => (
+            {tree.map((major, mi) => (
               <div key={major.id} className="rounded-xl border border-slate-200 overflow-hidden">
                 <div className="flex items-center gap-2 bg-slate-100 px-3 py-2">
                   <button type="button" onClick={()=>updMajor(major.id,{open:!major.open})} className="text-slate-400 text-xs w-3 shrink-0">{major.open?"▼":"▶"}</button>
-                  <span className="text-[10px] font-bold text-slate-400 shrink-0 tracking-wide">대단원</span>
-                  <input className={INP + " font-semibold"} value={major.major} onChange={e=>updMajor(major.id,{major:e.target.value})} placeholder="대단원명"/>
+                  <span className="text-[10px] font-bold text-slate-500 shrink-0 w-4">{mi+1}</span>
+                  <span className="text-[10px] font-bold text-slate-400 shrink-0">대단원</span>
+                  <input
+                    data-focus-major={major.id}
+                    className={INP + " font-semibold"}
+                    value={major.major}
+                    onChange={e=>updMajor(major.id,{major:e.target.value})}
+                    onKeyDown={e=>onMajorKey(e, major.id)}
+                    placeholder="대단원명 입력 후 Enter 또는 Tab"/>
                   <select value={major.subject} onChange={e=>updMajor(major.id,{subject:e.target.value})}
                     className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white outline-none shrink-0 focus:ring-1 focus:ring-blue-300">
                     {SUBJECTS.map(s=><option key={s} value={s}>{s}</option>)}
@@ -702,38 +772,53 @@ function AssessmentsTab() {
                 </div>
                 {major.open && (
                   <div className="px-3 py-2 space-y-1.5">
-                    {major.middles.map(middle => (
+                    {major.middles.map((middle, di) => (
                       <div key={middle.id} className="rounded-lg border border-slate-100 overflow-hidden">
                         <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5">
                           <button type="button" onClick={()=>updMiddle(major.id,middle.id,{open:!middle.open})} className="text-slate-300 text-xs w-3 shrink-0">{middle.open?"▼":"▶"}</button>
+                          <span className="text-[10px] text-slate-500 shrink-0 w-6">{mi+1}-{di+1}</span>
                           <span className="text-[10px] text-slate-400 shrink-0">중단원</span>
-                          <input className={INP} value={middle.middle} onChange={e=>updMiddle(major.id,middle.id,{middle:e.target.value})} placeholder="중단원명"/>
+                          <input
+                            data-focus-middle={middle.id}
+                            className={INP}
+                            value={middle.middle}
+                            onChange={e=>updMiddle(major.id,middle.id,{middle:e.target.value})}
+                            onKeyDown={e=>onMiddleKey(e, major.id, middle.id)}
+                            placeholder="중단원명 입력 후 Enter 또는 Tab"/>
                           <button type="button" onClick={()=>delMiddle(major.id,middle.id)} className="text-slate-300 hover:text-red-400 ml-1 shrink-0 text-base leading-none">×</button>
                         </div>
                         {middle.open && (
                           <div className="px-4 py-1.5 space-y-0.5">
-                            {middle.minors.map(minor => (
-                              <div key={minor.id} className="flex items-center gap-2 py-0.5">
-                                <span className="text-slate-200 shrink-0">·</span>
-                                <span className="text-[10px] text-slate-400 shrink-0">소단원</span>
-                                <input className="border-0 border-b border-slate-200 px-1 py-0.5 text-xs bg-transparent outline-none focus:border-blue-400 w-10 shrink-0 text-center" value={minor.num} onChange={e=>updMinor(major.id,middle.id,minor.id,{num:e.target.value})} placeholder="번호"/>
-                                <input className={INP + " text-sm"} value={minor.minor} onChange={e=>updMinor(major.id,middle.id,minor.id,{minor:e.target.value})} placeholder="소단원명"/>
-                                <button type="button" onClick={()=>delMinor(major.id,middle.id,minor.id)} className="text-slate-200 hover:text-red-400 shrink-0 text-base leading-none">×</button>
-                              </div>
-                            ))}
-                            <button type="button" onClick={()=>addMinor(major.id,middle.id)}
-                              className="text-xs text-blue-500 hover:text-blue-700 pl-4 py-0.5">+ 소단원</button>
+                            {middle.minors.map((minor, ni) => {
+                              const num = `${mi+1}${di+1}${ni+1}`;
+                              return (
+                                <div key={minor.id} className="flex items-center gap-2 py-0.5">
+                                  <span className="text-[10px] font-mono text-slate-400 shrink-0 w-8">{num}</span>
+                                  <span className="text-[10px] text-slate-400 shrink-0">소단원</span>
+                                  <input
+                                    data-focus-minor={minor.id}
+                                    className={INP + " text-sm"}
+                                    value={minor.minor}
+                                    onChange={e=>updMinor(major.id,middle.id,minor.id,{minor:e.target.value})}
+                                    onKeyDown={e=>onMinorKey(e, major.id, middle.id, minor.id)}
+                                    placeholder="소단원명 입력 후 Enter"/>
+                                  <button type="button" onClick={()=>delMinor(major.id,middle.id,minor.id)} className="text-slate-200 hover:text-red-400 shrink-0 text-base leading-none">×</button>
+                                </div>
+                              );
+                            })}
+                            <button type="button" onClick={()=>{ const nn=emptyMinor(); updMiddle(major.id,middle.id,{minors:[...middle.minors,nn]}); setFocusTarget({type:"minor",id:nn.id}); }}
+                              className="text-xs text-blue-500 hover:text-blue-700 pl-8 py-0.5">+ 소단원</button>
                           </div>
                         )}
                       </div>
                     ))}
-                    <button type="button" onClick={()=>addMiddle(major.id)}
+                    <button type="button" onClick={()=>{ const nd=emptyMiddle(); updMajor(major.id,{middles:[...major.middles,nd]}); setFocusTarget({type:"middle",id:nd.id}); }}
                       className="text-xs text-blue-500 hover:text-blue-700 pl-2 py-0.5">+ 중단원</button>
                   </div>
                 )}
               </div>
             ))}
-            <button type="button" onClick={()=>setTree(t=>[...t,emptyMajor()])}
+            <button type="button" onClick={()=>{ const nm=emptyMajor(); setTree(t=>[...t,nm]); setFocusTarget({type:"major",id:nm.id}); }}
               className="text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-2 rounded-xl border border-dashed border-blue-200 hover:bg-blue-50 transition w-full">
               + 대단원 추가
             </button>
