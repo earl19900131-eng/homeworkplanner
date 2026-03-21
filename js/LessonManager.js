@@ -320,6 +320,7 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
   const handleKeyDown = (e) => {
     if (editingHW || editingEval || tagModal) return;
     if (e.key === "Backspace" && !focusedCell) { e.preventDefault(); onBack(); return; }
+    if (e.key === "Tab" && !focusedCell) { e.preventDefault(); setFocusedCell({ row: 0, col: 0 }); return; }
     if (!focusedCell) return;
     const { row, col } = focusedCell;
     const maxRow = lessonStudents.length - 1;
