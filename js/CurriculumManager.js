@@ -643,6 +643,46 @@ function AssessmentsTab() {
   const [editingCell, setEditingCell] = React.useState(null);
   const containerRef = React.useRef(null);
   const inputRef = React.useRef(null);
+  const [fillDrag, setFillDrag] = React.useState(null); // { srcRow, srcCol, endRow }
+  const fillDragRef = React.useRef(null);
+  const rowsRef = React.useRef(rows);
+  React.useEffect(() => { rowsRef.current = rows; }, [rows]);
+
+  // fill drag mouseup (document-level)
+  React.useEffect(() => {
+    const onUp = () => {
+      const d = fillDragRef.current;
+      if (!d) return;
+      const { srcRow, srcCol, endRow } = d;
+      if (endRow > srcRow) {
+        const srcValue = rowsRef.current[srcRow]?.[COL_KEYS[srcCol]] ?? "";
+        const needed = Math.max(0, endRow + 1 - rowsRef.current.length);
+        setRows(r => {
+          const nr = [...r];
+          for (let i = 0; i < needed; i++) nr.push(emptyRow());
+          return nr.map((row, idx) =>
+            idx > srcRow && idx <= endRow ? { ...row, [COL_KEYS[srcCol]]: srcValue } : row
+          );
+        });
+        setFocusedCell({ row: endRow, col: srcCol });
+      }
+      fillDragRef.current = null;
+      setFillDrag(null);
+    };
+    document.addEventListener("mouseup", onUp);
+    return () => document.removeEventListener("mouseup", onUp);
+  }, []);
+
+  const startFillDrag = (e, row, col) => {
+    e.preventDefault(); e.stopPropagation();
+    const d = { srcRow: row, srcCol: col, endRow: row };
+    fillDragRef.current = d; setFillDrag(d);
+  };
+  const onCellMouseEnter = (row, col) => {
+    if (!fillDragRef.current || col !== fillDragRef.current.srcCol || row <= fillDragRef.current.srcRow) return;
+    const d = { ...fillDragRef.current, endRow: row };
+    fillDragRef.current = d; setFillDrag(d);
+  };
 
   React.useEffect(() => {
     const ref = db.ref("assessments");
@@ -760,9 +800,11 @@ function AssessmentsTab() {
                       const isFocused = focusedCell.row === rowIdx && focusedCell.col === colIdx;
                       const isEditing = editingCell?.row === rowIdx && editingCell?.col === colIdx;
                       const isSubject = key === "subject";
+                      const isInFillRange = fillDrag && colIdx === fillDrag.srcCol && rowIdx > fillDrag.srcRow && rowIdx <= fillDrag.endRow;
                       return (
                         <td key={colIdx}
-                          className={`p-0 relative ${isFocused && !isEditing ? "bg-blue-50" : ""}`}
+                          className={`p-0 relative ${isInFillRange ? "bg-blue-100" : isFocused && !isEditing ? "bg-blue-50" : ""}`}
+                          onMouseEnter={() => onCellMouseEnter(rowIdx, colIdx)}
                           onClick={(e) => { e.stopPropagation(); setFocusedCell({row:rowIdx,col:colIdx}); if (!isEditing) containerRef.current?.focus(); }}
                           onDoubleClick={(e) => { e.stopPropagation(); setFocusedCell({row:rowIdx,col:colIdx}); setEditingCell({row:rowIdx,col:colIdx}); }}>
                           {isEditing ? (
@@ -782,8 +824,15 @@ function AssessmentsTab() {
                                 className="w-full border-0 border-b-2 border-blue-500 px-3 py-1.5 text-sm bg-white outline-none"/>
                             )
                           ) : (
-                            <div className={`px-3 py-1.5 min-h-[34px] cursor-default select-none ${isFocused ? "ring-2 ring-inset ring-blue-500" : ""}`}>
+                            <div className={`px-3 py-1.5 min-h-[34px] cursor-default select-none relative ${isFocused ? "ring-2 ring-inset ring-blue-500" : ""}`}>
                               {row[key] ? <span>{row[key]}</span> : <span className="text-slate-300 text-xs">{COL_PH[colIdx]}</span>}
+                              {isFocused && (
+                                <div
+                                  onMouseDown={e => startFillDrag(e, rowIdx, colIdx)}
+                                  className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-blue-500 border-2 border-white cursor-crosshair"
+                                  style={{ transform: "translate(50%,50%)", zIndex: 20 }}
+                                />
+                              )}
                             </div>
                           )}
                         </td>
