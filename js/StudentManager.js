@@ -12,6 +12,13 @@ function StudentManager({ students, homeworks }) {
   const [bulkPreview, setBulkPreview] = useState([]);
   const [bulkErr, setBulkErr] = useState("");
   const [bulkTab, setBulkTab] = useState("single");
+  const [profiles, setProfiles] = useState({});
+
+  useEffect(() => {
+    const ref = db.ref("studentProfiles");
+    ref.on("value", snap => setProfiles(snap.val() || {}));
+    return () => ref.off();
+  }, []);
 
   const addStudent = async () => {
     if (!newName.trim()) { setErr("이름을 입력해 주세요."); return; }
@@ -93,6 +100,12 @@ function StudentManager({ students, homeworks }) {
   };
 
   const classes = [...new Set(students.map(s => s.className))].sort();
+
+  const toggleProfileLock = async (studentId, currentLocked) => {
+    try {
+      await db.ref(`studentProfiles/${studentId}/locked`).set(!currentLocked);
+    } catch(e) { alert("저장 실패: " + e.message); }
+  };
 
   return (
     <div className="space-y-6">
@@ -188,14 +201,21 @@ function StudentManager({ students, homeworks }) {
                   const hwCount = homeworks.filter(hw=>hw.studentId===s.id).length;
                   const isConfirming = deleteConfirm === s.id;
                   const isEditingPin = editPin[s.id] !== undefined;
+                  const profile = profiles[s.id];
+                  const isLocked = profile?.locked;
+                  const hasProfile = profile && (profile.school || Object.values(profile.grades||{}).some(v=>v!==""));
                   return (
-                    <div key={s.id} className={`rounded-2xl border px-4 py-3 transition ${isConfirming?"border-red-300 bg-red-50":"bg-white"}`}>
+                    <div key={s.id} className={`rounded-2xl border px-4 py-3 transition ${isConfirming?"border-red-300 bg-red-50":isLocked?"border-emerald-200 bg-emerald-50/30":"bg-white"}`}>
                       <div className="flex items-center justify-between gap-3 flex-wrap">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-sm font-bold text-slate-600 shrink-0">{s.name[0]}</div>
                           <div>
-                            <div className="font-semibold text-sm">{s.name}</div>
-                            <div className="text-xs text-slate-400">PIN: {s.pin} · 숙제 {hwCount}개</div>
+                            <div className="flex items-center gap-2">
+                              <div className="font-semibold text-sm">{s.name}</div>
+                              {isLocked && <span className="text-xs text-emerald-600 font-medium">🔒 확정</span>}
+                              {hasProfile && !isLocked && <span className="text-xs text-amber-600 font-medium">📝 미확정</span>}
+                            </div>
+                            <div className="text-xs text-slate-400">PIN: {s.pin} · 숙제 {hwCount}개{profile?.school ? " · "+profile.school : ""}</div>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 flex-wrap">
@@ -225,6 +245,11 @@ function StudentManager({ students, homeworks }) {
                             </>
                           ) : (
                             <>
+                              {hasProfile && (
+                                <Btn size="sm" variant={isLocked?"outline":"default"} onClick={()=>toggleProfileLock(s.id, isLocked)}>
+                                  {isLocked ? "🔓 확정 해제" : "🔒 프로필 확정"}
+                                </Btn>
+                              )}
                               <Btn variant="outline" size="sm" onClick={()=>setEditInfo(p=>({...p,[s.id]:{name:s.name,className:s.className}}))}>수정</Btn>
                               <Btn variant="outline" size="sm" onClick={()=>setEditPin(p=>({...p,[s.id]:s.pin}))}>PIN</Btn>
                               <Btn variant="danger" size="sm" onClick={()=>setDeleteConfirm(s.id)}>삭제</Btn>

@@ -563,7 +563,7 @@ function App() {
               )}
 
               {activeTab==="mypage" && (
-                <StudentMyPage studentHW={studentHW} studentName={currentStudent?.name} today={today}/>
+                <StudentMyPage studentHW={studentHW} studentName={currentStudent?.name} studentId={currentStudent?.id} today={today}/>
               )}
             </Card>
           </div>
