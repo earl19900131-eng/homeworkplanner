@@ -209,6 +209,8 @@ function LessonModal({ lesson, students, onClose, onSave }) {
 function LessonDetailView({ lesson, students, attendance, allAttendance, onBack, onEdit }) {
   const [editingHW, setEditingHW] = React.useState(null);
   const [hwValue, setHwValue] = React.useState("");
+  const [editingEval, setEditingEval] = React.useState(null);
+  const [evalValue, setEvalValue] = React.useState("");
   const [tagModal, setTagModal] = React.useState(null);       // studentId
   const [tagModalOriginal, setTagModalOriginal] = React.useState([]); // 모달 열릴 때 태그 스냅샷
   const [focusedCell, setFocusedCell] = React.useState(null); // { row, col }
@@ -246,6 +248,10 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
     if (val === "") await db.ref(`lessonAttendance/${lesson._key}/${studentId}/현행숙제`).remove();
     else await db.ref(`lessonAttendance/${lesson._key}/${studentId}/현행숙제`).set(val);
   };
+  const rawSaveEval = async (studentId, val) => {
+    if (val === "") await db.ref(`lessonAttendance/${lesson._key}/${studentId}/현행평가`).remove();
+    else await db.ref(`lessonAttendance/${lesson._key}/${studentId}/현행평가`).set(val);
+  };
   const rawSaveTags = async (studentId, tags) => {
     const { xp, cp } = calcPoints(tags);
     await db.ref(`lessonAttendance/${lesson._key}/${studentId}`).update({ tags, xp, cp });
@@ -256,6 +262,12 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
     pushUndo(studentId, "hw", (rec[studentId] || {}).현행숙제 || "");
     await rawSaveHW(studentId, val);
     setEditingHW(null);
+    refocusContainer();
+  };
+  const saveEval = async (studentId, val) => {
+    pushUndo(studentId, "eval", (rec[studentId] || {}).현행평가 || "");
+    await rawSaveEval(studentId, val);
+    setEditingEval(null);
     refocusContainer();
   };
 
@@ -287,6 +299,7 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
     const last = undoStack[undoStack.length - 1];
     setUndoStack(prev => prev.slice(0, -1));
     if (last.field === "hw")   await rawSaveHW(last.studentId, last.prevValue);
+    if (last.field === "eval") await rawSaveEval(last.studentId, last.prevValue);
     if (last.field === "tags") await rawSaveTags(last.studentId, last.prevValue);
   };
 
@@ -296,7 +309,7 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
   };
 
   const handleKeyDown = (e) => {
-    if (editingHW || tagModal) return;
+    if (editingHW || editingEval || tagModal) return;
     if (!focusedCell) return;
     const { row, col } = focusedCell;
     const maxRow = lessonStudents.length - 1;
@@ -304,23 +317,26 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
     if (e.key === "ArrowUp")    { e.preventDefault(); if (row > 0)     setFocusedCell({ row: row - 1, col }); return; }
     if (e.key === "ArrowDown")  { e.preventDefault(); if (row < maxRow) setFocusedCell({ row: row + 1, col }); return; }
     if (e.key === "ArrowLeft")  { e.preventDefault(); if (col > 0)      setFocusedCell({ row, col: col - 1 }); return; }
-    if (e.key === "ArrowRight") { e.preventDefault(); if (col < 1)      setFocusedCell({ row, col: col + 1 }); return; }
+    if (e.key === "ArrowRight") { e.preventDefault(); if (col < 2)      setFocusedCell({ row, col: col + 1 }); return; }
     if (e.key === "Escape")     { setFocusedCell(null); return; }
 
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       const s = lessonStudents[row];
       const sRec = rec[s.id] || {};
-      if (col === 0) { setEditingHW(s.id); setHwValue(sRec.현행숙제 || ""); }
-      if (col === 1) { openTagModal(s.id); }
+      if (col === 0) { setEditingHW(s.id);   setHwValue(sRec.현행숙제 || ""); }
+      if (col === 1) { setEditingEval(s.id); setEvalValue(sRec.현행평가 || ""); }
+      if (col === 2) { openTagModal(s.id); }
       return;
     }
 
     if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
       const s = lessonStudents[row];
+      const sRec = rec[s.id] || {};
       if (col === 0) saveHW(s.id, "");
-      if (col === 1) { pushUndo(s.id, "tags", [...((rec[s.id] || {}).tags || [])]); rawSaveTags(s.id, []); }
+      if (col === 1) saveEval(s.id, "");
+      if (col === 2) { pushUndo(s.id, "tags", [...(sRec.tags || [])]); rawSaveTags(s.id, []); }
       return;
     }
 
@@ -335,7 +351,8 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
       const s = lessonStudents[row];
       const sRec = rec[s.id] || {};
       if (col === 0) setClipboard({ type: "hw",   value: sRec.현행숙제 || "" });
-      if (col === 1) setClipboard({ type: "tags", value: [...(sRec.tags || [])] });
+      if (col === 1) setClipboard({ type: "eval", value: sRec.현행평가 || "" });
+      if (col === 2) setClipboard({ type: "tags", value: [...(sRec.tags || [])] });
       setCopyFlash(true);
       setTimeout(() => setCopyFlash(false), 900);
       return;
@@ -350,7 +367,11 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
         pushUndo(s.id, "hw", sRec.현행숙제 || "");
         rawSaveHW(s.id, clipboard.value);
       }
-      if (col === 1 && clipboard.type === "tags") {
+      if (col === 1 && clipboard.type === "eval") {
+        pushUndo(s.id, "eval", sRec.현행평가 || "");
+        rawSaveEval(s.id, clipboard.value);
+      }
+      if (col === 2 && clipboard.type === "tags") {
         pushUndo(s.id, "tags", [...(sRec.tags || [])]);
         rawSaveTags(s.id, clipboard.value);
       }
@@ -402,6 +423,7 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
               <tr className="bg-slate-50">
                 <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3 text-left text-xs font-bold text-slate-500 border-b border-r border-slate-200 min-w-[140px]">학생</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[160px]">현행숙제</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[160px]">현행평가</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[200px]">행동태그</th>
                 <th className="px-4 py-3 text-center text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[80px]">획득 XP</th>
                 <th className="px-4 py-3 text-center text-xs font-bold text-slate-600 border-b border-slate-200 min-w-[80px]">획득 CP</th>
@@ -444,9 +466,22 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, onBack,
                       )}
                     </td>
 
+                    {/* 현행평가 */}
+                    <td className={`border-b border-r border-slate-100 px-3 py-2.5 cursor-text transition ${isFocused(si, 1) ? focusRing : ""}`}
+                      onClick={() => { selectCell(si, 1); if (editingEval !== s.id) { setEditingEval(s.id); setEvalValue(sRec.현행평가 || ""); } }}>
+                      {editingEval === s.id ? (
+                        <input autoFocus value={evalValue} onChange={e => setEvalValue(e.target.value)}
+                          onBlur={() => saveEval(s.id, evalValue)}
+                          onKeyDown={e => { if (e.key === "Enter") saveEval(s.id, evalValue); if (e.key === "Escape") { setEditingEval(null); refocusContainer(); } }}
+                          className="w-full text-xs border-b border-slate-400 outline-none bg-transparent py-0.5" />
+                      ) : (
+                        <span className="text-xs text-slate-600 block">{sRec.현행평가 || <span className="text-slate-300">입력</span>}</span>
+                      )}
+                    </td>
+
                     {/* 행동태그 */}
-                    <td className={`border-b border-r border-slate-100 px-3 py-2 cursor-pointer transition ${isFocused(si, 1) ? focusRing : ""}`}
-                      onClick={() => { selectCell(si, 1); openTagModal(s.id); }}>
+                    <td className={`border-b border-r border-slate-100 px-3 py-2 cursor-pointer transition ${isFocused(si, 2) ? focusRing : ""}`}
+                      onClick={() => { selectCell(si, 2); openTagModal(s.id); }}>
                       {tags.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
                           {tags.map(name => {
