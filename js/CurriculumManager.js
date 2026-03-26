@@ -1116,6 +1116,34 @@ function AssessmentsTab({ students = [] }) {
     setMockResults(r => ({...r, [sid]: {...(r[sid]||{}), score: Number(score)}}));
   };
 
+  const toggleAnswer = async (sid, qNum) => {
+    const exam = mockResultExam;
+    const cur = (mockResults[sid]?.answers || {})[qNum];
+    const next = cur === "O" ? "X" : cur === "X" ? null : "O";
+    const newAnswers = { ...(mockResults[sid]?.answers || {}) };
+    if (next === null) delete newAnswers[qNum]; else newAnswers[qNum] = next;
+    const scoringType = exam.scoringType || "auto";
+    let score = null;
+    if (scoringType !== "none") {
+      const correct = Object.entries(newAnswers).filter(([,v]) => v === "O").map(([q]) => Number(q));
+      if (scoringType === "manual" && exam.scoring) {
+        score = correct.reduce((sum, q) => sum + (Number(exam.scoring[q]) || 0), 0);
+      } else {
+        const total = exam.totalScore || 100;
+        score = Math.round(correct.length * ((total) / (exam.questionCount || 20)));
+      }
+    }
+    const existing = mockResults[sid] || {};
+    const updates = {
+      answers: newAnswers,
+      submittedAt: existing.submittedAt || new Date().toISOString().slice(0,10),
+    };
+    if (score !== null) updates.score = score;
+    await db.ref(`mockExamResults/${exam.id}/${sid}`).set(updates);
+    setMockResults(r => ({...r, [sid]: updates}));
+    if (score !== null) setScoreInputs(p => ({...p, [sid]: score}));
+  };
+
   const handleSave = async () => {
     if (!testName.trim()) { alert("테스트 제목을 입력해 주세요."); return; }
     setSaving(true);
@@ -1418,20 +1446,21 @@ function AssessmentsTab({ students = [] }) {
                         <span className="text-sm text-slate-400">점</span>
                       </div>
                     </div>
-                    {result?.answers && (
-                      <div className="flex flex-wrap gap-1">
-                        {Array.from({length: qCount}, (_,i)=>i+1).map(q => {
-                          const ans = result.answers[q];
-                          return (
-                            <span key={q} className={`inline-flex flex-col items-center w-7 rounded-md border text-[10px] py-0.5
+                    <div className="flex flex-wrap gap-1">
+                      {Array.from({length: qCount}, (_,i)=>i+1).map(q => {
+                        const ans = (result?.answers || {})[q];
+                        return (
+                          <button key={q} type="button" onClick={() => toggleAnswer(s.id, q)}
+                            title={ans==="O"?"클릭: X로 변경":ans==="X"?"클릭: 지우기":"클릭: O로 표시"}
+                            className={`inline-flex flex-col items-center w-7 rounded-md border text-[10px] py-0.5 transition hover:opacity-70 cursor-pointer
                               ${ans==="O"?"bg-emerald-50 border-emerald-300 text-emerald-600":ans==="X"?"bg-red-50 border-red-300 text-red-500":"bg-slate-50 border-slate-200 text-slate-300"}`}>
-                              <span className="leading-none text-slate-400">{q}</span>
-                              <span className="font-bold leading-none">{ans==="O"?"O":ans==="X"?"X":"·"}</span>
-                            </span>
-                          );
-                        })}
-                      </div>
-                    )}
+                            <span className="leading-none text-slate-400">{q}</span>
+                            <span className="font-bold leading-none">{ans==="O"?"O":ans==="X"?"X":"·"}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="text-[10px] text-slate-400">클릭: · → O → X → · 순서로 토글</div>
                   </div>
                 );
               })
