@@ -19,15 +19,13 @@ function MaterialsTab({ materials }) {
   const SUBJECTS = ["중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"];
   const empty = { name: "", subject: "공통수학1", totalProblems: "", minutesPerProblem: "", problemInput: "" };
 
-  // 폴더 상태
   const [folders, setFolders] = React.useState([]);
-  const [step, setStep] = React.useState("folders"); // "folders" | "folder_view"
-  const [activeFolderId, setActiveFolderId] = React.useState(null);
+  // folderPath: [{id, name}, ...] — 루트에서 현재 폴더까지의 경로
+  const [folderPath, setFolderPath] = React.useState([]);
   const [folderForm, setFolderForm] = React.useState("");
   const [editingFolderId, setEditingFolderId] = React.useState(null);
   const [editingFolderName, setEditingFolderName] = React.useState("");
 
-  // 교재 상태
   const [form, setForm] = React.useState(empty);
   const [editId, setEditId] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
@@ -36,35 +34,68 @@ function MaterialsTab({ materials }) {
 
   const parsedProblems = React.useMemo(() => parseProblemInput(form.problemInput), [form.problemInput]);
 
+  // 현재 위치
+  const activeFolderId = folderPath.length > 0 ? folderPath[folderPath.length - 1].id : null;
+  const atRoot = folderPath.length === 0;
+
   React.useEffect(() => {
     const ref = db.ref("materialFolders");
     ref.on("value", snap => {
       const data = snap.val();
-      setFolders(data ? Object.values(data).sort((a,b) => a.createdAt - b.createdAt) : []);
+      setFolders(data ? Object.values(data).sort((a,b) => (a.createdAt||0) - (b.createdAt||0)) : []);
     });
     return () => ref.off();
   }, []);
+
+  // 현재 위치의 직속 하위 폴더
+  const currentSubfolders = folders.filter(f => (f.parentId || null) === activeFolderId);
 
   // 폴더 CRUD
   const addFolder = async () => {
     if (!folderForm.trim()) return;
     const id = Date.now().toString();
-    await db.ref(`materialFolders/${id}`).set({ id, name: folderForm.trim(), createdAt: id });
+    const data = { id, name: folderForm.trim(), createdAt: id };
+    if (activeFolderId) data.parentId = activeFolderId;
+    await db.ref(`materialFolders/${id}`).set(data);
     setFolderForm("");
   };
+
   const saveEditFolder = async () => {
     if (!editingFolderName.trim()) return;
     await db.ref(`materialFolders/${editingFolderId}`).update({ name: editingFolderName.trim() });
     setEditingFolderId(null);
   };
-  const deleteFolder = async (id) => {
-    if (!confirm("폴더를 삭제하면 안에 있는 교재도 모두 삭제됩니다. 계속하시겠습니까?")) return;
+
+  // 폴더 및 모든 하위 폴더·교재 재귀 삭제
+  const deleteFolderRecursive = async (id) => {
+    const children = folders.filter(f => f.parentId === id);
+    for (const child of children) await deleteFolderRecursive(child.id);
     for (const m of materials.filter(m => m.folderId === id)) await db.ref(`materials/${m.id}`).remove();
     await db.ref(`materialFolders/${id}`).remove();
-    if (activeFolderId === id) setStep("folders");
   };
-  const openFolder = (folder) => { setActiveFolderId(folder.id); setStep("folder_view"); setSubjectFilter("전체"); setForm(empty); setEditId(null); setError(""); };
-  const goBack = () => { setStep("folders"); setActiveFolderId(null); setForm(empty); setEditId(null); setError(""); };
+
+  const deleteFolder = async (id) => {
+    if (!confirm("폴더를 삭제하면 안의 하위 폴더와 교재가 모두 삭제됩니다. 계속하시겠습니까?")) return;
+    await deleteFolderRecursive(id);
+    // 삭제된 폴더가 현재 경로에 있으면 올라가기
+    const idx = folderPath.findIndex(p => p.id === id);
+    if (idx !== -1) setFolderPath(folderPath.slice(0, idx));
+  };
+
+  const openFolder = (folder) => {
+    setFolderPath(prev => [...prev, { id: folder.id, name: folder.name }]);
+    setSubjectFilter("전체"); setForm(empty); setEditId(null); setError("");
+  };
+
+  const goBack = () => {
+    setFolderPath(prev => prev.slice(0, -1));
+    setForm(empty); setEditId(null); setError("");
+  };
+
+  const navigateTo = (idx) => {
+    setFolderPath(prev => prev.slice(0, idx + 1));
+    setForm(empty); setEditId(null); setError("");
+  };
 
   // 교재 CRUD
   const handleSave = async () => {
@@ -102,16 +133,57 @@ function MaterialsTab({ materials }) {
     setEditId(mat.id);
   };
 
-  // ── 폴더 목록 화면 ─────────────────────────────────────────────────────────
-  const unclassified = materials.filter(m => !m.folderId);
+  // ── 폴더 그리드 (루트 or 하위 폴더 공통) ────────────────────────────────────
+  const renderFolderGrid = (folderList) => (
+    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+      {folderList.map(folder => {
+        const directMats = materials.filter(m => m.folderId === folder.id).length;
+        const subCount = folders.filter(f => f.parentId === folder.id).length;
+        return (
+          <div key={folder.id} className="group relative">
+            {editingFolderId === folder.id ? (
+              <div className="w-full aspect-square rounded-2xl border-2 border-blue-200 bg-blue-50 flex flex-col items-center justify-center gap-2 p-3">
+                <span className="text-3xl leading-none">{atRoot ? "📁" : "📂"}</span>
+                <input autoFocus value={editingFolderName} onChange={e=>setEditingFolderName(e.target.value)}
+                  onKeyDown={e=>{ if(e.key==="Enter") saveEditFolder(); if(e.key==="Escape") setEditingFolderId(null); }}
+                  onBlur={saveEditFolder}
+                  className="w-full text-center text-xs border-b border-blue-400 bg-transparent outline-none"/>
+              </div>
+            ) : (
+              <button type="button" onClick={() => openFolder(folder)}
+                className="w-full aspect-square rounded-2xl border-2 border-amber-200 bg-amber-50 hover:bg-amber-100 transition flex flex-col items-center justify-center gap-2 p-3">
+                <span className="text-4xl leading-none">📁</span>
+                <span className="text-xs font-semibold text-amber-900 text-center leading-tight line-clamp-2">{folder.name}</span>
+                <span className="text-[10px] text-amber-600">
+                  {directMats > 0 ? `교재 ${directMats}` : ""}
+                  {directMats > 0 && subCount > 0 ? " · " : ""}
+                  {subCount > 0 ? `폴더 ${subCount}` : ""}
+                  {directMats === 0 && subCount === 0 ? "비어있음" : ""}
+                </span>
+              </button>
+            )}
+            <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+              <button type="button"
+                onClick={e=>{ e.stopPropagation(); setEditingFolderId(folder.id); setEditingFolderName(folder.name); }}
+                className="w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-blue-500 hover:border-blue-300 text-xs leading-none flex items-center justify-center">✎</button>
+              <button type="button"
+                onClick={e=>{ e.stopPropagation(); deleteFolder(folder.id); }}
+                className="w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-300 text-xs leading-none flex items-center justify-center">×</button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 
-  if (step === "folders") {
+  // ── 루트 화면 ─────────────────────────────────────────────────────────────
+  if (atRoot) {
+    const unclassified = materials.filter(m => !m.folderId);
+    const rootFolders = folders.filter(f => !f.parentId);
     return (
       <div className="space-y-5">
         <Card className="p-5 space-y-4">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <h2 className="text-lg font-bold">교재 폴더</h2>
-          </div>
+          <h2 className="text-lg font-bold">교재 폴더</h2>
           <div className="flex gap-2">
             <input value={folderForm} onChange={e=>setFolderForm(e.target.value)}
               onKeyDown={e=>e.key==="Enter"&&addFolder()}
@@ -119,48 +191,10 @@ function MaterialsTab({ materials }) {
               className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"/>
             <Btn onClick={addFolder}>+ 폴더 추가</Btn>
           </div>
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
-            {folders.map(folder => {
-              const matCount = materials.filter(m => m.folderId === folder.id).length;
-              return (
-                <div key={folder.id} className="group relative">
-                  {editingFolderId === folder.id ? (
-                    <div className="w-full aspect-square rounded-2xl border-2 border-blue-200 bg-blue-50 flex flex-col items-center justify-center gap-2 p-3">
-                      <span className="text-3xl leading-none">📚</span>
-                      <input autoFocus value={editingFolderName} onChange={e=>setEditingFolderName(e.target.value)}
-                        onKeyDown={e=>{ if(e.key==="Enter") saveEditFolder(); if(e.key==="Escape") setEditingFolderId(null); }}
-                        onBlur={saveEditFolder}
-                        className="w-full text-center text-xs border-b border-blue-400 bg-transparent outline-none"/>
-                    </div>
-                  ) : (
-                    <button type="button" onClick={() => openFolder(folder)}
-                      className="w-full aspect-square rounded-2xl border-2 border-amber-200 bg-amber-50 hover:bg-amber-100 transition flex flex-col items-center justify-center gap-2 p-3">
-                      <span className="text-4xl leading-none">📁</span>
-                      <span className="text-xs font-semibold text-amber-900 text-center leading-tight line-clamp-2">{folder.name}</span>
-                      <span className="text-[10px] text-amber-600">{matCount}권</span>
-                    </button>
-                  )}
-                  <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                    <button type="button"
-                      onClick={e=>{ e.stopPropagation(); setEditingFolderId(folder.id); setEditingFolderName(folder.name); }}
-                      className="w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-blue-500 hover:border-blue-300 text-xs leading-none flex items-center justify-center">
-                      ✎
-                    </button>
-                    <button type="button"
-                      onClick={e=>{ e.stopPropagation(); deleteFolder(folder.id); }}
-                      className="w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-300 text-xs leading-none flex items-center justify-center">
-                      ×
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-            {folders.length === 0 && unclassified.length === 0 && (
-              <div className="col-span-5 rounded-2xl border border-dashed p-8 text-sm text-slate-400 text-center">폴더를 추가해 주세요.</div>
-            )}
-          </div>
-
-          {/* 미분류 교재 */}
+          {rootFolders.length === 0 && unclassified.length === 0
+            ? <div className="rounded-2xl border border-dashed p-8 text-sm text-slate-400 text-center">폴더를 추가해 주세요.</div>
+            : renderFolderGrid(rootFolders)
+          }
           {unclassified.length > 0 && (
             <div className="space-y-2 pt-2 border-t border-slate-100">
               <div className="text-xs font-semibold text-slate-400">미분류 교재 ({unclassified.length})</div>
@@ -171,17 +205,15 @@ function MaterialsTab({ materials }) {
                     <div key={mat.id} className="flex items-center gap-3 rounded-2xl border px-4 py-3 bg-slate-50">
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-sm">{mat.name}</div>
-                        <div className="text-xs text-slate-500 mt-0.5">
-                          {mat.subject} · {mat.totalProblems}문제{est !== null ? ` · 예상 ${est}h` : ""}
-                        </div>
+                        <div className="text-xs text-slate-500 mt-0.5">{mat.subject} · {mat.totalProblems}문제{est !== null ? ` · 예상 ${est}h` : ""}</div>
                       </div>
-                      {folders.length > 0 && (
+                      {rootFolders.length > 0 && (
                         <select defaultValue="" onChange={async e => {
                           if (!e.target.value) return;
                           await db.ref(`materials/${mat.id}/folderId`).set(e.target.value);
                         }} className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white outline-none">
                           <option value="">폴더로 이동</option>
-                          {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                          {rootFolders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                         </select>
                       )}
                       <Btn variant="outline" size="sm" onClick={async()=>{ if(!confirm("삭제?")) return; await db.ref(`materials/${mat.id}`).remove(); }}>삭제</Btn>
@@ -197,22 +229,44 @@ function MaterialsTab({ materials }) {
   }
 
   // ── 폴더 내부 화면 ─────────────────────────────────────────────────────────
-  const activeFolder = folders.find(f => f.id === activeFolderId);
   const folderMaterials = materials.filter(m => m.folderId === activeFolderId);
   const usedSubjects = [...new Set(folderMaterials.map(m => m.subject).filter(Boolean))].sort((a,b) => SUBJECTS.indexOf(a) - SUBJECTS.indexOf(b));
   const filtered = subjectFilter === "전체" ? folderMaterials : folderMaterials.filter(m => m.subject === subjectFilter);
 
   return (
     <div className="space-y-5">
-      {/* 헤더 */}
-      <div className="flex items-center gap-3">
-        <button onClick={goBack} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 transition">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/></svg>
-          폴더 목록
-        </button>
-        <span className="text-slate-300">/</span>
-        <span className="text-sm font-semibold text-slate-800">📚 {activeFolder?.name}</span>
+      {/* 브레드크럼 헤더 */}
+      <div className="flex items-center gap-1.5 flex-wrap text-sm">
+        <button onClick={() => setFolderPath([])} className="text-slate-400 hover:text-slate-700 transition">교재 폴더</button>
+        {folderPath.map((p, i) => (
+          <React.Fragment key={p.id}>
+            <span className="text-slate-300">/</span>
+            {i < folderPath.length - 1
+              ? <button onClick={() => navigateTo(i)} className="text-slate-400 hover:text-slate-700 transition">{p.name}</button>
+              : <span className="font-semibold text-slate-800">📁 {p.name}</span>
+            }
+          </React.Fragment>
+        ))}
+        <button onClick={goBack} className="ml-2 text-xs px-2 py-0.5 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition">← 뒤로</button>
       </div>
+
+      {/* 하위 폴더 */}
+      <Card className="p-5 space-y-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="text-base font-bold">하위 폴더</h2>
+        </div>
+        <div className="flex gap-2">
+          <input value={folderForm} onChange={e=>setFolderForm(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&addFolder()}
+            placeholder="새 하위 폴더명 입력"
+            className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"/>
+          <Btn onClick={addFolder}>+ 추가</Btn>
+        </div>
+        {currentSubfolders.length === 0
+          ? <div className="rounded-2xl border border-dashed p-4 text-sm text-slate-400 text-center">하위 폴더 없음</div>
+          : renderFolderGrid(currentSubfolders)
+        }
+      </Card>
 
       {/* 교재 등록/수정 폼 */}
       <Card className="p-5 space-y-4">
