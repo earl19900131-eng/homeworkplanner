@@ -286,6 +286,67 @@ function StudentProfileTab({ studentId, studentName, currentPin, teacherMode = f
   );
 }
 
+function StudentLogTab({ studentId }) {
+  const [logs, setLogs] = useState([]);
+
+  useEffect(() => {
+    const ref = db.ref(`studentLogs/${studentId}`);
+    ref.on("value", snap => {
+      const data = snap.val();
+      if (!data) { setLogs([]); return; }
+      setLogs(Object.values(data).sort((a, b) => b.createdAt - a.createdAt));
+    });
+    return () => ref.off();
+  }, [studentId]);
+
+  if (logs.length === 0) {
+    return <Card className="p-8 text-center text-sm text-slate-400">아직 기록이 없습니다.</Card>;
+  }
+
+  return (
+    <Card className="p-0 overflow-hidden">
+      <div className="divide-y divide-slate-100">
+        {logs.map(log => {
+          const hasXp = log.xpDelta !== 0;
+          const hasCp = log.cpDelta !== 0;
+          const isPos = log.xpDelta > 0;
+          return (
+            <div key={log.id} className="flex items-start gap-3 px-4 py-3">
+              <div className="mt-0.5 w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-sm"
+                style={{ background: isPos ? "#ecfdf5" : "#fef2f2" }}>
+                {isPos ? "⭐" : "📉"}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-slate-400">{log.date}</span>
+                  <div className="flex gap-1 flex-wrap">
+                    {(log.tags || []).map(t => (
+                      <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600">{t}</span>
+                    ))}
+                  </div>
+                </div>
+                <div className="mt-1 flex items-center gap-3 flex-wrap">
+                  {hasXp && (
+                    <span className={`text-xs font-bold ${log.xpDelta > 0 ? "text-emerald-600" : "text-red-500"}`}>
+                      {log.xpDelta > 0 ? "+" : ""}{log.xpDelta} XP
+                    </span>
+                  )}
+                  {hasCp && (
+                    <span className="text-xs font-bold text-blue-500">+{log.cpDelta} CP</span>
+                  )}
+                  <span className="text-[10px] text-slate-400">
+                    누적 {log.totalXp ?? "-"} XP · 미지급 {log.totalCp ?? "-"} CP
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
 function StudentMyPage({ studentHW, studentName, studentId, currentPin, today }) {
   const [tab, setTab] = useState("stats");
   const [viewMode, setViewMode] = useState("monthly");
@@ -335,7 +396,7 @@ function StudentMyPage({ studentHW, studentName, studentId, currentPin, today })
   return (
     <div className="space-y-4">
       <div className="flex gap-2 bg-slate-100 rounded-2xl p-1">
-        {[["stats","📊 학습 통계"],["profile","👤 내 정보"]].map(([t,l]) => (
+        {[["stats","📊 학습 통계"],["log","📋 활동 로그"],["profile","👤 내 정보"]].map(([t,l]) => (
           <button key={t} type="button" onClick={() => setTab(t)}
             className={"flex-1 py-2 text-sm font-medium rounded-xl transition " + (tab===t?"bg-white shadow-sm":"text-slate-500 hover:text-slate-700")}>
             {l}
@@ -418,6 +479,8 @@ function StudentMyPage({ studentHW, studentName, studentId, currentPin, today })
           </Card>
         </div>
       )}
+
+      {tab === "log" && <StudentLogTab studentId={studentId}/>}
 
       {tab === "profile" && (
         <StudentProfileTab studentId={studentId} studentName={studentName} currentPin={currentPin}/>

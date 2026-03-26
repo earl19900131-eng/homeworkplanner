@@ -547,17 +547,32 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
     const old = oldSnap.val() || {};
     const xpDelta = newXp - (old.xp || 0);
     const cpDelta = newCp - (old.cp || 0);
+    const tagsChanged = JSON.stringify(tags) !== JSON.stringify(old.tags || []);
 
     // lessonAttendance 저장
     await db.ref(`lessonAttendance/${lesson._key}/${studentId}`).update({ tags, xp: newXp, cp: newCp });
 
-    // studentProfiles에 누적
-    if (xpDelta !== 0 || cpDelta !== 0) {
+    // studentProfiles에 누적 + 로그 기록
+    if (tagsChanged) {
       const profileSnap = await db.ref(`studentProfiles/${studentId}`).get();
       const profile = profileSnap.val() || {};
       const updates = {};
-      if (xpDelta !== 0) updates[`studentProfiles/${studentId}/season3Xp`] = Number(profile.season3Xp || 0) + xpDelta;
-      if (cpDelta !== 0) updates[`studentProfiles/${studentId}/unpaidCp`] = Math.max(0, Number(profile.unpaidCp || 0) + cpDelta);
+      const newTotalXp = Number(profile.season3Xp || 0) + xpDelta;
+      const newTotalCp = Math.max(0, Number(profile.unpaidCp || 0) + cpDelta);
+      if (xpDelta !== 0) updates[`studentProfiles/${studentId}/season3Xp`] = newTotalXp;
+      if (cpDelta !== 0) updates[`studentProfiles/${studentId}/unpaidCp`] = newTotalCp;
+
+      // 로그 기록
+      const logId = Date.now().toString();
+      updates[`studentLogs/${studentId}/${logId}`] = {
+        id: logId, type: "tags",
+        date: lesson.date || todayString(),
+        tags,
+        xpDelta, cpDelta,
+        totalXp: newTotalXp,
+        totalCp: newTotalCp,
+        createdAt: Date.now(),
+      };
       await db.ref().update(updates);
     }
   };
