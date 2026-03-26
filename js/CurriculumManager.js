@@ -291,24 +291,6 @@ function MaterialsTab({ materials }) {
         )}
       </div>
 
-      {/* 하위 폴더 */}
-      <Card className="p-5 space-y-3">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <h2 className="text-base font-bold">하위 폴더</h2>
-        </div>
-        <div className="flex gap-2">
-          <input value={folderForm} onChange={e=>setFolderForm(e.target.value)}
-            onKeyDown={e=>e.key==="Enter"&&addFolder()}
-            placeholder="새 하위 폴더명 입력"
-            className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"/>
-          <Btn onClick={addFolder}>+ 추가</Btn>
-        </div>
-        {currentSubfolders.length === 0
-          ? <div className="rounded-2xl border border-dashed p-4 text-sm text-slate-400 text-center">하위 폴더 없음</div>
-          : renderFolderGrid(currentSubfolders)
-        }
-      </Card>
-
       {/* 교재 등록/수정 폼 */}
       <Card className="p-5 space-y-4">
         <h2 className="text-base font-bold">{editId ? "교재 수정" : "교재 추가"}</h2>
@@ -352,6 +334,24 @@ function MaterialsTab({ materials }) {
           <Btn onClick={handleSave} disabled={saving}>{saving?"저장 중...":(editId?"수정 완료":"교재 추가")}</Btn>
           {editId && <Btn variant="outline" onClick={()=>{ setEditId(null); setForm(empty); setError(""); }}>취소</Btn>}
         </div>
+      </Card>
+
+      {/* 하위 폴더 */}
+      <Card className="p-5 space-y-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="text-base font-bold">하위 폴더</h2>
+        </div>
+        <div className="flex gap-2">
+          <input value={folderForm} onChange={e=>setFolderForm(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&addFolder()}
+            placeholder="새 하위 폴더명 입력"
+            className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"/>
+          <Btn onClick={addFolder}>+ 추가</Btn>
+        </div>
+        {currentSubfolders.length === 0
+          ? <div className="rounded-2xl border border-dashed p-4 text-sm text-slate-400 text-center">하위 폴더 없음</div>
+          : renderFolderGrid(currentSubfolders)
+        }
       </Card>
 
       {/* 교재 목록 */}
