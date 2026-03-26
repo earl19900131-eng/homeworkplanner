@@ -235,6 +235,29 @@ function StudentManager({ students, homeworks }) {
               📥 지급액 다운로드
             </button>
             <button onClick={async () => {
+              if (!confirm(`수업일지 전체 데이터를 읽어 XP/CP를 재계산합니다. 기존 수동 입력값은 덮어씁니다. 계속할까요?`)) return;
+              const snap = await db.ref("lessonAttendance").get();
+              const allAttendance = snap.val() || {};
+              const totals = {};
+              Object.values(allAttendance).forEach(lesson => {
+                Object.entries(lesson).forEach(([sid, rec]) => {
+                  if (!totals[sid]) totals[sid] = { xp: 0, cp: 0 };
+                  totals[sid].xp += Number(rec.xp || 0);
+                  totals[sid].cp += Number(rec.cp || 0);
+                });
+              });
+              const updates = {};
+              Object.entries(totals).forEach(([sid, t]) => {
+                updates[`studentProfiles/${sid}/season3Xp`] = t.xp;
+                updates[`studentProfiles/${sid}/unpaidCp`] = Math.max(0, t.cp);
+              });
+              await db.ref().update(updates);
+              alert("동기화 완료!");
+            }}
+              className="text-xs text-white bg-indigo-500 hover:bg-indigo-600 px-3 py-1.5 rounded-lg font-medium transition">
+              🔄 XP/CP 전체 동기화
+            </button>
+            <button onClick={async () => {
               if (!confirm(`미지급 CP를 전체 초기화할까요? (${sortedStudents.length}명)`)) return;
               const updates = {};
               sortedStudents.forEach(st => { updates[`studentProfiles/${st.id}/unpaidCp`] = null; });
