@@ -1098,6 +1098,7 @@ function AssessmentsTab({ students = [] }) {
 
   const openMockResults = (exam) => {
     setMockResultExam(exam);
+    if (exam.folderId) setActiveFolderId(exam.folderId);
     setStep("mock_results");
     const ref = db.ref(`mockExamResults/${exam.id}`);
     ref.once("value", snap => {
@@ -1419,7 +1420,7 @@ function AssessmentsTab({ students = [] }) {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3">
-          <button type="button" onClick={()=>setStep("select")} className="text-sm text-slate-500 hover:text-slate-800">← 뒤로</button>
+          <button type="button" onClick={()=>setStep(exam.folderId ? "folder_view" : "select")} className="text-sm text-slate-500 hover:text-slate-800">← 뒤로</button>
           <h2 className="text-lg font-bold">{exam.name} — {exam.round}차 결과</h2>
         </div>
         <Card className="p-5 space-y-3">
