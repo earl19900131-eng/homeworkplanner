@@ -222,6 +222,24 @@ function TagCalendarModal({ students, onClose }) {
   );
 }
 
+function StudentExpandedDetail({ studentId, studentName }) {
+  const [tab, setTab] = React.useState("profile");
+  return (
+    <div>
+      <div className="flex gap-2 mb-3">
+        {[["profile","👤 프로필"],["log","📋 활동 로그"]].map(([t,l]) => (
+          <button key={t} type="button" onClick={() => setTab(t)}
+            className={"px-3 py-1.5 text-xs font-medium rounded-xl transition " + (tab===t?"bg-white shadow border text-slate-800":"text-slate-500 hover:text-slate-700 bg-slate-100")}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {tab === "profile" && <StudentProfileTab studentId={studentId} studentName={studentName} teacherMode={true}/>}
+      {tab === "log" && <StudentLogTab studentId={studentId} teacherMode={true}/>}
+    </div>
+  );
+}
+
 // ── 학생 관리 탭 (선생님용) ────────────────────────────────────────────────────
 function StudentManager({ students, homeworks }) {
   const [newName, setNewName] = useState("");
@@ -858,7 +876,7 @@ function StudentManager({ students, homeworks }) {
                         {isExpanded && (
                           <tr>
                             <td colSpan={12} className="px-4 pb-4 pt-2 border-b bg-slate-50/80">
-                              <StudentProfileTab studentId={s.id} studentName={s.name} teacherMode={true}/>
+                              <StudentExpandedDetail studentId={s.id} studentName={s.name}/>
                             </td>
                           </tr>
                         )}

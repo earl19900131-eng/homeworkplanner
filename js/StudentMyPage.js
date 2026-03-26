@@ -286,8 +286,9 @@ function StudentProfileTab({ studentId, studentName, currentPin, teacherMode = f
   );
 }
 
-function StudentLogTab({ studentId }) {
+function StudentLogTab({ studentId, teacherMode = false }) {
   const [logs, setLogs] = useState([]);
+  const [deleting, setDeleting] = useState(null);
 
   useEffect(() => {
     const ref = db.ref(`studentLogs/${studentId}`);
@@ -298,6 +299,27 @@ function StudentLogTab({ studentId }) {
     });
     return () => ref.off();
   }, [studentId]);
+
+  const deleteLog = async (log) => {
+    if (!confirm(`이 로그를 삭제할까요?\nXP ${log.xpDelta >= 0 ? '+' : ''}${log.xpDelta ?? 0}, CP ${log.cpDelta >= 0 ? '+' : ''}${log.cpDelta ?? 0} 가 역산됩니다.`)) return;
+    setDeleting(log.id);
+    try {
+      const profileSnap = await db.ref(`studentProfiles/${studentId}`).get();
+      const profile = profileSnap.val() || {};
+      const updates = {};
+      updates[`studentLogs/${studentId}/${log.id}`] = null;
+      const xpDelta = Number(log.xpDelta || 0);
+      const cpDelta = Number(log.cpDelta || 0);
+      if (xpDelta !== 0) {
+        updates[`studentProfiles/${studentId}/season3Xp`] = Number(profile.season3Xp || 0) - xpDelta;
+      }
+      if (cpDelta !== 0) {
+        updates[`studentProfiles/${studentId}/unpaidCp`] = Math.max(0, Number(profile.unpaidCp || 0) - cpDelta);
+      }
+      await db.ref().update(updates);
+    } catch(e) { alert("삭제 실패: " + e.message); }
+    setDeleting(null);
+  };
 
   if (logs.length === 0) {
     return <Card className="p-8 text-center text-sm text-slate-400">아직 기록이 없습니다.</Card>;
@@ -339,6 +361,13 @@ function StudentLogTab({ studentId }) {
                   </span>
                 </div>
               </div>
+              {teacherMode && (
+                <button onClick={() => deleteLog(log)} disabled={deleting === log.id}
+                  className="shrink-0 mt-0.5 text-slate-300 hover:text-red-500 transition disabled:opacity-40"
+                  title="로그 삭제">
+                  {deleting === log.id ? "…" : "✕"}
+                </button>
+              )}
             </div>
           );
         })}
