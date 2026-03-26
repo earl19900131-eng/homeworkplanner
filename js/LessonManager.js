@@ -540,8 +540,26 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
     else await db.ref(`lessonAttendance/${lesson._key}/${studentId}/현행평가`).set(val);
   };
   const rawSaveTags = async (studentId, tags) => {
-    const { xp, cp } = calcPoints(tags);
-    await db.ref(`lessonAttendance/${lesson._key}/${studentId}`).update({ tags, xp, cp });
+    const { xp: newXp, cp: newCp } = calcPoints(tags);
+
+    // 이전 값 읽어서 delta 계산
+    const oldSnap = await db.ref(`lessonAttendance/${lesson._key}/${studentId}`).get();
+    const old = oldSnap.val() || {};
+    const xpDelta = newXp - (old.xp || 0);
+    const cpDelta = newCp - (old.cp || 0);
+
+    // lessonAttendance 저장
+    await db.ref(`lessonAttendance/${lesson._key}/${studentId}`).update({ tags, xp: newXp, cp: newCp });
+
+    // studentProfiles에 누적
+    if (xpDelta !== 0 || cpDelta !== 0) {
+      const profileSnap = await db.ref(`studentProfiles/${studentId}`).get();
+      const profile = profileSnap.val() || {};
+      const updates = {};
+      if (xpDelta !== 0) updates[`studentProfiles/${studentId}/season3Xp`] = Number(profile.season3Xp || 0) + xpDelta;
+      if (cpDelta !== 0) updates[`studentProfiles/${studentId}/unpaidCp`] = Math.max(0, Number(profile.unpaidCp || 0) + cpDelta);
+      await db.ref().update(updates);
+    }
   };
 
   // 사용자 액션 저장 (undo 스택 쌓음)
