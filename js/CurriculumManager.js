@@ -32,6 +32,10 @@ function MaterialsTab({ materials }) {
   const [error, setError] = React.useState("");
   const [subjectFilter, setSubjectFilter] = React.useState("전체");
 
+  // 드래그 앤 드랍
+  const [draggingMatId, setDraggingMatId] = React.useState(null);
+  const [dragOverTarget, setDragOverTarget] = React.useState(null); // folder id or "__parent__"
+
   const parsedProblems = React.useMemo(() => parseProblemInput(form.problemInput), [form.problemInput]);
 
   // 현재 위치
@@ -80,6 +84,13 @@ function MaterialsTab({ materials }) {
     // 삭제된 폴더가 현재 경로에 있으면 올라가기
     const idx = folderPath.findIndex(p => p.id === id);
     if (idx !== -1) setFolderPath(folderPath.slice(0, idx));
+  };
+
+  const dropMaterial = async (targetFolderId) => {
+    if (!draggingMatId) return;
+    await db.ref(`materials/${draggingMatId}/folderId`).set(targetFolderId || null);
+    setDraggingMatId(null);
+    setDragOverTarget(null);
   };
 
   const openFolder = (folder) => {
@@ -139,37 +150,47 @@ function MaterialsTab({ materials }) {
       {folderList.map(folder => {
         const directMats = materials.filter(m => m.folderId === folder.id).length;
         const subCount = folders.filter(f => f.parentId === folder.id).length;
+        const isDragOver = draggingMatId && dragOverTarget === folder.id;
         return (
-          <div key={folder.id} className="group relative">
+          <div key={folder.id} className="group relative"
+            onDragOver={draggingMatId ? (e => { e.preventDefault(); setDragOverTarget(folder.id); }) : undefined}
+            onDragLeave={draggingMatId ? (() => setDragOverTarget(null)) : undefined}
+            onDrop={draggingMatId ? (e => { e.preventDefault(); dropMaterial(folder.id); }) : undefined}>
             {editingFolderId === folder.id ? (
               <div className="w-full aspect-square rounded-2xl border-2 border-blue-200 bg-blue-50 flex flex-col items-center justify-center gap-2 p-3">
-                <span className="text-3xl leading-none">{atRoot ? "📁" : "📂"}</span>
+                <span className="text-3xl leading-none">📁</span>
                 <input autoFocus value={editingFolderName} onChange={e=>setEditingFolderName(e.target.value)}
                   onKeyDown={e=>{ if(e.key==="Enter") saveEditFolder(); if(e.key==="Escape") setEditingFolderId(null); }}
                   onBlur={saveEditFolder}
                   className="w-full text-center text-xs border-b border-blue-400 bg-transparent outline-none"/>
               </div>
             ) : (
-              <button type="button" onClick={() => openFolder(folder)}
-                className="w-full aspect-square rounded-2xl border-2 border-amber-200 bg-amber-50 hover:bg-amber-100 transition flex flex-col items-center justify-center gap-2 p-3">
-                <span className="text-4xl leading-none">📁</span>
+              <button type="button" onClick={() => !draggingMatId && openFolder(folder)}
+                className={`w-full aspect-square rounded-2xl border-2 transition flex flex-col items-center justify-center gap-2 p-3
+                  ${isDragOver ? "border-blue-400 bg-blue-50 scale-105 shadow-lg" : "border-amber-200 bg-amber-50 hover:bg-amber-100"}`}>
+                <span className="text-4xl leading-none">{isDragOver ? "📂" : "📁"}</span>
                 <span className="text-xs font-semibold text-amber-900 text-center leading-tight line-clamp-2">{folder.name}</span>
-                <span className="text-[10px] text-amber-600">
-                  {directMats > 0 ? `교재 ${directMats}` : ""}
-                  {directMats > 0 && subCount > 0 ? " · " : ""}
-                  {subCount > 0 ? `폴더 ${subCount}` : ""}
-                  {directMats === 0 && subCount === 0 ? "비어있음" : ""}
-                </span>
+                {isDragOver
+                  ? <span className="text-[10px] text-blue-500 font-bold">여기에 놓기</span>
+                  : <span className="text-[10px] text-amber-600">
+                      {directMats > 0 ? `교재 ${directMats}` : ""}
+                      {directMats > 0 && subCount > 0 ? " · " : ""}
+                      {subCount > 0 ? `폴더 ${subCount}` : ""}
+                      {directMats === 0 && subCount === 0 ? "비어있음" : ""}
+                    </span>
+                }
               </button>
             )}
-            <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition">
-              <button type="button"
-                onClick={e=>{ e.stopPropagation(); setEditingFolderId(folder.id); setEditingFolderName(folder.name); }}
-                className="w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-blue-500 hover:border-blue-300 text-xs leading-none flex items-center justify-center">✎</button>
-              <button type="button"
-                onClick={e=>{ e.stopPropagation(); deleteFolder(folder.id); }}
-                className="w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-300 text-xs leading-none flex items-center justify-center">×</button>
-            </div>
+            {!draggingMatId && (
+              <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                <button type="button"
+                  onClick={e=>{ e.stopPropagation(); setEditingFolderId(folder.id); setEditingFolderName(folder.name); }}
+                  className="w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-blue-500 hover:border-blue-300 text-xs leading-none flex items-center justify-center">✎</button>
+                <button type="button"
+                  onClick={e=>{ e.stopPropagation(); deleteFolder(folder.id); }}
+                  className="w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-300 text-xs leading-none flex items-center justify-center">×</button>
+              </div>
+            )}
           </div>
         );
       })}
@@ -201,8 +222,13 @@ function MaterialsTab({ materials }) {
               <div className="grid grid-cols-2 gap-2">
                 {unclassified.map(mat => {
                   const est = mat.minutesPerProblem ? Math.round(mat.totalProblems * mat.minutesPerProblem / 60 * 10) / 10 : null;
+                  const isDragging = draggingMatId === mat.id;
                   return (
-                    <div key={mat.id} className="flex items-center gap-3 rounded-2xl border px-4 py-3 bg-slate-50">
+                    <div key={mat.id}
+                      draggable
+                      onDragStart={() => setDraggingMatId(mat.id)}
+                      onDragEnd={() => { setDraggingMatId(null); setDragOverTarget(null); }}
+                      className={`flex items-center gap-3 rounded-2xl border px-4 py-3 bg-slate-50 cursor-grab active:cursor-grabbing transition ${isDragging ? "opacity-40" : ""}`}>
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-sm">{mat.name}</div>
                         <div className="text-xs text-slate-500 mt-0.5">{mat.subject} · {mat.totalProblems}문제{est !== null ? ` · 예상 ${est}h` : ""}</div>
@@ -237,17 +263,32 @@ function MaterialsTab({ materials }) {
     <div className="space-y-5">
       {/* 브레드크럼 헤더 */}
       <div className="flex items-center gap-1.5 flex-wrap text-sm">
-        <button onClick={() => setFolderPath([])} className="text-slate-400 hover:text-slate-700 transition">교재 폴더</button>
+        <button onClick={() => setFolderPath([])}
+          onDragOver={draggingMatId ? (e=>{ e.preventDefault(); setDragOverTarget("__root__"); }) : undefined}
+          onDragLeave={draggingMatId ? (()=>setDragOverTarget(null)) : undefined}
+          onDrop={draggingMatId ? (e=>{ e.preventDefault(); dropMaterial(null); }) : undefined}
+          className={`transition rounded-lg px-1.5 py-0.5 ${dragOverTarget==="__root__" ? "bg-blue-100 text-blue-600 font-bold" : "text-slate-400 hover:text-slate-700"}`}>
+          교재 폴더
+        </button>
         {folderPath.map((p, i) => (
           <React.Fragment key={p.id}>
             <span className="text-slate-300">/</span>
             {i < folderPath.length - 1
-              ? <button onClick={() => navigateTo(i)} className="text-slate-400 hover:text-slate-700 transition">{p.name}</button>
+              ? <button onClick={() => navigateTo(i)}
+                  onDragOver={draggingMatId ? (e=>{ e.preventDefault(); setDragOverTarget("__bc__"+p.id); }) : undefined}
+                  onDragLeave={draggingMatId ? (()=>setDragOverTarget(null)) : undefined}
+                  onDrop={draggingMatId ? (e=>{ e.preventDefault(); dropMaterial(p.id); }) : undefined}
+                  className={`transition rounded-lg px-1.5 py-0.5 ${dragOverTarget==="__bc__"+p.id ? "bg-blue-100 text-blue-600 font-bold" : "text-slate-400 hover:text-slate-700"}`}>
+                  {p.name}
+                </button>
               : <span className="font-semibold text-slate-800">📁 {p.name}</span>
             }
           </React.Fragment>
         ))}
         <button onClick={goBack} className="ml-2 text-xs px-2 py-0.5 rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 transition">← 뒤로</button>
+        {draggingMatId && (
+          <span className="ml-2 text-xs text-blue-500 bg-blue-50 px-2 py-0.5 rounded-lg animate-pulse">📦 폴더나 경로에 드랍하세요</span>
+        )}
       </div>
 
       {/* 하위 폴더 */}
@@ -333,8 +374,15 @@ function MaterialsTab({ materials }) {
           : <div className="grid grid-cols-2 gap-2">
               {filtered.map(mat => {
                 const est = mat.minutesPerProblem ? Math.round(mat.totalProblems * mat.minutesPerProblem / 60 * 10) / 10 : null;
+                const isDragging = draggingMatId === mat.id;
                 return (
-                  <div key={mat.id} className="flex items-center gap-3 rounded-2xl border px-4 py-3">
+                  <div key={mat.id}
+                    draggable
+                    onDragStart={() => setDraggingMatId(mat.id)}
+                    onDragEnd={() => { setDraggingMatId(null); setDragOverTarget(null); }}
+                    className={`flex items-center gap-3 rounded-2xl border px-4 py-3 cursor-grab active:cursor-grabbing transition
+                      ${isDragging ? "opacity-40 border-blue-300 bg-blue-50" : "hover:border-slate-300"}`}>
+                    <div className="text-slate-300 shrink-0 select-none">⠿</div>
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-sm">{mat.name}</div>
                       <div className="text-xs text-slate-500 mt-0.5">
