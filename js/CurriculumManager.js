@@ -445,6 +445,8 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
   const [hoveredEdge, setHoveredEdge] = React.useState(null); // { fromId, toId }
   const [spaceDown, setSpaceDown] = React.useState(false);
   const [panning, setPanning] = React.useState(null); // { startX, startY, scrollLeft, scrollTop }
+  const [pendingEdge, setPendingEdge] = React.useState(null); // { fromId, toId } — 시작번호 입력 대기
+  const [pendingStartNum, setPendingStartNum] = React.useState("1");
   const canvasRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -480,6 +482,8 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
 
   const selectedIdsRef = React.useRef(selectedIds);
   React.useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
+  const connectingFromRef = React.useRef(connectingFrom);
+  React.useEffect(() => { connectingFromRef.current = connectingFrom; }, [connectingFrom]);
   const deleteSelectedRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -569,12 +573,23 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
 
   const handlePortClick = (e, nodeId) => {
     e.stopPropagation(); e.preventDefault();
-    if (connectingFrom) {
-      if (connectingFrom !== nodeId) {
-        const from = nodes[connectingFrom];
-        const cur = from.nextNodes || [];
-        if (!cur.includes(nodeId))
-          db.ref(`${nodesRef}/${connectingFrom}`).update({ nextNodes: [...cur, nodeId] });
+    const cf = connectingFromRef.current;
+    if (cf) {
+      if (cf !== nodeId) {
+        const from = nodes[cf];
+        const cur = from?.nextNodes || [];
+        if (!cur.includes(nodeId)) {
+          const toNode = nodes[nodeId];
+          const isFromStudent = from?.type === "start" || cf.startsWith("start_");
+          const isToMaterial = toNode?.type === "material" || (toNode?.materialId !== undefined);
+          if (isFromStudent && isToMaterial) {
+            setPendingEdge({ fromId: cf, toId: nodeId });
+            setPendingStartNum("1");
+            setConnectingFrom(null);
+            return;
+          }
+          db.ref(`${nodesRef}/${cf}`).update({ nextNodes: [...cur, nodeId] });
+        }
       }
       setConnectingFrom(null);
     } else {
@@ -588,12 +603,24 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
     e.preventDefault(); e.stopPropagation();
 
     // 연결 모드
-    if (connectingFrom) {
-      if (connectingFrom !== nodeId) {
-        const from = nodes[connectingFrom];
-        const cur = from.nextNodes || [];
-        if (!cur.includes(nodeId))
-          db.ref(`${nodesRef}/${connectingFrom}`).update({ nextNodes: [...cur, nodeId] });
+    const cf = connectingFromRef.current;
+    if (cf) {
+      if (cf !== nodeId) {
+        const from = nodes[cf];
+        const cur = from?.nextNodes || [];
+        if (!cur.includes(nodeId)) {
+          const toNode = nodes[nodeId];
+          const isFromStudent = from?.type === "start" || cf.startsWith("start_");
+          const isToMaterial = toNode?.type === "material" || (toNode?.materialId !== undefined);
+          if (isFromStudent && isToMaterial) {
+            setPendingEdge({ fromId: cf, toId: nodeId });
+            setPendingStartNum("1");
+            setConnectingFrom(null);
+            setSelectedIds(new Set([nodeId]));
+            return;
+          }
+          db.ref(`${nodesRef}/${cf}`).update({ nextNodes: [...cur, nodeId] });
+        }
       }
       setConnectingFrom(null);
       setSelectedIds(new Set([nodeId]));
@@ -621,7 +648,9 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
     const dragNodeIds = nextSelected.has(nodeId) ? [...nextSelected] : [nodeId];
     const offsets = {};
     for (const nid of dragNodeIds) {
-      const pos = getPos(nodes[nid]);
+      const n = nodes[nid];
+      if (!n) continue;
+      const pos = getPos(n);
       offsets[nid] = { ox: cx - pos.x, oy: cy - pos.y };
     }
     setDragging({ offsets });
@@ -724,6 +753,18 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
     }
     setShowAddMaterial(false);
     setSelectedMaterialIds([]);
+  };
+
+  const confirmEdgeStart = async () => {
+    if (!pendingEdge) return;
+    const { fromId, toId } = pendingEdge;
+    const from = nodes[fromId];
+    const cur = from?.nextNodes || [];
+    const num = parseInt(pendingStartNum) || 1;
+    await db.ref(`${nodesRef}/${fromId}`).update({ nextNodes: [...cur, toId] });
+    await db.ref(`${nodesRef}/${fromId}/edgeMeta/${toId}`).set({ startNum: num });
+    setPendingEdge(null);
+    setPendingStartNum("1");
   };
 
   const toggleEdge = async (fromId, toId) => {
@@ -1040,6 +1081,20 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
                           <text x="0" y="4" textAnchor="middle" fontSize="11" fill="#ef4444" fontWeight="bold" style={{ userSelect: "none" }}>×</text>
                         </g>
                       )}
+                      {/* 시작번호 라벨 (학생→교재) */}
+                      {(() => {
+                        const startNum = node.edgeMeta?.[tid]?.startNum;
+                        if (!startNum) return null;
+                        const lx = x1 + (x2 - x1) * 0.22;
+                        const ly = y1 + (y2 - y1) * 0.22 - 10;
+                        const label = `${startNum}번~`;
+                        return (
+                          <g style={{ pointerEvents: "none" }}>
+                            <rect x={lx - 16} y={ly - 8} width={32} height={14} rx={4} fill="white" stroke="#64748b" strokeWidth={1}/>
+                            <text x={lx} y={ly + 2} textAnchor="middle" fontSize={8} fill="#334155" fontWeight={700}>{label}</text>
+                          </g>
+                        );
+                      })()}
                     </g>
                   );
                 }).filter(Boolean)
@@ -1063,8 +1118,7 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
                   {/* 왼쪽 포트 (학생 노드는 숨김) */}
                   {node.type !== "start"
                     ? <button data-port="left"
-                        onMouseDown={e => { e.stopPropagation(); e.preventDefault(); }}
-                        onClick={e => handlePortClick(e, node.id)}
+                        onMouseDown={e => { e.stopPropagation(); e.preventDefault(); handlePortClick(e, node.id); }}
                         style={portStyle(isConnSrc)}>⊕</button>
                     : <div style={{width: PORT_SIZE}}/>
                   }
@@ -1112,8 +1166,7 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
 
                   {/* 오른쪽 포트 */}
                   <button data-port="right"
-                    onMouseDown={e => { e.stopPropagation(); e.preventDefault(); }}
-                    onClick={e => handlePortClick(e, node.id)}
+                    onMouseDown={e => { e.stopPropagation(); e.preventDefault(); handlePortClick(e, node.id); }}
                     style={portStyle(isConnSrc)}>⊕</button>
                 </div>
               );
@@ -1135,6 +1188,54 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
           </div>
         </div>
 
+        {/* 시작번호 입력 모달 */}
+        {pendingEdge && (() => {
+          const fromNode = nodes[pendingEdge.fromId];
+          const toNode = nodes[pendingEdge.toId];
+          return (
+            <div style={{
+              position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+              background: "rgba(0,0,0,0.45)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              zIndex: 9999,
+            }} onClick={e => e.stopPropagation()}>
+              <div style={{
+                background: "white", borderRadius: 14, padding: "20px 24px",
+                boxShadow: "0 8px 32px rgba(0,0,0,0.18)", minWidth: 280,
+              }}>
+                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4, color: "#1e293b" }}>시작 번호 설정</div>
+                <div style={{ fontSize: 12, color: "#64748b", marginBottom: 14 }}>
+                  <span style={{ fontWeight: 600, color: "#334155" }}>{fromNode?.studentName}</span>
+                  {" → "}
+                  <span style={{ fontWeight: 600, color: "#334155" }}>{toNode?.materialName}</span>
+                  <br/>몇 번 문제부터 시작할까요?
+                </div>
+                <input
+                  type="number" min="1" max={toNode?.totalProblems || 9999}
+                  value={pendingStartNum}
+                  onChange={e => setPendingStartNum(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") confirmEdgeStart(); if (e.key === "Escape") { setPendingEdge(null); setPendingStartNum("1"); } }}
+                  autoFocus
+                  style={{
+                    width: "100%", border: "1.5px solid #cbd5e1", borderRadius: 8,
+                    padding: "6px 10px", fontSize: 20, fontWeight: 700, textAlign: "center",
+                    outline: "none", marginBottom: 14, boxSizing: "border-box",
+                  }}
+                />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={confirmEdgeStart} style={{
+                    flex: 1, padding: "8px 0", borderRadius: 8, border: "none",
+                    background: "#1e293b", color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer",
+                  }}>확인</button>
+                  <button onClick={() => { setPendingEdge(null); setPendingStartNum("1"); }} style={{
+                    flex: 1, padding: "8px 0", borderRadius: 8, border: "1.5px solid #e2e8f0",
+                    background: "white", color: "#64748b", fontWeight: 600, fontSize: 13, cursor: "pointer",
+                  }}>취소</button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
