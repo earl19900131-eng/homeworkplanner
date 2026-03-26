@@ -10,7 +10,7 @@ function TagCalendarModal({ students, onClose }) {
   useEffect(() => {
     const r1 = db.ref("lessons");
     const r2 = db.ref("lessonAttendance");
-    r1.on("value", s => { const d = s.val(); setLessons(d ? Object.values(d) : []); });
+    r1.on("value", s => { const d = s.val(); setLessons(d ? Object.entries(d).map(([key, val]) => ({ ...val, _key: key })) : []); });
     r2.on("value", s => setAttendance(s.val() || {}));
     return () => { r1.off(); r2.off(); };
   }, []);
