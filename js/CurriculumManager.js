@@ -443,6 +443,8 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
   const [activePathStudentId, setActivePathStudentId] = React.useState(null);
   const [pathEditMode, setPathEditMode] = React.useState(false);
   const [hoveredEdge, setHoveredEdge] = React.useState(null); // { fromId, toId }
+  const [spaceDown, setSpaceDown] = React.useState(false);
+  const [panning, setPanning] = React.useState(null); // { startX, startY, scrollLeft, scrollTop }
   const canvasRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -481,17 +483,26 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
   const deleteSelectedRef = React.useRef(null);
 
   React.useEffect(() => {
-    const fn = (e) => {
+    const onKeyDown = (e) => {
       if (e.key === "Escape") { setConnectingFrom(null); return; }
-      if ((e.key === "Delete" || e.key === "Backspace") && selectedIdsRef.current.size > 0) {
-        const tag = document.activeElement?.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      const tag = document.activeElement?.tagName;
+      const inInput = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+      if (e.code === "Space" && !inInput) {
+        e.preventDefault();
+        setSpaceDown(true);
+        return;
+      }
+      if ((e.key === "Delete" || e.key === "Backspace") && !inInput && selectedIdsRef.current.size > 0) {
         e.preventDefault();
         deleteSelectedRef.current?.();
       }
     };
-    window.addEventListener("keydown", fn);
-    return () => window.removeEventListener("keydown", fn);
+    const onKeyUp = (e) => {
+      if (e.code === "Space") setSpaceDown(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => { window.removeEventListener("keydown", onKeyDown); window.removeEventListener("keyup", onKeyUp); };
   }, []);
 
   const nodeList = Object.values(nodes);
@@ -616,8 +627,14 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
     setDragging({ offsets });
   };
 
-  // 빈 캔버스 mousedown → 박스 선택 시작
+  // 빈 캔버스 mousedown → pan or 박스 선택 시작
   const handleCanvasMouseDown = (e) => {
+    if (spaceDown) {
+      e.preventDefault();
+      const el = canvasRef.current;
+      setPanning({ startX: e.clientX, startY: e.clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop });
+      return;
+    }
     if (connectingFrom) { setConnectingFrom(null); return; }
     if (pathEditMode) return;
     const { cx, cy } = canvasXY(e);
@@ -627,6 +644,12 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
   };
 
   const handleMouseMove = (e) => {
+    if (panning) {
+      const el = canvasRef.current;
+      el.scrollLeft = panning.scrollLeft - (e.clientX - panning.startX);
+      el.scrollTop  = panning.scrollTop  - (e.clientY - panning.startY);
+      return;
+    }
     const { cx, cy } = canvasXY(e);
     if (dragging) {
       const newPos = {};
@@ -641,6 +664,7 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
   };
 
   const handleMouseUp = () => {
+    if (panning) { setPanning(null); return; }
     if (dragging) {
       const updates = Object.keys(dragging.offsets);
       for (const nid of updates) {
@@ -954,7 +978,7 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
           className="w-full border rounded-2xl overflow-auto bg-slate-50"
-          style={{ height: 560, cursor: dragging ? "grabbing" : boxSelect ? "crosshair" : "default" }}
+          style={{ height: 560, cursor: panning ? "grabbing" : spaceDown ? "grab" : dragging ? "grabbing" : boxSelect ? "crosshair" : "default" }}
           onMouseDown={handleCanvasMouseDown}
         >
           <div style={{ width: maxX * zoom, height: maxY * zoom }}>
