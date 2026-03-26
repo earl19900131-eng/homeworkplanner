@@ -1,3 +1,227 @@
+// ── 행동태그 달력 모달 ────────────────────────────────────────────────────────
+function TagCalendarModal({ students, onClose }) {
+  const [lessons, setLessons] = useState([]);
+  const [attendance, setAttendance] = useState({});
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [calMonth, setCalMonth] = useState(() => todayString().slice(0, 7));
+  const [tagModal, setTagModal] = useState(null); // { lessonKey, studentId }
+  const [tagModalOriginal, setTagModalOriginal] = useState([]);
+
+  useEffect(() => {
+    const r1 = db.ref("lessons");
+    const r2 = db.ref("lessonAttendance");
+    r1.on("value", s => { const d = s.val(); setLessons(d ? Object.values(d) : []); });
+    r2.on("value", s => setAttendance(s.val() || {}));
+    return () => { r1.off(); r2.off(); };
+  }, []);
+
+  // 날짜별 lessonKey 맵
+  const dateMap = React.useMemo(() => {
+    const m = {};
+    lessons.forEach(l => {
+      if (!l.date) return;
+      if (!m[l.date]) m[l.date] = [];
+      m[l.date].push(l);
+    });
+    return m;
+  }, [lessons]);
+
+  // 태그 저장 (lessonAttendance + studentProfiles + log)
+  const saveTags = async (lessonKey, studentId, tags) => {
+    const { xp: newXp, cp: newCp } = calcPoints(tags);
+    const oldSnap = await db.ref(`lessonAttendance/${lessonKey}/${studentId}`).get();
+    const old = oldSnap.val() || {};
+    const xpDelta = newXp - (old.xp || 0);
+    const cpDelta = newCp - (old.cp || 0);
+    const tagsChanged = JSON.stringify(tags) !== JSON.stringify(old.tags || []);
+    await db.ref(`lessonAttendance/${lessonKey}/${studentId}`).update({ tags, xp: newXp, cp: newCp });
+    if (tagsChanged && (xpDelta !== 0 || cpDelta !== 0)) {
+      const profileSnap = await db.ref(`studentProfiles/${studentId}`).get();
+      const profile = profileSnap.val() || {};
+      const newTotalXp = Number(profile.season3Xp || 0) + xpDelta;
+      const newTotalCp = Math.max(0, Number(profile.unpaidCp || 0) + cpDelta);
+      const updates = {};
+      if (xpDelta !== 0) updates[`studentProfiles/${studentId}/season3Xp`] = newTotalXp;
+      if (cpDelta !== 0) updates[`studentProfiles/${studentId}/unpaidCp`] = newTotalCp;
+      const logId = Date.now().toString();
+      const lesson = lessons.find(l => l._key === lessonKey);
+      updates[`studentLogs/${studentId}/${logId}`] = {
+        id: logId, type: "tags", date: lesson?.date || selectedDate,
+        tags, xpDelta, cpDelta, totalXp: newTotalXp, totalCp: newTotalCp, createdAt: Date.now(),
+      };
+      await db.ref().update(updates);
+    }
+    setTagModal(null);
+  };
+
+  // 달력 그리드
+  const renderCalendar = () => {
+    const [y, m] = calMonth.split("-").map(Number);
+    const firstDay = new Date(y, m - 1, 1).getDay(); // 0=일
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const today = todayString();
+    const cells = [];
+    const startOffset = firstDay; // 일요일 시작
+    for (let i = 0; i < startOffset; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <button onClick={() => {
+            const [y2, m2] = calMonth.split("-").map(Number);
+            const prev = m2 === 1 ? `${y2-1}-12` : `${y2}-${String(m2-1).padStart(2,"0")}`;
+            setCalMonth(prev);
+          }} className="w-8 h-8 rounded-xl border hover:bg-slate-50 flex items-center justify-center text-slate-600 font-bold">‹</button>
+          <span className="font-bold text-base">{y}년 {m}월</span>
+          <button onClick={() => {
+            const [y2, m2] = calMonth.split("-").map(Number);
+            const next = m2 === 12 ? `${y2+1}-01` : `${y2}-${String(m2+1).padStart(2,"0")}`;
+            setCalMonth(next);
+          }} className="w-8 h-8 rounded-xl border hover:bg-slate-50 flex items-center justify-center text-slate-600 font-bold">›</button>
+        </div>
+        <div className="grid grid-cols-7 gap-1">
+          {["일","월","화","수","목","금","토"].map(d => (
+            <div key={d} className="text-center text-[11px] font-semibold text-slate-400 py-1">{d}</div>
+          ))}
+          {cells.map((d, i) => {
+            if (!d) return <div key={`e${i}`}/>;
+            const dateStr = `${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+            const hasLesson = !!dateMap[dateStr];
+            const isToday = dateStr === today;
+            const isSel = dateStr === selectedDate;
+            return (
+              <button key={dateStr} onClick={() => setSelectedDate(dateStr)}
+                className={`relative aspect-square rounded-xl flex flex-col items-center justify-center text-sm font-medium transition
+                  ${isSel ? "bg-slate-900 text-white" : isToday ? "bg-blue-50 text-blue-700 font-bold" : hasLesson ? "hover:bg-slate-100 text-slate-700" : "text-slate-300 cursor-default"}`}
+                disabled={!hasLesson}>
+                {d}
+                {hasLesson && <span className={`absolute bottom-1 w-1 h-1 rounded-full ${isSel ? "bg-white" : "bg-blue-400"}`}/>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  // 날짜 상세 - 학생 태그 표
+  const renderDayView = () => {
+    const dayLessons = dateMap[selectedDate] || [];
+    const rows = [];
+    dayLessons.forEach(lesson => {
+      const lAtt = attendance[lesson._key] || {};
+      (lesson.studentIds || []).forEach(sid => {
+        const student = students.find(s => s.id === sid);
+        if (!student) return;
+        const rec = lAtt[sid] || {};
+        rows.push({ lessonKey: lesson._key, lesson, student, rec });
+      });
+    });
+    rows.sort((a, b) => a.student.className.localeCompare(b.student.className) || a.student.name.localeCompare(b.student.name));
+
+    const tagModalRec = tagModal ? (attendance[tagModal.lessonKey]?.[tagModal.studentId] || {}) : null;
+    const tagModalStudent = tagModal ? students.find(s => s.id === tagModal.studentId) : null;
+
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <button onClick={() => setSelectedDate(null)}
+            className="w-8 h-8 rounded-xl border hover:bg-slate-50 flex items-center justify-center text-slate-600 font-bold text-lg">‹</button>
+          <span className="font-bold">{selectedDate}</span>
+          <span className="text-sm text-slate-400">· {rows.length}명</span>
+        </div>
+        {rows.length === 0
+          ? <div className="text-center text-sm text-slate-400 py-8">기록 없음</div>
+          : <div className="overflow-x-auto rounded-2xl border border-slate-100">
+              <table className="text-sm border-collapse w-full">
+                <thead>
+                  <tr className="bg-slate-50">
+                    <th className="sticky left-0 z-10 bg-slate-50 px-4 py-2.5 text-left text-xs font-bold text-slate-500 border-b border-r border-slate-200 min-w-[130px]">학생</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-bold text-slate-500 border-b border-r border-slate-200 min-w-[200px]">행동태그</th>
+                    <th className="px-4 py-2.5 text-center text-xs font-bold text-emerald-600 border-b border-r border-slate-200 w-20">XP</th>
+                    <th className="px-4 py-2.5 text-center text-xs font-bold text-blue-600 border-b border-slate-200 w-20">CP</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map(({ lessonKey, student, rec }, ri) => {
+                    const tags = rec.tags || [];
+                    const { xp, cp } = calcPoints(tags);
+                    return (
+                      <tr key={`${lessonKey}-${student.id}`} className={ri % 2 === 0 ? "bg-white" : "bg-slate-50/30"}>
+                        <td className="sticky left-0 z-10 bg-inherit px-4 py-2.5 border-b border-r border-slate-100 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-full bg-slate-800 text-white flex items-center justify-center text-xs font-bold shrink-0">{student.name[0]}</div>
+                            <div>
+                              <div className="font-semibold text-sm">{student.name}</div>
+                              <div className="text-[10px] text-slate-400">{student.className}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 border-b border-r border-slate-100 cursor-pointer hover:bg-blue-50/50 transition"
+                          onClick={() => { setTagModalOriginal([...tags]); setTagModal({ lessonKey, studentId: student.id }); }}>
+                          {tags.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {tags.map(name => {
+                                const t = BEHAVIOR_TAGS.find(b => b.name === name);
+                                const neg = t && t.xp < 0;
+                                return <span key={name} className={`text-[10px] px-1.5 py-0.5 rounded-lg border font-medium ${neg ? "bg-red-50 text-red-600 border-red-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>{name}</span>;
+                              })}
+                            </div>
+                          ) : <span className="text-xs text-slate-300">클릭하여 태그 추가</span>}
+                        </td>
+                        <td className="px-4 py-2.5 border-b border-r border-slate-100 text-center">
+                          {tags.length > 0 && <span className={`text-xs font-bold ${xp >= 0 ? "text-emerald-600" : "text-red-500"}`}>{xp >= 0 ? "+" : ""}{xp}</span>}
+                        </td>
+                        <td className="px-4 py-2.5 border-b border-slate-100 text-center">
+                          {cp > 0 && <span className="text-xs font-bold text-blue-600">+{cp}</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+        }
+
+        {tagModal && tagModalStudent && (
+          <TagSelectorModal
+            studentName={tagModalStudent.name}
+            currentTags={tagModalRec?.tags || []}
+            onToggle={tag => {
+              const cur = [...(tagModalRec?.tags || [])];
+              const idx = cur.indexOf(tag);
+              const next = idx >= 0 ? cur.filter(t => t !== tag) : [...cur, tag];
+              saveTags(tagModal.lessonKey, tagModal.studentId, next);
+            }}
+            onClose={() => {
+              const cur = tagModalRec?.tags || [];
+              if (JSON.stringify(cur) !== JSON.stringify(tagModalOriginal)) {
+                // already saved on each toggle
+              }
+              setTagModal(null);
+            }}
+          />
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <h2 className="text-lg font-bold">📅 행동태그 달력</h2>
+          <button onClick={onClose} className="w-8 h-8 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 text-xl">×</button>
+        </div>
+        <div className="overflow-y-auto flex-1 p-5">
+          {selectedDate ? renderDayView() : renderCalendar()}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── 학생 관리 탭 (선생님용) ────────────────────────────────────────────────────
 function StudentManager({ students, homeworks }) {
   const [newName, setNewName] = useState("");
@@ -172,6 +396,7 @@ function StudentManager({ students, homeworks }) {
 
   // ── 경험치관리 탭 ────────────────────────────────────────────────────────
   const XpTab = () => {
+    const [showTagCalendar, setShowTagCalendar] = useState(false);
     const ec = editingCell;
     const isEdit = (sid, field) => ec?.studentId === sid && ec?.field === field;
 
@@ -190,6 +415,7 @@ function StudentManager({ students, homeworks }) {
     );
 
     return (
+      <React.Fragment>
       <Card className="p-0 overflow-hidden">
         <div className="p-4 flex items-center gap-3 flex-wrap border-b border-slate-100">
           <div className="flex-1 min-w-0">
@@ -197,6 +423,10 @@ function StudentManager({ students, homeworks }) {
             <p className="text-sm text-slate-500">{sortedStudents.length === students.length ? `총 ${students.length}명` : `${sortedStudents.length}명 (전체 ${students.length}명)`}</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={() => setShowTagCalendar(true)}
+              className="text-xs text-white bg-blue-500 hover:bg-blue-600 px-3 py-1.5 rounded-lg font-medium transition">
+              📅 행동태그달력
+            </button>
             <select value={filterClass} onChange={e=>setFilterClass(e.target.value)}
               className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white outline-none focus:ring-1 focus:ring-blue-300">
               <option value="">전체 학년</option>
@@ -233,6 +463,22 @@ function StudentManager({ students, homeworks }) {
             }}
               className="text-xs text-white bg-emerald-500 hover:bg-emerald-600 px-3 py-1.5 rounded-lg font-medium transition">
               📥 지급액 다운로드
+            </button>
+            <button onClick={async () => {
+              if (!confirm(`모든 학생의 시즌3 XP, 미지급 CP, 이전시즌 XP를 0으로 초기화합니다. 계속할까요?`)) return;
+              const snap = await db.ref("studentProfiles").get();
+              const data = snap.val() || {};
+              const updates = {};
+              Object.keys(data).forEach(sid => {
+                updates[`studentProfiles/${sid}/season3Xp`] = null;
+                updates[`studentProfiles/${sid}/unpaidCp`] = null;
+                updates[`studentProfiles/${sid}/prevSeasonXp`] = null;
+              });
+              await db.ref().update(updates);
+              alert("초기화 완료!");
+            }}
+              className="text-xs text-white bg-slate-500 hover:bg-slate-600 px-3 py-1.5 rounded-lg font-medium transition">
+              🗑 XP/CP 전체 초기화
             </button>
             <button onClick={async () => {
               if (!confirm(`수업일지 전체 데이터를 읽어 XP/CP를 재계산합니다. 기존 수동 입력값은 덮어씁니다. 계속할까요?`)) return;
@@ -335,6 +581,8 @@ function StudentManager({ students, homeworks }) {
             </div>
         }
       </Card>
+      {showTagCalendar && <TagCalendarModal students={students} onClose={() => setShowTagCalendar(false)}/>}
+      </React.Fragment>
     );
   };
 
