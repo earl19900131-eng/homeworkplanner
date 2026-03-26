@@ -51,20 +51,23 @@ function splitHomework({ totalAmount, startDate, dueDate, includeWeekend, dailyM
     return { ...x, startProblem: sp, endProblem: ep };
   });
 }
-function redistributeHomework(hw, today) {
+function redistributeHomework(hw, today, solvedMap = {}) {
   const completed = hw.chunks.filter(c => c.done);
   const future = hw.chunks.filter(c => !c.done && c.date >= today);
   const overdue = hw.chunks.filter(c => !c.done && c.date < today);
-  const remaining = [...overdue, ...future].reduce((s, c) => s + c.plannedAmount, 0);
+  const pending = [...overdue, ...future];
+  const partialSolved = pending.reduce((s, c) => s + (Number(solvedMap[c.date]) || 0), 0);
+  const remaining = pending.reduce((s, c) => s + Math.max(0, c.plannedAmount - (Number(solvedMap[c.date]) || 0)), 0);
   if (!remaining || !future.length) return hw;
   const redist = splitHomework({ totalAmount: remaining, startDate: future[0].date, dueDate: future[future.length-1].date, includeWeekend: hw.includeWeekend, dailyMax: hw.dailyMax });
   if (!redist.length) return hw;
-  let cursor = completed.reduce((m, c) => Math.max(m, c.endProblem), 0) + 1;
+  const lastCompleted = completed.reduce((m, c) => Math.max(m, c.endProblem), 0);
+  let cursor = lastCompleted + partialSolved + 1;
   const adjusted = redist.map(c => { const sp=cursor, ep=cursor+c.plannedAmount-1; cursor=ep+1; return {...c,startProblem:sp,endProblem:ep}; });
   return { ...hw, chunks: [...completed, ...adjusted].sort((a,b)=>a.date.localeCompare(b.date)) };
 }
 function defaultForm() {
   const t = todayString();
-  return { title:"", subject:"공통수학1", totalAmount:"", startDate:t, dueDate:addDays(t,4), includeWeekend:true, dailyMax:"", selectedDates:null };
+  return { title:"", subject:"공통수학1", hwType:"현행", totalAmount:"", startDate:t, dueDate:addDays(t,4), includeWeekend:true, dailyMax:"", selectedDates:null };
 }
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }

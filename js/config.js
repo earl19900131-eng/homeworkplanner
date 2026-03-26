@@ -14,8 +14,14 @@ const firebaseConfig = {
 if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
+// ── 익명 인증 (DB 규칙 auth != null 적용을 위해) ──────────────────────────────
+firebase.auth().onAuthStateChanged(user => {
+  if (!user) firebase.auth().signInAnonymously().catch(e => console.warn("익명 인증 실패:", e));
+});
+
 // 선생님 계정은 고정
-const TEACHER = { id:"teacher-1", name:"임효재 선생님", role:"teacher", password:"1004123" };
+const TEACHER = { id:"teacher-1", name:"임효재", role:"teacher", password:"1004123" };
+const VIEWER  = { id:"viewer-1",  name:"현황판",         role:"viewer",  password:"123456" };
 
 // ── FCM 초기화 ────────────────────────────────────────────────────────────────
 const messaging = firebase.messaging();

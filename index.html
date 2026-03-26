@@ -10,10 +10,38 @@
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 <style>
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: 'Segoe UI', sans-serif; background: #f8fafc; }
+  body {
+    margin: 0;
+    font-family: 'Segoe UI', sans-serif;
+    background: #f8fafc;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  :root {
+    --shadow-border: 0px 0px 0px 1px rgba(0,0,0,0.06), 0px 1px 2px -1px rgba(0,0,0,0.06), 0px 2px 4px 0px rgba(0,0,0,0.04);
+    --shadow-border-hover: 0px 0px 0px 1px rgba(0,0,0,0.08), 0px 1px 2px -1px rgba(0,0,0,0.08), 0px 2px 4px 0px rgba(0,0,0,0.06);
+    --shadow-elevated: 0px 0px 0px 1px rgba(0,0,0,0.08), 0px 4px 8px -2px rgba(0,0,0,0.08), 0px 8px 16px -4px rgba(0,0,0,0.06);
+  }
+
+  h1, h2, h3 { text-wrap: balance; }
+
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(12px); filter: blur(4px); }
+    to   { opacity: 1; transform: translateY(0);    filter: blur(0); }
+  }
+  .stagger-item { opacity: 0; animation: fadeInUp 350ms ease-out forwards; }
+  .stagger-item:nth-child(1) { animation-delay: 0ms; }
+  .stagger-item:nth-child(2) { animation-delay: 80ms; }
+  .stagger-item:nth-child(3) { animation-delay: 160ms; }
+  .stagger-item:nth-child(4) { animation-delay: 240ms; }
+  .stagger-item:nth-child(5) { animation-delay: 320ms; }
+  .stagger-item:nth-child(6) { animation-delay: 400ms; }
+
   .progress-bar { transition: width 0.4s ease; }
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: #f1f5f9; }
@@ -33,5 +61,6 @@
 <script type="text/babel" src="js/TeacherView.js"></script>
 <script type="text/babel" src="js/LoginPage.js"></script>
 <script type="text/babel" src="js/App.js"></script>
+<script type="text/babel" src="js/migrate_xp.js"></script>
 </body>
 </html>

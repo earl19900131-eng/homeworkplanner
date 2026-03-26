@@ -3,29 +3,43 @@ function App() {
   const [students, setStudents] = useState([]);
   const [homeworks, setHomeworks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [authReady, setAuthReady] = useState(false);
   const [currentUserId, setCurrentUserId] = useState(() => sessionStorage.getItem(SESSION_KEY));
   const [loginRole, setLoginRole] = useState("student");
   const [studentLoginId, setStudentLoginId] = useState("");
+  const [loginId, setLoginId] = useState("");
   const [loginSecret, setLoginSecret] = useState("");
   const [loginError, setLoginError] = useState("");
   const [materials, setMaterials] = useState([]);
   const [activeTab, setActiveTab] = useState("today");
   const [editingHW, setEditingHW] = useState(null); // { key, form }
   const [deleteConfirmHW, setDeleteConfirmHW] = useState(null);
+  const [redistState, setRedistState] = useState(null); // { hwKey, solvedMap: {date: number} }
   const [teacherTab, setTeacherTab] = useState("dashboard");
   const [showOverdueModal, setShowOverdueModal] = useState(false);
   const [overdueGradeFilter, setOverdueGradeFilter] = useState("all");
   const [teacherViewId, setTeacherViewId] = useState("all");
   const [gradeFilter, setGradeFilter] = useState("all");
   const [subjectFilter, setSubjectFilter] = useState("all");
+  const [hwVerifyTab, setHwVerifyTab] = useState("확인전");
   const [form, setForm] = useState(defaultForm);
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   const [today, setToday] = useState(todayString);
+  const [confirmedHw, setConfirmedHw] = useState(null);
+  const [copyToast, setCopyToast] = useState(false);
 
   useEffect(() => { const id = setInterval(()=>setToday(todayString()),60000); return ()=>clearInterval(id); }, []);
 
   useEffect(() => {
+    const unsub = firebase.auth().onAuthStateChanged(user => {
+      if (user) setAuthReady(true);
+    });
+    return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    if (!authReady) return;
     let loaded = { s: false, h: false };
     const check = () => { if (loaded.s && loaded.h) setLoading(false); };
     const sRef = db.ref("students");
@@ -50,7 +64,7 @@ function App() {
       setMaterials(data ? Object.values(data) : []);
     });
     return () => { sRef.off(); hRef.off(); mRef.off(); };
-  }, []);
+  }, [authReady]);
 
   useEffect(() => {
     if (currentUserId) sessionStorage.setItem(SESSION_KEY, currentUserId);
@@ -58,7 +72,7 @@ function App() {
   }, [currentUserId]);
 
   useEffect(() => {
-    if (!currentUserId || currentUserId===TEACHER.id) return;
+    if (!currentUserId || currentUserId===TEACHER.id || currentUserId===VIEWER.id) return;
     if (students.length>0 && !students.find(s=>s.id===currentUserId)) setCurrentUserId(null);
   }, [students, currentUserId]);
 
@@ -70,17 +84,29 @@ function App() {
     if (saved) setForm(f => ({...f, subject: saved}));
   }, [currentStudent?.id]);
 
-  const currentUser = currentUserId===TEACHER.id ? TEACHER : students.find(s=>s.id===currentUserId)??null;
-  const currentStudent = currentUser && currentUser.id!==TEACHER.id ? currentUser : null;
+  const currentUser = currentUserId===TEACHER.id ? TEACHER : currentUserId===VIEWER.id ? VIEWER : students.find(s=>s.id===currentUserId)??null;
+  const currentStudent = currentUser && currentUser.role!=="teacher" && currentUser.role!=="viewer" ? currentUser : null;
   const currentTeacher = currentUser?.id===TEACHER.id ? TEACHER : null;
+  const currentViewer  = currentUser?.id===VIEWER.id  ? VIEWER  : null;
+
+  useEffect(() => {
+    if (!currentStudent) { setConfirmedHw(null); return; }
+    const ref = db.ref(`studentProfiles/${currentStudent.id}/confirmedHw`);
+    ref.on("value", snap => setConfirmedHw(snap.val() || null));
+    return () => ref.off();
+  }, [currentStudent?.id]);
 
   const hwByStudent = useMemo(()=>homeworks.reduce((acc,hw)=>{ (acc[hw.studentId]||(acc[hw.studentId]=[])).push(hw); return acc; },{}), [homeworks]);
 
   const teacherStats = useMemo(()=>students.map(s=>{
     const items=hwByStudent[s.id]??[];
-    let total=0,done=0,overdue=0,todayInc=0;
-    items.forEach(hw=>(hw.chunks||[]).forEach(c=>{ total++; if(c.done) done++; if(!c.done&&c.date<today) overdue++; if(!c.done&&c.date===today) todayInc++; }));
-    return {...s,homeworkCount:items.length,totalChunks:total,doneChunks:done,overdueChunks:overdue,todayIncomplete:todayInc,progress:total>0?Math.round(done/total*100):0};
+    let total=0,done=0,overdue=0,overdueHyun=0,overdueSum=0,todayInc=0;
+    items.forEach(hw=>(hw.chunks||[]).forEach(c=>{
+      if(!hw.teacherVerified){ total++; if(c.done) done++; }
+      if(!c.done&&c.date<today&&!hw.teacherVerified){ overdue++; if(hw.hwType==="선행") overdueSum++; else overdueHyun++; }
+      if(!c.done&&c.date===today&&!hw.teacherVerified) todayInc++;
+    }));
+    return {...s,homeworkCount:items.length,totalChunks:total,doneChunks:done,overdueChunks:overdue,overdueHyun,overdueSum,todayIncomplete:todayInc,progress:total>0?Math.round(done/total*100):0};
   }),[students,hwByStudent,today]);
 
   const teacherDash = useMemo(()=>({
@@ -98,7 +124,7 @@ function App() {
     if (subjectFilter !== "all") hws = hws.filter(hw => hw.subject === subjectFilter);
     return hws;
   }, [selectedTeacherStudent, homeworks, gradeFilter, subjectFilter, hwByStudent, students]);
-  const studentHW = currentStudent?hwByStudent[currentStudent.id]??[]:[];
+  const studentHW = currentStudent?(hwByStudent[currentStudent.id]??[]).filter(hw=>!hw.teacherVerified):[];
   const todayTasks = studentHW.flatMap(hw=>(hw.chunks||[]).filter(c=>c.date===today).map(c=>({...c,hwKey:hw._key,title:hw.title,subject:hw.subject})));
   const overdueTasks = studentHW.flatMap(hw=>(hw.chunks||[]).filter(c=>c.date<today&&!c.done).map(c=>({...c,hwKey:hw._key,title:hw.title,subject:hw.subject})));
 
@@ -121,7 +147,7 @@ function App() {
     const id = Date.now();
     setSaving(true);
     try {
-      await db.ref(`homeworks/${id}`).set({ id, title:form.title.trim(), subject:form.subject||"수학", studentId:currentStudent.id, studentName:currentStudent.name, totalAmount:Number(form.totalAmount), startDate:form.startDate, dueDate:form.dueDate, includeWeekend:form.includeWeekend, dailyMax:form.dailyMax?Number(form.dailyMax):null, createdAt:today, chunks });
+      await db.ref(`homeworks/${id}`).set({ id, title:form.title.trim(), subject:form.subject||"수학", hwType:form.hwType||"현행", studentId:currentStudent.id, studentName:currentStudent.name, totalAmount:Number(form.totalAmount), startDate:form.startDate, dueDate:form.dueDate, includeWeekend:form.includeWeekend, dailyMax:form.dailyMax?Number(form.dailyMax):null, createdAt:today, chunks });
       localStorage.setItem('lastSubject_' + currentStudent.id, form.subject);
       const savedSubject = form.subject;
       setForm({...defaultForm(), subject: savedSubject}); setFormError(""); setActiveTab("today");
@@ -141,13 +167,14 @@ function App() {
     catch(e) { alert("저장 실패: "+e.message); }
   };
 
-  const redistribute = async (hwKey) => {
+  const redistribute = async (hwKey, solvedMap = {}) => {
     const hw=homeworks.find(h=>h._key===hwKey); if(!hw) return;
-    const updated=redistributeHomework(hw,today);
+    const updated=redistributeHomework(hw,today,solvedMap);
     setSaving(true);
     try { await db.ref(`homeworks/${hwKey}/chunks`).set(updated.chunks); }
     catch(e) { alert("저장 실패: "+e.message); }
     setSaving(false);
+    setRedistState(null);
   };
 
   const handleUpdateHW = async () => {
@@ -177,11 +204,16 @@ function App() {
   };
 
   const loginAsTeacher = () => {
-    if(loginSecret!==TEACHER.password) { setLoginError("비밀번호가 올바르지 않습니다."); return; }
-    setCurrentUserId(TEACHER.id); setLoginSecret(""); setLoginError("");
-    registerFCMToken(TEACHER.id, "teacher");
+    if (loginId === VIEWER.name && loginSecret === VIEWER.password) {
+      setCurrentUserId(VIEWER.id); setLoginId(""); setLoginSecret(""); setLoginError(""); return;
+    }
+    if (loginId === TEACHER.name && loginSecret === TEACHER.password) {
+      setCurrentUserId(TEACHER.id); setLoginId(""); setLoginSecret(""); setLoginError("");
+      registerFCMToken(TEACHER.id, "teacher"); return;
+    }
+    setLoginError("아이디 또는 비밀번호가 올바르지 않습니다.");
   };
-  const logout = () => { setCurrentUserId(null); setLoginSecret(""); setLoginError(""); setFormError(""); };
+  const logout = () => { setCurrentUserId(null); setLoginId(""); setLoginSecret(""); setLoginError(""); setFormError(""); };
 
   if (loading) return <Spinner />;
 
@@ -189,7 +221,7 @@ function App() {
   if (!currentUser) return (
     <div className="min-h-screen bg-slate-50 px-4 py-6">
       <div className="mx-auto max-w-4xl space-y-5">
-        <Card className="p-6">
+        <Card className="p-6 stagger-item">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <h1 className="text-3xl font-bold tracking-tight">숙제 소분 플래너</h1>
@@ -205,8 +237,8 @@ function App() {
           </div>
         </Card>
 
-        <div className="grid gap-5 md:grid-cols-2">
-          <Card className="p-6 space-y-5">
+        <div className="grid gap-5 md:grid-cols-2 stagger-item">
+          <Card className="p-6 space-y-5 stagger-item">
             <div>
               <h2 className="text-xl font-bold">로그인</h2>
               <p className="text-sm text-slate-500 mt-1">학생은 이름을 타이핑해서 선택 후 PIN 입력, 선생님은 관리자 비밀번호를 입력합니다.</p>
@@ -214,7 +246,7 @@ function App() {
             <div className="flex gap-2 bg-slate-100 rounded-2xl p-1">
               {["student","teacher"].map(r=>(
                 <button key={r} onClick={()=>{setLoginRole(r);setLoginSecret("");setLoginError("");}}
-                  className={`flex-1 py-2 text-sm font-medium rounded-xl transition ${loginRole===r?"bg-white shadow-sm":"text-slate-500 hover:text-slate-700"}`}>
+                  className={`flex-1 py-2 text-sm font-medium rounded-xl transition-[color,background-color,transform,box-shadow] duration-150 ease-out active:scale-[0.96] ${loginRole===r?"bg-white shadow-sm":"text-slate-500 hover:text-slate-700"}`}>
                   {r==="student"?"학생":"선생님"}
                 </button>
               ))}
@@ -229,18 +261,21 @@ function App() {
               </div>
             ) : (
               <div className="space-y-4">
-                <AlertBox className="bg-slate-50 text-slate-700">🛡️ 학생 현황 확인 및 학생 추가/삭제를 할 수 있는 관리자 화면입니다.</AlertBox>
                 <div className="space-y-2">
-                  <Lbl>관리자 비밀번호</Lbl>
-                  <Inp type="password" value={loginSecret} onChange={e=>setLoginSecret(e.target.value)} placeholder="관리자 비밀번호" onKeyDown={e=>e.key==="Enter"&&loginAsTeacher()}/>
+                  <Lbl>아이디</Lbl>
+                  <Inp value={loginId} onChange={e=>setLoginId(e.target.value)} placeholder="아이디 입력" onKeyDown={e=>e.key==="Enter"&&loginAsTeacher()}/>
+                </div>
+                <div className="space-y-2">
+                  <Lbl>비밀번호</Lbl>
+                  <Inp type="password" value={loginSecret} onChange={e=>setLoginSecret(e.target.value)} placeholder="비밀번호 입력" onKeyDown={e=>e.key==="Enter"&&loginAsTeacher()}/>
                 </div>
                 {loginError&&<AlertBox className="bg-red-50 text-red-700">{loginError}</AlertBox>}
-                <Btn onClick={loginAsTeacher} className="w-full">선생님 로그인</Btn>
+                <Btn onClick={loginAsTeacher} className="w-full">로그인</Btn>
               </div>
             )}
           </Card>
 
-          <Card className="p-6 space-y-3">
+          <Card className="p-6 space-y-3 stagger-item">
             <h2 className="text-xl font-bold">시작하는 방법</h2>
             {[["1️⃣ 선생님 먼저 로그인","관리자 비밀번호로 로그인합니다."],
               ["2️⃣ 학생 관리 탭","학생 이름, 반, PIN을 입력해 학생을 추가합니다."],
@@ -248,7 +283,7 @@ function App() {
               ["4️⃣ 학생 로그인","학생은 본인 이름 선택 + PIN으로 접속합니다."],
               ["5️⃣ 숙제 등록 & 체크","학생이 숙제 등록하면 선생님 화면에 실시간 반영됩니다."]
             ].map(([t,d])=>(
-              <div key={t} className="rounded-2xl border p-3">
+              <div key={t} className="rounded-2xl p-3" style={{boxShadow:"var(--shadow-border)"}}>
                 <div className="text-sm font-semibold">{t}</div>
                 <div className="text-xs text-slate-500 mt-0.5">{d}</div>
               </div>
@@ -272,7 +307,7 @@ function App() {
                 {saving&&<span className="text-xs text-slate-400 animate-pulse">저장 중...</span>}
               </div>
               <p className="mt-1 text-sm text-slate-500">
-                {currentTeacher?`${TEACHER.name} · 관리자`:`${currentStudent?.name} (${currentStudent?.className})`}
+                {currentTeacher?`${TEACHER.name} 선생님 · 관리자`:currentViewer?`${VIEWER.name} · 뷰어`:`${currentStudent?.name} (${currentStudent?.className})`}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -282,11 +317,14 @@ function App() {
           </div>
         </Card>
 
-        {/* ── 선생님 ── */}
-        {currentTeacher && (
+        {/* ── 선생님 / 뷰어 ── */}
+        {(currentTeacher || currentViewer) && (
           <div className="space-y-4">
             <div className="flex gap-2 bg-white rounded-2xl shadow-sm p-1">
-              {[["dashboard","📊 현황"],["lessons","📓 수업일지"],["stats","📈 통계"],["students","👥 학생 관리"],["curriculum","📚 커리큘럼"]].map(([tab,label])=>(
+              {(currentViewer
+                ? [["lessons","📓 수업일지"],["dashboard","📊 숙제 현황"],["stats","📈 통계"]]
+                : [["lessons","📓 수업일지"],["dashboard","📊 숙제 현황"],["stats","📈 통계"],["students","👥 학생 관리"],["curriculum","📚 커리큘럼"]]
+              ).map(([tab,label])=>(
                 <button key={tab} onClick={()=>setTeacherTab(tab)}
                   className={`flex-1 py-2.5 text-sm font-medium rounded-xl transition ${teacherTab===tab?"bg-slate-900 text-white":"text-slate-500 hover:text-slate-700"}`}>
                   {label}
@@ -322,7 +360,11 @@ function App() {
                                 <span className="font-semibold text-sm">{s.name}</span>
                                 <span className="ml-2 text-xs text-slate-400 bg-slate-200 rounded px-1.5 py-0.5">{s.className}</span>
                               </div>
-                              <span className="text-sm text-red-600 font-medium">밀림 {s.overdueChunks}개</span>
+                              <span className="text-sm text-red-600 font-medium">
+                                {s.overdueHyun>0&&s.overdueSum>0 ? `현 ${s.overdueHyun}개 / 선 ${s.overdueSum}개 밀림`
+                                  : s.overdueHyun>0 ? `현행 ${s.overdueHyun}개 밀림`
+                                  : `선행 ${s.overdueSum}개 밀림`}
+                              </span>
                             </div>
                           ))}
                         </div>
@@ -356,25 +398,37 @@ function App() {
                       </div>
                       <Btn variant={teacherViewId==="all"?"default":"outline"} size="sm" onClick={()=>setTeacherViewId("all")}>전체</Btn>
                     </div>
-                    {selectedTeacherHW.length===0
-                      ? <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-400 text-center">아직 숙제가 없습니다.</div>
-                      : selectedTeacherHW.map(hw=>{
+                    {selectedTeacherHW.length > 0 && (
+                      <div className="flex gap-1 p-1 bg-slate-100 rounded-xl w-fit">
+                        {["확인전","확인후"].map(t=>(
+                          <button key={t} type="button" onClick={()=>setHwVerifyTab(t)}
+                            className={`px-3 py-1 rounded-lg text-xs font-medium transition ${hwVerifyTab===t?"bg-white shadow text-slate-900":"text-slate-500 hover:text-slate-700"}`}>
+                            {t==="확인전"
+                              ? `확인 전 ${selectedTeacherHW.filter(hw=>!hw.teacherVerified).length}`
+                              : `확인 후 ${selectedTeacherHW.filter(hw=>hw.teacherVerified).length}`}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {(() => {
+                      const filtered = selectedTeacherHW.filter(hw => hwVerifyTab==="확인전" ? !hw.teacherVerified : !!hw.teacherVerified);
+                      if (selectedTeacherHW.length===0) return <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-400 text-center">아직 숙제가 없습니다.</div>;
+                      if (filtered.length===0) return <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-400 text-center">{hwVerifyTab==="확인전"?"확인 전 숙제가 없습니다.":"확인 후 숙제가 없습니다."}</div>;
+                      return filtered.map(hw=>{
                         const done=(hw.chunks||[]).filter(c=>c.done).length;
                         const pct=hw.chunks?.length>0?Math.round(done/hw.chunks.length*100):0;
-                        return(
-                          <TeacherHWCard key={hw._key} hw={hw} done={done} pct={pct} today={today}/>
-                        );
-                      })
-                    }
+                        return <TeacherHWCard key={hw._key} hw={hw} done={done} pct={pct} today={today}/>;
+                      });
+                    })()}
                   </Card>
                 </div>
               </div>
             )}
 
-            {teacherTab==="lessons" && <LessonManager students={students}/>}
+            {teacherTab==="lessons" && <LessonManager students={students} isViewer={!!currentViewer}/>}
             {teacherTab==="stats" && <TeacherStatsTab students={students} homeworks={homeworks} today={today}/>}
-            {teacherTab==="students" && <StudentManager students={students} homeworks={homeworks}/>}
-            {teacherTab==="curriculum" && <CurriculumManager students={students} materials={materials}/>}
+            {teacherTab==="students" && !currentViewer && <StudentManager students={students} homeworks={homeworks}/>}
+            {teacherTab==="curriculum" && !currentViewer && <CurriculumManager students={students} materials={materials}/>}
           </div>
         )}
 
@@ -389,7 +443,7 @@ function App() {
 
             <Card className="p-3">
               <div className="flex gap-2 bg-slate-100 rounded-2xl p-1 mb-4">
-                {[["today","오늘"],["create","등록"],["all","전체"],["curriculum","커리큘럼"],["mypage","마이페이지"]].map(([tab,label])=>(
+                {[["today","오늘"],["create","등록"],["all","전체"],["curriculum","커리큘럼"],["exam","평가"],["mypage","마이페이지"]].map(([tab,label])=>(
                   <button key={tab} onClick={()=>setActiveTab(tab)}
                     className={`flex-1 py-2 text-sm font-medium rounded-xl transition ${activeTab===tab?"bg-white shadow-sm":"text-slate-500 hover:text-slate-700"}`}>
                     {label}
@@ -430,7 +484,44 @@ function App() {
                 <div className="grid gap-5 lg:grid-cols-2">
                   <div className="space-y-4">
                     <div><h2 className="text-lg font-bold">숙제 직접 등록</h2><p className="text-sm text-slate-500">공지된 숙제를 입력하면 하루 분량이 자동 계산됩니다.</p></div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 space-y-1.5">
+                      <div className="text-xs font-bold text-slate-500 mb-1">📌 선생님이 공지한 최신 숙제</div>
+                      {!confirmedHw?.현행 && !confirmedHw?.선행 && (
+                        <div className="text-xs text-slate-400 py-1">아직 공지된 숙제가 없습니다.</div>
+                      )}
+                      {confirmedHw?.현행 && (
+                        <div className="flex items-center justify-between gap-2 bg-sky-50 border border-sky-100 rounded-xl px-3 py-2">
+                          <span className="text-sm"><span className="text-[11px] font-bold text-sky-600 mr-1.5">(현)</span>{confirmedHw.현행.text}</span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-[11px] text-slate-400">{confirmedHw.현행.date && (() => { const d=new Date(confirmedHw.현행.date); return `${confirmedHw.현행.date} (${["일","월","화","수","목","금","토"][d.getDay()]})`; })()}</span>
+                            <button type="button" title="복사" onClick={() => { navigator.clipboard?.writeText(confirmedHw.현행.text); setCopyToast(true); setTimeout(()=>setCopyToast(false),2000); }}
+                              className="text-slate-400 hover:text-slate-600 text-base">⧉</button>
+                          </div>
+                        </div>
+                      )}
+                      {confirmedHw?.선행 && (
+                        <div className="flex items-center justify-between gap-2 bg-violet-50 border border-violet-100 rounded-xl px-3 py-2">
+                          <span className="text-sm"><span className="text-[11px] font-bold text-violet-600 mr-1.5">(선)</span>{confirmedHw.선행.text}</span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-[11px] text-slate-400">{confirmedHw.선행.date && (() => { const d=new Date(confirmedHw.선행.date); return `${confirmedHw.선행.date} (${["일","월","화","수","목","금","토"][d.getDay()]})`; })()}</span>
+                            <button type="button" title="복사" onClick={() => { navigator.clipboard?.writeText(confirmedHw.선행.text); setCopyToast(true); setTimeout(()=>setCopyToast(false),2000); }}
+                              className="text-slate-400 hover:text-slate-600 text-base">⧉</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5 sm:col-span-2">
+                        <Lbl>종류</Lbl>
+                        <div className="flex gap-2">
+                          {["현행","선행"].map(t=>(
+                            <button key={t} type="button" onClick={()=>setForm({...form,hwType:t})}
+                              className={`flex-1 py-2 rounded-xl text-sm font-medium border transition ${form.hwType===t?"bg-slate-900 text-white border-slate-900":"bg-white text-slate-500 border-slate-200 hover:bg-slate-50"}`}>
+                              {t}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                       <div className="space-y-1.5 sm:col-span-2"><Lbl>숙제명</Lbl><Inp value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="예: 수학 숙제 1~30번"/></div>
                       <div className="space-y-1.5"><Lbl>과목</Lbl>
                         <select value={form.subject} onChange={e=>setForm({...form,subject:e.target.value})}
@@ -504,7 +595,7 @@ function App() {
                               <div className="text-xs text-slate-400 mt-1">{doneCount}/{hw.chunks?.length||0}일 완료 ({pct}%)</div>
                             </div>
                             <div className="flex gap-1.5 flex-wrap shrink-0">
-                              {hasOverdue&&<Btn variant="outline" size="sm" onClick={()=>redistribute(hw._key)} disabled={saving}>재분배</Btn>}
+                              {hasOverdue&&<Btn variant="outline" size="sm" onClick={()=>setRedistState(s=>s?.hwKey===hw._key?null:{hwKey:hw._key,solvedMap:{}})} disabled={saving}>{redistState?.hwKey===hw._key?"취소":"재분배"}</Btn>}
                               {!isDeleting && !isEditing && <Btn variant="outline" size="sm" onClick={()=>setEditingHW({key:hw._key, form:{title:hw.title,subject:hw.subject,totalAmount:hw.totalAmount,startDate:hw.startDate,dueDate:hw.dueDate,includeWeekend:hw.includeWeekend||false,dailyMax:hw.dailyMax||"",selectedDates:null}})}>수정</Btn>}
                               {!isDeleting && !isEditing && <Btn variant="danger" size="sm" onClick={()=>setDeleteConfirmHW(hw._key)}>삭제</Btn>}
                               {isDeleting && <>
@@ -518,6 +609,31 @@ function App() {
                               </>}
                             </div>
                           </div>
+                          {redistState?.hwKey === hw._key && (
+                            <div className="border-t pt-3 space-y-3">
+                              <div className="text-sm font-medium text-slate-700">미완료 회차별 이미 푼 문제 수 입력 <span className="text-xs font-normal text-slate-400">(0이면 비워두세요)</span></div>
+                              <div className="space-y-1.5">
+                                {(hw.chunks||[]).filter(c=>!c.done).map(c=>(
+                                  <div key={c.date} className="flex items-center gap-3">
+                                    <span className="text-xs text-slate-500 w-20 shrink-0">{c.date}</span>
+                                    <span className="text-xs text-slate-400 flex-1">{c.startProblem}~{c.endProblem}번 ({c.plannedAmount}문제)</span>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <input type="number" min="0" max={c.plannedAmount}
+                                        value={redistState.solvedMap[c.date]||""}
+                                        onChange={e=>setRedistState(s=>({...s,solvedMap:{...s.solvedMap,[c.date]:e.target.value}}))}
+                                        placeholder="0"
+                                        className="w-14 text-center text-sm rounded-lg border border-slate-200 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-300"/>
+                                      <span className="text-xs text-slate-400">문제 품</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="flex gap-2 justify-end">
+                                <Btn variant="outline" size="sm" onClick={()=>setRedistState(null)}>취소</Btn>
+                                <Btn size="sm" onClick={()=>redistribute(hw._key, redistState.solvedMap)} disabled={saving}>{saving?"처리 중...":"재분배 실행"}</Btn>
+                              </div>
+                            </div>
+                          )}
                           {isEditing && ef && (
                             <div className="border-t pt-3 space-y-2">
                               <div className="grid gap-2 sm:grid-cols-2">
@@ -563,12 +679,19 @@ function App() {
                 <StudentCurriculumView studentId={currentStudent.id}/>
               )}
 
+              {activeTab==="exam" && (
+                <StudentExamTab studentId={currentStudent.id}/>
+              )}
+
               {activeTab==="mypage" && (
                 <StudentMyPage studentHW={studentHW} studentName={currentStudent?.name} studentId={currentStudent?.id} currentPin={currentStudent?.pin} today={today}/>
               )}
             </Card>
           </div>
         )}
+      </div>
+      <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-800 text-white text-sm px-4 py-2 rounded-xl shadow-lg pointer-events-none transition-opacity duration-500 ${copyToast ? "opacity-100" : "opacity-0"}`}>
+        클립보드에 복사되었습니다
       </div>
     </div>
   );

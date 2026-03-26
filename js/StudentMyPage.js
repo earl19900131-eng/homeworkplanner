@@ -94,8 +94,47 @@ function StudentProfileTab({ studentId, studentName, currentPin, teacherMode = f
   const canEdit = teacherMode || !locked;
   const autoGrade = gradeFromBirthYear(editing ? draft.birthYear : profile.birthYear);
 
+  const prevXp    = Number(profile.prevSeasonXp || 0);
+  const season3Xp = Number(profile.season3Xp || 0);
+  const allXp     = prevXp + season3Xp;
+  const level     = Math.floor(1.25 * Math.sqrt(Math.max(allXp, 0)));
+  const tier      = season3Xp >= 600 ? "마스터"
+                  : season3Xp >= 350 ? "다이아"
+                  : season3Xp >= 200 ? "플래티넘"
+                  : season3Xp >= -50 ? "골드"
+                  : season3Xp >= -200 ? "실버"
+                  : "브론즈";
+  const tierColor = tier === "마스터"   ? "text-purple-600 bg-purple-50 border-purple-200"
+                  : tier === "다이아"   ? "text-cyan-500 bg-cyan-50 border-cyan-200"
+                  : tier === "플래티넘" ? "text-teal-500 bg-teal-50 border-teal-200"
+                  : tier === "골드"     ? "text-yellow-500 bg-yellow-50 border-yellow-200"
+                  : tier === "실버"     ? "text-slate-400 bg-slate-50 border-slate-200"
+                  :                      "text-orange-400 bg-orange-50 border-orange-200";
+
   return (
     <div className="space-y-4">
+      {!teacherMode && (
+        <Card className="p-5">
+          <div className="flex items-center gap-4 mb-4">
+            <div className={`px-3 py-1 rounded-xl border font-bold text-sm ${tierColor}`}>{tier}</div>
+            <div className="text-slate-700 font-bold text-lg">Lv. {level}</div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-slate-50 rounded-2xl p-3 text-center">
+              <div className="text-xs text-slate-400 mb-1">이전 시즌 XP</div>
+              <div className="text-base font-bold text-slate-600">{prevXp >= 0 ? "+" : ""}{prevXp}</div>
+            </div>
+            <div className="bg-blue-50 rounded-2xl p-3 text-center">
+              <div className="text-xs text-blue-400 mb-1">현재 시즌 XP</div>
+              <div className={`text-base font-bold ${season3Xp >= 0 ? "text-blue-600" : "text-red-500"}`}>{season3Xp >= 0 ? "+" : ""}{season3Xp}</div>
+            </div>
+            <div className="bg-emerald-50 rounded-2xl p-3 text-center">
+              <div className="text-xs text-emerald-400 mb-1">누적 XP</div>
+              <div className={`text-base font-bold ${allXp >= 0 ? "text-emerald-600" : "text-red-500"}`}>{allXp >= 0 ? "+" : ""}{allXp}</div>
+            </div>
+          </div>
+        </Card>
+      )}
       {locked && (
         <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-2xl px-4 py-2.5 text-sm text-emerald-700 font-medium">
           🔒 선생님이 프로필을 확정했습니다. 수정하려면 선생님에게 문의하세요.
@@ -383,6 +422,144 @@ function StudentMyPage({ studentHW, studentName, studentId, currentPin, today })
       {tab === "profile" && (
         <StudentProfileTab studentId={studentId} studentName={studentName} currentPin={currentPin}/>
       )}
+    </div>
+  );
+}
+
+// ── 학생 평가 탭 ──────────────────────────────────────────────────────────────
+function StudentExamTab({ studentId }) {
+  const [exams, setExams] = useState([]);
+  const [activeExam, setActiveExam] = useState(null);
+  const [answers, setAnswers] = useState({});
+  const [savedResult, setSavedResult] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const ref = db.ref("mockExams");
+    ref.on("value", snap => {
+      const data = snap.val() || {};
+      const list = Object.values(data).filter(e => Object.values(e.students||{}).includes(studentId));
+      setExams(list.sort((a,b) => a.round - b.round));
+    });
+    return () => ref.off();
+  }, [studentId]);
+
+  const openExam = async (exam) => {
+    setActiveExam(exam);
+    const snap = await db.ref(`mockExamResults/${exam.id}/${studentId}`).once("value");
+    const result = snap.val();
+    if (result) { setAnswers(result.answers || {}); setSavedResult(result); }
+    else { setAnswers({}); setSavedResult(null); }
+  };
+
+  const toggle = (qNum) => {
+    setAnswers(prev => {
+      const cur = prev[qNum];
+      if (cur === "O") return {...prev, [qNum]: "X"};
+      if (cur === "X") { const next = {...prev}; delete next[qNum]; return next; }
+      return {...prev, [qNum]: "O"};
+    });
+  };
+
+  const calcScore = () => {
+    if (!activeExam) return null;
+    const scoringType = activeExam.scoringType || "auto";
+    if (scoringType === "none") return null;
+    const correct = Object.entries(answers).filter(([,v]) => v === "O").map(([q]) => Number(q));
+    if (scoringType === "manual" && activeExam.scoring) {
+      const sc = activeExam.scoring;
+      return correct.reduce((sum, q) => sum + (Number(sc[q]) || 0), 0);
+    }
+    const total = activeExam.totalScore || 100;
+    const qCount = activeExam.questionCount || 20;
+    return Math.round(correct.length * (total / qCount));
+  };
+
+  const handleSubmit = async () => {
+    setSaving(true);
+    const score = calcScore();
+    const data = { answers, submittedAt: new Date().toISOString().slice(0,10) };
+    if (score !== null) data.score = score;
+    await db.ref(`mockExamResults/${activeExam.id}/${studentId}`).set(data);
+    setSavedResult(data);
+    setSaving(false);
+  };
+
+  if (activeExam) {
+    const qCount = activeExam.questionCount || 20;
+    const correctCount = Object.values(answers).filter(v => v === "O").length;
+    const wrongCount = Object.values(answers).filter(v => v === "X").length;
+    const score = calcScore();
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <button onClick={() => setActiveExam(null)} className="text-sm text-slate-500 hover:text-slate-800">← 뒤로</button>
+          <div>
+            <span className="font-bold">{activeExam.name}</span>
+            <span className="ml-2 text-sm text-indigo-500 font-medium">{activeExam.round}차</span>
+          </div>
+        </div>
+        <div className="text-xs text-slate-400 bg-slate-50 rounded-xl px-3 py-2">
+          번호를 눌러 O/X 표시 · 한 번 더 누르면 취소됩니다 (미표시 → O → X → 미표시)
+        </div>
+        <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
+          {Array.from({length: qCount}, (_, i) => i+1).map(qNum => {
+            const ans = answers[qNum];
+            return (
+              <button key={qNum} onClick={() => toggle(qNum)}
+                className={`aspect-square rounded-xl border-2 flex flex-col items-center justify-center gap-0.5 transition
+                  ${ans === "O" ? "bg-emerald-50 border-emerald-400 text-emerald-600"
+                    : ans === "X" ? "bg-red-50 border-red-400 text-red-600"
+                    : "bg-white border-slate-200 text-slate-300"}`}>
+                <span className="text-[10px] text-slate-400 font-normal leading-none">{qNum}</span>
+                <span className="text-base font-bold leading-none">{ans === "O" ? "O" : ans === "X" ? "X" : "·"}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex items-center justify-between pt-3 border-t">
+          <div className="space-y-0.5">
+            {score !== null && (
+              <div className="text-sm text-slate-600">
+                점수 <span className="font-bold text-xl text-indigo-600">{score}점</span>
+              </div>
+            )}
+            <div className="text-xs text-slate-400">
+              O: {correctCount}개 · X: {wrongCount}개 · 미표시: {qCount - correctCount - wrongCount}개
+            </div>
+          </div>
+          <Btn onClick={handleSubmit} disabled={saving}>{saving?"제출 중...":"제출"}</Btn>
+        </div>
+        {savedResult && (
+          <div className="text-xs text-slate-400 text-right">
+            마지막 제출: {savedResult.submittedAt}
+            {savedResult.score !== undefined && savedResult.score !== null && ` · ${savedResult.score}점`}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (exams.length === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-slate-400">
+        배정된 시험이 없습니다.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {exams.map(exam => (
+        <button key={exam.id} onClick={() => openExam(exam)}
+          className="w-full text-left rounded-2xl border px-4 py-4 hover:bg-slate-50 transition">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold">{exam.name}</span>
+            <span className="text-xs bg-indigo-100 text-indigo-600 rounded-lg px-2 py-0.5">{exam.round}차</span>
+          </div>
+          <div className="text-xs text-slate-400 mt-1">{exam.questionCount}문항 · 총 {exam.totalScore ? Math.round(exam.totalScore*100)/100 : "-"}점</div>
+        </button>
+      ))}
     </div>
   );
 }
