@@ -189,6 +189,7 @@ function LessonModal({ lesson, students, onClose, onSave }) {
   const [title, setTitle] = React.useState(lesson.title || "");
   const [date, setDate] = React.useState(lesson.date || "");
   const [time, setTime] = React.useState(lesson.time || "");
+  const [sessionType, setSessionType] = React.useState(lesson.sessionType || "수업");
   const [selectedIds, setSelectedIds] = React.useState(lesson.studentIds || []);
   const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState("");
@@ -222,7 +223,7 @@ function LessonModal({ lesson, students, onClose, onSave }) {
     if (!date) { setErr("날짜를 선택해 주세요."); return; }
     if (selectedIds.length === 0) { setErr("학생을 최소 1명 선택해 주세요."); return; }
     setSaving(true);
-    try { await onSave({ title: title.trim(), date, time, studentIds: selectedIds }); onClose(); }
+    try { await onSave({ title: title.trim(), date, time, sessionType, studentIds: selectedIds }); onClose(); }
     catch (e) { setErr("저장 실패: " + e.message); }
     setSaving(false);
   };
@@ -236,6 +237,25 @@ function LessonModal({ lesson, students, onClose, onSave }) {
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
         </div>
         <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Lbl>수업 유형</Lbl>
+            <div className="flex gap-2">
+              {[["수업","🎓","blue"],["평가","📝","amber"],["보강","🔧","emerald"]].map(([type, icon, color]) => {
+                const sel = sessionType === type;
+                const cls = sel
+                  ? color === "blue"    ? "bg-blue-600 text-white border-blue-600"
+                  : color === "amber"   ? "bg-amber-500 text-white border-amber-500"
+                  :                      "bg-emerald-600 text-white border-emerald-600"
+                  : "bg-white text-slate-600 border-slate-200 hover:border-slate-400";
+                return (
+                  <button key={type} type="button" onClick={() => setSessionType(type)}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-2xl text-sm font-medium border transition ${cls}`}>
+                    <span>{icon}</span><span>{type}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <div className="space-y-1.5"><Lbl>수업명</Lbl><input ref={titleRef} value={title} onChange={e => setTitle(e.target.value)} placeholder="예: 수학 특강" className="w-full border border-slate-200 rounded-2xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300 transition" /></div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5"><Lbl>날짜</Lbl><Inp type="date" value={date} onChange={e => setDate(e.target.value)} /></div>
@@ -734,7 +754,16 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
             {!isFullscreen && <button onClick={onBack}
               className="w-8 h-8 rounded-xl border hover:bg-slate-50 flex items-center justify-center text-slate-600 font-bold text-lg">‹</button>}
             <div>
-              <div className={`font-bold ${isFullscreen ? "text-xl" : "text-base"}`}>{lesson.title}</div>
+              <div className="flex items-center gap-2">
+                <span className={`font-bold ${isFullscreen ? "text-xl" : "text-base"}`}>{lesson.title}</span>
+                {lesson.sessionType && lesson.sessionType !== "수업" && (
+                  <span className={`text-[10px] px-2 py-0.5 rounded-lg font-bold border ${
+                    lesson.sessionType === "평가" ? "bg-amber-50 text-amber-600 border-amber-200"
+                    : "bg-emerald-50 text-emerald-600 border-emerald-200"}`}>
+                    {lesson.sessionType === "평가" ? "📝 평가" : "🔧 보강"}
+                  </span>
+                )}
+              </div>
               <div className="text-sm text-slate-500">{lesson.date}{lesson.time ? " · " + lesson.time.slice(0, 5) : ""} · {lessonStudents.length}명</div>
             </div>
           </div>
@@ -1259,14 +1288,19 @@ function LessonCalendar({ lessons, today, focusDateOverride, focusTrigger, onDay
                   {dayNum}
                 </div>
                 <div className="space-y-0.5">
-                  {dayLessons.map(l => (
-                    <div key={l._key}
-                      onClick={e => { e.stopPropagation(); setFocusedDate(dateStr); containerRef.current?.focus(); onLessonClick(l); }}
-                      className={`rounded-lg px-1.5 py-0.5 text-[10px] font-medium truncate transition cursor-pointer
-                        ${current ? "bg-slate-800 text-white hover:bg-slate-600" : "bg-slate-300 text-white hover:bg-slate-400"}`}>
-                      {l.time ? l.time.slice(0, 5) + " " : ""}{l.title} ({(l.studentIds || []).length}명)
-                    </div>
-                  ))}
+                  {dayLessons.map(l => {
+                    const typeBg = !current ? "bg-slate-300 hover:bg-slate-400"
+                      : l.sessionType === "평가" ? "bg-amber-500 hover:bg-amber-400"
+                      : l.sessionType === "보강" ? "bg-emerald-600 hover:bg-emerald-500"
+                      : "bg-slate-800 hover:bg-slate-600";
+                    return (
+                      <div key={l._key}
+                        onClick={e => { e.stopPropagation(); setFocusedDate(dateStr); containerRef.current?.focus(); onLessonClick(l); }}
+                        className={`rounded-lg px-1.5 py-0.5 text-[10px] font-medium truncate transition cursor-pointer text-white ${typeBg}`}>
+                        {l.time ? l.time.slice(0, 5) + " " : ""}{l.title} ({(l.studentIds || []).length}명)
+                      </div>
+                    );
+                  })}
                   {dayLessons.length === 0 && current && (
                     <div className="text-[10px] text-slate-300 text-center mt-4">+</div>
                   )}
