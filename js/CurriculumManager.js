@@ -434,6 +434,10 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
   const [showAddStudent, setShowAddStudent] = React.useState(false);
   const [selectedStudentIds, setSelectedStudentIds] = React.useState([]);
   const [studentGradeFilter, setStudentGradeFilter] = React.useState("전체");
+  const [showAddMaterial, setShowAddMaterial] = React.useState(false);
+  const [selectedMaterialIds, setSelectedMaterialIds] = React.useState([]);
+  const [materialFolderFilter, setMaterialFolderFilter] = React.useState("전체");
+  const [matFolders, setMatFolders] = React.useState({});
   const [zoom, setZoom] = React.useState(1);
   const [studentPaths, setStudentPaths] = React.useState({});
   const [activePathStudentId, setActivePathStudentId] = React.useState(null);
@@ -454,6 +458,14 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
   }, [boardId]);
 
   React.useEffect(() => {
+    const ref = db.ref("materialFolders");
+    ref.once("value", snap => {
+      const data = snap.val() || {};
+      setMatFolders(data);
+    });
+  }, []);
+
+  React.useEffect(() => {
     const el = canvasRef.current;
     const onWheel = (e) => {
       if (!e.ctrlKey) return;
@@ -464,8 +476,20 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
+  const selectedIdsRef = React.useRef(selectedIds);
+  React.useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
+  const deleteSelectedRef = React.useRef(null);
+
   React.useEffect(() => {
-    const fn = (e) => { if (e.key === "Escape") setConnectingFrom(null); };
+    const fn = (e) => {
+      if (e.key === "Escape") { setConnectingFrom(null); return; }
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedIdsRef.current.size > 0) {
+        const tag = document.activeElement?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        e.preventDefault();
+        deleteSelectedRef.current?.();
+      }
+    };
     window.addEventListener("keydown", fn);
     return () => window.removeEventListener("keydown", fn);
   }, []);
@@ -644,14 +668,38 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
   };
 
   const deleteSelected = async () => {
-    if (!confirm(`${selectedIds.size}개 노드를 삭제할까요?`)) return;
-    for (const nodeId of selectedIds) {
+    const ids = selectedIdsRef.current;
+    if (ids.size === 0) return;
+    if (!confirm(`${ids.size}개 노드를 삭제할까요?`)) return;
+    for (const nodeId of ids) {
       for (const n of nodeList)
         if ((n.nextNodes||[]).includes(nodeId))
           await db.ref(`${nodesRef}/${n.id}`).update({ nextNodes: n.nextNodes.filter(x=>x!==nodeId) });
       await db.ref(`${nodesRef}/${nodeId}`).remove();
     }
     setSelectedIds(new Set());
+  };
+  deleteSelectedRef.current = deleteSelected;
+
+  const addMaterialNodes = async () => {
+    if (selectedMaterialIds.length === 0) return;
+    const existing = nodeList.filter(n => n.type === "material").length;
+    for (let i = 0; i < selectedMaterialIds.length; i++) {
+      const mat = materials.find(m => m.id === selectedMaterialIds[i]);
+      if (!mat) continue;
+      const id = Date.now().toString() + "_" + i;
+      const idx = existing + i;
+      await db.ref(`${nodesRef}/${id}`).set({
+        id, type: "material",
+        materialId: mat.id, materialName: mat.name, totalProblems: mat.totalProblems,
+        nextNodes: [],
+        x: 120 + (idx % 4) * 160,
+        y: 160 + Math.floor(idx / 4) * 140,
+        createdAt: new Date().toISOString(),
+      });
+    }
+    setShowAddMaterial(false);
+    setSelectedMaterialIds([]);
   };
 
   const toggleEdge = async (fromId, toId) => {
@@ -703,9 +751,9 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
     <div className="space-y-3">
       {/* 툴바 + 상태창 한 줄 */}
       <div className="flex items-center gap-2 border rounded-xl bg-white px-3 overflow-hidden" style={{ height: 44, minHeight: 44 }}>
-        <Btn onClick={addMaterialNode} disabled={materials.length === 0}>+ 교재 노드</Btn>
+        <Btn onClick={() => { setShowAddMaterial(s=>!s); setShowAddStudent(false); }} disabled={materials.length === 0}>+ 교재 노드</Btn>
         <Btn variant="outline" onClick={addAssessmentNode} disabled={assessments.length === 0}>+ 평가 노드</Btn>
-        <Btn variant="outline" onClick={() => setShowAddStudent(s=>!s)}>+ 학생 노드</Btn>
+        <Btn variant="outline" onClick={() => { setShowAddStudent(s=>!s); setShowAddMaterial(false); }}>+ 학생 노드</Btn>
         <div className="h-4 w-px bg-slate-200 shrink-0"/>
         {connectingFrom ? (
           <>
@@ -841,6 +889,60 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
               className="text-xs text-slate-400 hover:text-slate-600 hover:underline ml-1">전체 선택</button>
           </div>
         </Card>
+        );
+      })()}
+
+      {showAddMaterial && (() => {
+        const folderIds = [...new Set(materials.map(m => m.folderId).filter(Boolean))];
+        const getFolderName = (fid) => matFolders[fid]?.name || fid;
+        const visibleMats = materialFolderFilter === "전체"
+          ? materials
+          : materialFolderFilter === "__none__"
+          ? materials.filter(m => !m.folderId)
+          : materials.filter(m => m.folderId === materialFolderFilter);
+        return (
+          <Card className="p-4 space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-medium text-sm text-slate-600 shrink-0">교재 추가</span>
+              <div className="flex gap-1 flex-wrap">
+                {["전체", ...(materials.some(m=>!m.folderId)?["__none__"]:[]), ...folderIds].map(fid => {
+                  const label = fid === "전체" ? "전체" : fid === "__none__" ? "미분류" : getFolderName(fid);
+                  return (
+                    <button key={fid} onClick={() => setMaterialFolderFilter(fid)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${materialFolderFilter === fid ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
+              {visibleMats.map(mat => {
+                const checked = selectedMaterialIds.includes(mat.id);
+                return (
+                  <label key={mat.id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-sm cursor-pointer transition select-none
+                    ${checked ? "bg-slate-900 text-white border-slate-900 font-medium" : "bg-white hover:bg-slate-50 text-slate-700"}`}>
+                    <input type="checkbox" checked={checked}
+                      onChange={e => setSelectedMaterialIds(prev =>
+                        e.target.checked ? [...prev, mat.id] : prev.filter(id => id !== mat.id)
+                      )}
+                      className="w-3.5 h-3.5"
+                    />
+                    <span>{mat.name}</span>
+                    <span className={`text-xs ${checked ? "text-slate-300" : "text-slate-400"}`}>{mat.totalProblems}문제</span>
+                  </label>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-2">
+              <Btn size="sm" onClick={addMaterialNodes} disabled={selectedMaterialIds.length === 0}>
+                {selectedMaterialIds.length > 0 ? `${selectedMaterialIds.length}개 추가` : "추가"}
+              </Btn>
+              <Btn size="sm" variant="outline" onClick={()=>{ setShowAddMaterial(false); setSelectedMaterialIds([]); setMaterialFolderFilter("전체"); }}>취소</Btn>
+              <button onClick={() => setSelectedMaterialIds(visibleMats.map(m => m.id))}
+                className="text-xs text-slate-400 hover:text-slate-600 hover:underline ml-1">전체 선택</button>
+            </div>
+          </Card>
         );
       })()}
 
