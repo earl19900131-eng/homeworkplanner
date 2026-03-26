@@ -1,20 +1,91 @@
+// ── 교재 문제 번호 파싱 ───────────────────────────────────────────────────────
+function parseProblemInput(raw) {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  // 범위: 숫자-숫자 (예: 1-420)
+  const rangeMatch = trimmed.match(/^(\d+)-(\d+)$/);
+  if (rangeMatch) {
+    const start = parseInt(rangeMatch[1]), end = parseInt(rangeMatch[2]);
+    if (start <= end) return { type: "range", start, end, total: end - start + 1 };
+  }
+  // 목록: 쉼표 또는 줄바꿈으로 구분
+  const items = trimmed.split(/[,\n]+/).map(s => s.trim()).filter(s => s.length > 0);
+  if (items.length > 0) return { type: "list", items, total: items.length };
+  return null;
+}
+
 // ── 교재 관리 탭 ─────────────────────────────────────────────────────────────
 function MaterialsTab({ materials }) {
-  const empty = { name: "", subject: "수학", totalProblems: "", minutesPerProblem: "" };
+  const SUBJECTS = ["중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"];
+  const empty = { name: "", subject: "공통수학1", totalProblems: "", minutesPerProblem: "", problemInput: "" };
+
+  // 폴더 상태
+  const [folders, setFolders] = React.useState([]);
+  const [step, setStep] = React.useState("folders"); // "folders" | "folder_view"
+  const [activeFolderId, setActiveFolderId] = React.useState(null);
+  const [folderForm, setFolderForm] = React.useState("");
+  const [editingFolderId, setEditingFolderId] = React.useState(null);
+  const [editingFolderName, setEditingFolderName] = React.useState("");
+
+  // 교재 상태
   const [form, setForm] = React.useState(empty);
   const [editId, setEditId] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState("");
+  const [subjectFilter, setSubjectFilter] = React.useState("전체");
 
+  const parsedProblems = React.useMemo(() => parseProblemInput(form.problemInput), [form.problemInput]);
+
+  React.useEffect(() => {
+    const ref = db.ref("materialFolders");
+    ref.on("value", snap => {
+      const data = snap.val();
+      setFolders(data ? Object.values(data).sort((a,b) => a.createdAt - b.createdAt) : []);
+    });
+    return () => ref.off();
+  }, []);
+
+  // 폴더 CRUD
+  const addFolder = async () => {
+    if (!folderForm.trim()) return;
+    const id = Date.now().toString();
+    await db.ref(`materialFolders/${id}`).set({ id, name: folderForm.trim(), createdAt: id });
+    setFolderForm("");
+  };
+  const saveEditFolder = async () => {
+    if (!editingFolderName.trim()) return;
+    await db.ref(`materialFolders/${editingFolderId}`).update({ name: editingFolderName.trim() });
+    setEditingFolderId(null);
+  };
+  const deleteFolder = async (id) => {
+    if (!confirm("폴더를 삭제하면 안에 있는 교재도 모두 삭제됩니다. 계속하시겠습니까?")) return;
+    for (const m of materials.filter(m => m.folderId === id)) await db.ref(`materials/${m.id}`).remove();
+    await db.ref(`materialFolders/${id}`).remove();
+    if (activeFolderId === id) setStep("folders");
+  };
+  const openFolder = (folder) => { setActiveFolderId(folder.id); setStep("folder_view"); setSubjectFilter("전체"); setForm(empty); setEditId(null); setError(""); };
+  const goBack = () => { setStep("folders"); setActiveFolderId(null); setForm(empty); setEditId(null); setError(""); };
+
+  // 교재 CRUD
   const handleSave = async () => {
     if (!form.name.trim()) { setError("교재명을 입력해 주세요."); return; }
-    if (!form.totalProblems) { setError("총 문제 수를 입력해 주세요."); return; }
+    const totalFromParsed = parsedProblems?.total;
+    const totalFromInput = Number(form.totalProblems);
+    if (!totalFromParsed && !totalFromInput) { setError("총 문제 수 또는 문제 번호를 입력해 주세요."); return; }
     setSaving(true); setError("");
     const data = {
-      name: form.name.trim(), subject: form.subject || "수학",
-      totalProblems: Number(form.totalProblems),
+      name: form.name.trim(), subject: form.subject || "공통수학1",
+      totalProblems: totalFromParsed ?? totalFromInput,
       minutesPerProblem: Number(form.minutesPerProblem) || 0,
+      folderId: activeFolderId,
     };
+    if (parsedProblems) {
+      if (parsedProblems.type === "range") {
+        data.problemType = "range"; data.problemStart = parsedProblems.start; data.problemEnd = parsedProblems.end; data.problems = null;
+      } else {
+        data.problemType = "list"; data.problems = parsedProblems.items; data.problemStart = null; data.problemEnd = null;
+      }
+    }
     try {
       if (editId) { await db.ref(`materials/${editId}`).update(data); }
       else { const id = Date.now().toString(); await db.ref(`materials/${id}`).set({ id, ...data }); }
@@ -24,14 +95,128 @@ function MaterialsTab({ materials }) {
   };
 
   const handleEdit = (mat) => {
-    setForm({ name: mat.name, subject: mat.subject, totalProblems: mat.totalProblems, minutesPerProblem: mat.minutesPerProblem || "" });
+    let problemInput = "";
+    if (mat.problemType === "range") problemInput = `${mat.problemStart}-${mat.problemEnd}`;
+    else if (mat.problemType === "list" && mat.problems) problemInput = mat.problems.join(", ");
+    setForm({ name: mat.name, subject: mat.subject, totalProblems: mat.totalProblems, minutesPerProblem: mat.minutesPerProblem || "", problemInput });
     setEditId(mat.id);
   };
 
+  // ── 폴더 목록 화면 ─────────────────────────────────────────────────────────
+  const unclassified = materials.filter(m => !m.folderId);
+
+  if (step === "folders") {
+    return (
+      <div className="space-y-5">
+        <Card className="p-5 space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <h2 className="text-lg font-bold">교재 폴더</h2>
+          </div>
+          <div className="flex gap-2">
+            <input value={folderForm} onChange={e=>setFolderForm(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&addFolder()}
+              placeholder="새 폴더명 입력 (예: 공통수학1, 중2 선행)"
+              className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"/>
+            <Btn onClick={addFolder}>+ 폴더 추가</Btn>
+          </div>
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+            {folders.map(folder => {
+              const matCount = materials.filter(m => m.folderId === folder.id).length;
+              return (
+                <div key={folder.id} className="group relative">
+                  {editingFolderId === folder.id ? (
+                    <div className="w-full aspect-square rounded-2xl border-2 border-blue-200 bg-blue-50 flex flex-col items-center justify-center gap-2 p-3">
+                      <span className="text-3xl leading-none">📚</span>
+                      <input autoFocus value={editingFolderName} onChange={e=>setEditingFolderName(e.target.value)}
+                        onKeyDown={e=>{ if(e.key==="Enter") saveEditFolder(); if(e.key==="Escape") setEditingFolderId(null); }}
+                        onBlur={saveEditFolder}
+                        className="w-full text-center text-xs border-b border-blue-400 bg-transparent outline-none"/>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={() => openFolder(folder)}
+                      className="w-full aspect-square rounded-2xl border-2 border-amber-200 bg-amber-50 hover:bg-amber-100 transition flex flex-col items-center justify-center gap-2 p-3">
+                      <span className="text-4xl leading-none">📁</span>
+                      <span className="text-xs font-semibold text-amber-900 text-center leading-tight line-clamp-2">{folder.name}</span>
+                      <span className="text-[10px] text-amber-600">{matCount}권</span>
+                    </button>
+                  )}
+                  <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                    <button type="button"
+                      onClick={e=>{ e.stopPropagation(); setEditingFolderId(folder.id); setEditingFolderName(folder.name); }}
+                      className="w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-blue-500 hover:border-blue-300 text-xs leading-none flex items-center justify-center">
+                      ✎
+                    </button>
+                    <button type="button"
+                      onClick={e=>{ e.stopPropagation(); deleteFolder(folder.id); }}
+                      className="w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-300 text-xs leading-none flex items-center justify-center">
+                      ×
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+            {folders.length === 0 && unclassified.length === 0 && (
+              <div className="col-span-5 rounded-2xl border border-dashed p-8 text-sm text-slate-400 text-center">폴더를 추가해 주세요.</div>
+            )}
+          </div>
+
+          {/* 미분류 교재 */}
+          {unclassified.length > 0 && (
+            <div className="space-y-2 pt-2 border-t border-slate-100">
+              <div className="text-xs font-semibold text-slate-400">미분류 교재 ({unclassified.length})</div>
+              <div className="grid grid-cols-2 gap-2">
+                {unclassified.map(mat => {
+                  const est = mat.minutesPerProblem ? Math.round(mat.totalProblems * mat.minutesPerProblem / 60 * 10) / 10 : null;
+                  return (
+                    <div key={mat.id} className="flex items-center gap-3 rounded-2xl border px-4 py-3 bg-slate-50">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm">{mat.name}</div>
+                        <div className="text-xs text-slate-500 mt-0.5">
+                          {mat.subject} · {mat.totalProblems}문제{est !== null ? ` · 예상 ${est}h` : ""}
+                        </div>
+                      </div>
+                      {folders.length > 0 && (
+                        <select defaultValue="" onChange={async e => {
+                          if (!e.target.value) return;
+                          await db.ref(`materials/${mat.id}/folderId`).set(e.target.value);
+                        }} className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white outline-none">
+                          <option value="">폴더로 이동</option>
+                          {folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                        </select>
+                      )}
+                      <Btn variant="outline" size="sm" onClick={async()=>{ if(!confirm("삭제?")) return; await db.ref(`materials/${mat.id}`).remove(); }}>삭제</Btn>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </Card>
+      </div>
+    );
+  }
+
+  // ── 폴더 내부 화면 ─────────────────────────────────────────────────────────
+  const activeFolder = folders.find(f => f.id === activeFolderId);
+  const folderMaterials = materials.filter(m => m.folderId === activeFolderId);
+  const usedSubjects = [...new Set(folderMaterials.map(m => m.subject).filter(Boolean))].sort((a,b) => SUBJECTS.indexOf(a) - SUBJECTS.indexOf(b));
+  const filtered = subjectFilter === "전체" ? folderMaterials : folderMaterials.filter(m => m.subject === subjectFilter);
+
   return (
     <div className="space-y-5">
+      {/* 헤더 */}
+      <div className="flex items-center gap-3">
+        <button onClick={goBack} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 transition">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/></svg>
+          폴더 목록
+        </button>
+        <span className="text-slate-300">/</span>
+        <span className="text-sm font-semibold text-slate-800">📚 {activeFolder?.name}</span>
+      </div>
+
+      {/* 교재 등록/수정 폼 */}
       <Card className="p-5 space-y-4">
-        <h2 className="text-lg font-bold">{editId ? "교재 수정" : "교재 추가"}</h2>
+        <h2 className="text-base font-bold">{editId ? "교재 수정" : "교재 추가"}</h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5 sm:col-span-2">
             <Lbl>교재명</Lbl>
@@ -39,11 +224,32 @@ function MaterialsTab({ materials }) {
           </div>
           <div className="space-y-1.5"><Lbl>과목</Lbl>
             <select value={form.subject} onChange={e=>setForm({...form,subject:e.target.value})}
-              className="w-full rounded-xl border border-input px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300">
-              {["중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"].map(s=><option key={s} value={s}>{s}</option>)}
+              className="w-full rounded-xl border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300">
+              {SUBJECTS.map(s=><option key={s} value={s}>{s}</option>)}
             </select>
           </div>
-          <div className="space-y-1.5"><Lbl>총 문제 수</Lbl><Inp type="number" value={form.totalProblems} onChange={e=>setForm({...form,totalProblems:e.target.value})} placeholder="300"/></div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Lbl>문제 번호 입력 <span className="text-slate-400 font-normal">(선택 — 직접 입력 시 총 문제 수 자동 계산)</span></Lbl>
+            <textarea value={form.problemInput} onChange={e=>setForm({...form,problemInput:e.target.value})}
+              placeholder={"범위: 1-420\n목록: 개념익히기1, 1-1, 1-2, 개념익히기2, 2-1, 2-2"}
+              rows={3} className="w-full border border-slate-200 rounded-2xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300 transition resize-none font-mono"/>
+            {parsedProblems && (
+              <div className="text-xs text-emerald-600 bg-emerald-50 rounded-xl px-3 py-1.5">
+                {parsedProblems.type === "range"
+                  ? `✓ 범위 인식: ${parsedProblems.start}번 ~ ${parsedProblems.end}번 · 총 ${parsedProblems.total}문제`
+                  : `✓ 목록 인식: 총 ${parsedProblems.total}문제 (${parsedProblems.items.slice(0,5).join(", ")}${parsedProblems.total > 5 ? ` 외 ${parsedProblems.total - 5}개` : ""})`}
+              </div>
+            )}
+            {form.problemInput.trim() && !parsedProblems && (
+              <div className="text-xs text-red-500 bg-red-50 rounded-xl px-3 py-1.5">인식 실패 — 형식을 확인해 주세요.</div>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            <Lbl>총 문제 수 <span className="text-slate-400 font-normal">{parsedProblems ? "(자동)" : ""}</span></Lbl>
+            <Inp type="number" value={parsedProblems ? parsedProblems.total : form.totalProblems}
+              onChange={e=>setForm({...form,totalProblems:e.target.value})}
+              placeholder="300" className={parsedProblems ? "opacity-50 pointer-events-none" : ""}/>
+          </div>
           <div className="space-y-1.5"><Lbl>문제당 예상 시간 (분)</Lbl><Inp type="number" value={form.minutesPerProblem} onChange={e=>setForm({...form,minutesPerProblem:e.target.value})} placeholder="5"/></div>
         </div>
         {error && <AlertBox className="bg-red-50 text-red-700">{error}</AlertBox>}
@@ -52,21 +258,43 @@ function MaterialsTab({ materials }) {
           {editId && <Btn variant="outline" onClick={()=>{ setEditId(null); setForm(empty); setError(""); }}>취소</Btn>}
         </div>
       </Card>
+
+      {/* 교재 목록 */}
       <Card className="p-5 space-y-3">
-        <h2 className="text-lg font-bold">등록된 교재 ({materials.length})</h2>
-        {materials.length === 0
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h2 className="text-base font-bold">교재 목록 ({filtered.length}{subjectFilter !== "전체" ? `/${folderMaterials.length}` : ""})</h2>
+          {usedSubjects.length > 0 && (
+            <div className="flex gap-1.5 flex-wrap">
+              {["전체", ...usedSubjects].map(s => (
+                <button key={s} onClick={() => setSubjectFilter(s)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${subjectFilter === s ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {filtered.length === 0
           ? <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-400 text-center">아직 등록된 교재가 없습니다.</div>
-          : <div className="space-y-2">
-              {materials.map(mat => {
+          : <div className="grid grid-cols-2 gap-2">
+              {filtered.map(mat => {
                 const est = mat.minutesPerProblem ? Math.round(mat.totalProblems * mat.minutesPerProblem / 60 * 10) / 10 : null;
                 return (
                   <div key={mat.id} className="flex items-center gap-3 rounded-2xl border px-4 py-3">
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium">{mat.name}</div>
+                      <div className="font-medium text-sm">{mat.name}</div>
                       <div className="text-xs text-slate-500 mt-0.5">
-                        {mat.subject} · {mat.totalProblems}문제 · 문제당 {mat.minutesPerProblem||"?"}분
-                        {est !== null && ` · 예상 ${est}시간`}
+                        {mat.subject} · {mat.totalProblems}문제{mat.minutesPerProblem ? ` · ${mat.minutesPerProblem}분/문제` : ""}
+                        {est !== null && ` · 예상 ${est}h`}
                       </div>
+                      {mat.problemType === "range" && (
+                        <div className="text-xs text-blue-500 mt-0.5">{mat.problemStart}번 ~ {mat.problemEnd}번</div>
+                      )}
+                      {mat.problemType === "list" && mat.problems && (
+                        <div className="text-xs text-blue-500 mt-0.5 truncate">
+                          {mat.problems.slice(0,4).join(", ")}{mat.problems.length > 4 ? ` 외 ${mat.problems.length - 4}개` : ""}
+                        </div>
+                      )}
                     </div>
                     <Btn variant="outline" size="sm" onClick={()=>handleEdit(mat)}>수정</Btn>
                     <Btn variant="outline" size="sm" onClick={async()=>{ if(!confirm("삭제?")) return; await db.ref(`materials/${mat.id}`).remove(); }}>삭제</Btn>
@@ -88,12 +316,13 @@ const PATH_COLORS = ["#ef4444","#f97316","#eab308","#22c55e","#06b6d4","#3b82f6"
 
 // 노드 스타일
 function getNodeStyle(node) {
-  if (node.type === "material") return { border: "#cbd5e1", bg: "#fff", headerBg: "#f1f5f9", headerText: "#475569", title: "📚 교재" };
-  if (node.type === "start")    return { border: "#f9a8d4", bg: "#fdf2f8", headerBg: "#fbcfe8", headerText: "#9d174d", title: "▶ START" };
-  /* end */                     return { border: "#86efac", bg: "#f0fdf4", headerBg: "#bbf7d0", headerText: "#166534", title: "■ END" };
+  if (node.type === "material")   return { border: "#cbd5e1", bg: "#fff",     headerBg: "#f1f5f9", headerText: "#475569", title: "📚 교재" };
+  if (node.type === "assessment") return { border: "#c4b5fd", bg: "#faf5ff", headerBg: "#ede9fe", headerText: "#5b21b6", title: "📝 평가" };
+  if (node.type === "start")      return { border: "#f9a8d4", bg: "#fdf2f8", headerBg: "#fbcfe8", headerText: "#9d174d", title: "▶ START" };
+  /* end */                       return { border: "#86efac", bg: "#f0fdf4", headerBg: "#bbf7d0", headerText: "#166534", title: "■ END" };
 }
 
-function CurriculumVisualEditor({ boardId, students, materials }) {
+function CurriculumVisualEditor({ boardId, students, materials, assessments = [] }) {
   const [nodes, setNodes] = React.useState({});
   const [selectedIds, setSelectedIds] = React.useState(new Set());
   const [connectingFrom, setConnectingFrom] = React.useState(null);
@@ -102,10 +331,12 @@ function CurriculumVisualEditor({ boardId, students, materials }) {
   const [localPos, setLocalPos] = React.useState({});
   const [showAddStudent, setShowAddStudent] = React.useState(false);
   const [selectedStudentIds, setSelectedStudentIds] = React.useState([]);
+  const [studentGradeFilter, setStudentGradeFilter] = React.useState("전체");
   const [zoom, setZoom] = React.useState(1);
   const [studentPaths, setStudentPaths] = React.useState({});
   const [activePathStudentId, setActivePathStudentId] = React.useState(null);
   const [pathEditMode, setPathEditMode] = React.useState(false);
+  const [hoveredEdge, setHoveredEdge] = React.useState(null); // { fromId, toId }
   const canvasRef = React.useRef(null);
 
   React.useEffect(() => {
@@ -157,6 +388,22 @@ function CurriculumVisualEditor({ boardId, students, materials }) {
     setSelectedIds(new Set([id]));
   };
 
+  const addAssessmentNode = async () => {
+    if (assessments.length === 0) return;
+    const id = Date.now().toString();
+    const a = assessments[0];
+    const existing = nodeList.filter(n => n.type === "assessment");
+    await db.ref(`${nodesRef}/${id}`).set({
+      id, type: "assessment",
+      assessmentId: a.id, assessmentName: a.name, assessmentType: a.type || "일일테스트",
+      nextNodes: [],
+      x: 120 + (existing.length % 4) * 160,
+      y: 300 + Math.floor(existing.length / 4) * 140,
+      createdAt: new Date().toISOString(),
+    });
+    setSelectedIds(new Set([id]));
+  };
+
   const addStudentNodes = async () => {
     if (selectedStudentIds.length === 0) return;
     const existingCount = nodeList.filter(n => n.type === "start").length;
@@ -168,10 +415,6 @@ function CurriculumVisualEditor({ boardId, students, materials }) {
       await db.ref(`${nodesRef}/start_${sid}`).set({
         id: `start_${sid}`, type: "start", studentId: student.id, studentName: student.name,
         nextNodes: [], x: 30, y: baseY, createdAt: new Date().toISOString(),
-      });
-      await db.ref(`${nodesRef}/end_${sid}`).set({
-        id: `end_${sid}`, type: "end", studentId: student.id, studentName: student.name,
-        nextNodes: [], x: 800, y: baseY, createdAt: new Date().toISOString(),
       });
     }
     setShowAddStudent(false);
@@ -228,7 +471,7 @@ function CurriculumVisualEditor({ boardId, students, materials }) {
 
     // 학생 노드 클릭 시 경로 자동 표시
     const clickedNode = nodes[nodeId];
-    if (clickedNode?.type === "start" || clickedNode?.type === "end") {
+    if (clickedNode?.type === "start") {
       setActivePathStudentId(clickedNode.studentId);
       setPathEditMode(false);
     } else {
@@ -359,6 +602,7 @@ function CurriculumVisualEditor({ boardId, students, materials }) {
       {/* 툴바 + 상태창 한 줄 */}
       <div className="flex items-center gap-2 border rounded-xl bg-white px-3 overflow-hidden" style={{ height: 44, minHeight: 44 }}>
         <Btn onClick={addMaterialNode} disabled={materials.length === 0}>+ 교재 노드</Btn>
+        <Btn variant="outline" onClick={addAssessmentNode} disabled={assessments.length === 0}>+ 평가 노드</Btn>
         <Btn variant="outline" onClick={() => setShowAddStudent(s=>!s)}>+ 학생 노드</Btn>
         <div className="h-4 w-px bg-slate-200 shrink-0"/>
         {connectingFrom ? (
@@ -375,8 +619,9 @@ function CurriculumVisualEditor({ boardId, students, materials }) {
           <>
             <span className="text-sm font-semibold text-slate-600 shrink-0">
               {selectedNode.type === "material" ? "교재 노드"
-                : selectedNode.type === "start" ? `${selectedNode.studentName} · 시작`
-                : `${selectedNode.studentName} · 끝`}
+                : selectedNode.type === "assessment" ? "평가 노드"
+                : selectedNode.type === "start" || selectedNode.type === "end" ? `${selectedNode.studentName} · ${selectedNode.type === "end" ? "끝(구)" : "시작"}`
+                : selectedNode.studentName}
             </span>
             {selectedNode.type === "material" && (
               <>
@@ -394,7 +639,23 @@ function CurriculumVisualEditor({ boardId, students, materials }) {
                 </select>
               </>
             )}
-            {(selectedNode.type === "start" || selectedNode.type === "end") && (
+            {selectedNode.type === "assessment" && (
+              <>
+                <div className="h-4 w-px bg-slate-200 shrink-0"/>
+                <span className="text-xs text-slate-400 shrink-0">평가</span>
+                <select value={selectedNode.assessmentId}
+                  onChange={async e => {
+                    const a = assessments.find(a => a.id === e.target.value);
+                    if (a) await db.ref(`${nodesRef}/${selectedId}`).update({
+                      assessmentId: a.id, assessmentName: a.name, assessmentType: a.type || "일일테스트"
+                    });
+                  }}
+                  className="rounded-lg border px-2 py-1 text-sm bg-white shrink-0 max-w-[180px] truncate">
+                  {assessments.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+              </>
+            )}
+            {(selectedNode.type === "start") && (
               <>
                 <div className="h-4 w-px bg-slate-200 shrink-0"/>
                 <button onClick={() => setPathEditMode(p => !p)}
@@ -416,7 +677,7 @@ function CurriculumVisualEditor({ boardId, students, materials }) {
                     const n = nodes[nid]; if (!n) return null;
                     return (
                       <span key={nid} className="flex items-center gap-1 bg-slate-100 rounded-lg px-2 py-0.5 text-xs whitespace-nowrap shrink-0">
-                        {n.materialName || `${n.studentName} ${n.type==="end"?"끝":"시작"}`}
+                        {n.materialName || n.assessmentName || n.studentName}
                         <button onClick={() => removeConnection(selectedId, nid)} className="text-slate-400 hover:text-red-500">✕</button>
                       </span>
                     );
@@ -434,11 +695,24 @@ function CurriculumVisualEditor({ boardId, students, materials }) {
 
 
       {/* 학생 노드 추가 패널 */}
-      {showAddStudent && (
+      {showAddStudent && (() => {
+        const grades = ["전체", ...[...new Set(students.map(s => s.className).filter(Boolean))].sort((a,b) => a.localeCompare(b))];
+        const visibleStudents = studentGradeFilter === "전체" ? students : students.filter(s => s.className === studentGradeFilter);
+        return (
         <Card className="p-4 space-y-3">
-          <div className="font-medium text-sm text-slate-600">학생 시작/끝 노드 추가 (여러 명 선택 가능)</div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-sm text-slate-600 shrink-0">학생 추가</span>
+            <div className="flex gap-1 flex-wrap">
+              {grades.map(g => (
+                <button key={g} onClick={() => setStudentGradeFilter(g)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${studentGradeFilter === g ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+                  {g}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
-            {students.map(s => {
+            {visibleStudents.map(s => {
               const alreadyAdded = !!nodes[`start_${s.id}`];
               const checked = selectedStudentIds.includes(s.id);
               return (
@@ -460,12 +734,13 @@ function CurriculumVisualEditor({ boardId, students, materials }) {
             <Btn size="sm" onClick={addStudentNodes} disabled={selectedStudentIds.length === 0}>
               {selectedStudentIds.length > 0 ? `${selectedStudentIds.length}명 추가` : "추가"}
             </Btn>
-            <Btn size="sm" variant="outline" onClick={()=>{ setShowAddStudent(false); setSelectedStudentIds([]); }}>취소</Btn>
-            <button onClick={() => setSelectedStudentIds(students.filter(s=>!nodes[`start_${s.id}`]).map(s=>s.id))}
+            <Btn size="sm" variant="outline" onClick={()=>{ setShowAddStudent(false); setSelectedStudentIds([]); setStudentGradeFilter("전체"); }}>취소</Btn>
+            <button onClick={() => setSelectedStudentIds(visibleStudents.filter(s=>!nodes[`start_${s.id}`]).map(s=>s.id))}
               className="text-xs text-slate-400 hover:text-slate-600 hover:underline ml-1">전체 선택</button>
           </div>
         </Card>
-      )}
+        );
+      })()}
 
       {/* 캔버스 */}
       <div style={{ position: "relative" }}>
@@ -511,35 +786,37 @@ function CurriculumVisualEditor({ boardId, students, materials }) {
                   const cx = (x1 + x2) / 2;
                   const d = `M${x1} ${y1} C${cx} ${y1},${cx} ${y2},${x2} ${y2}`;
                   const inPath = activePath.has(`${node.id}__${tid}`);
+                  const isHovered = hoveredEdge?.fromId === node.id && hoveredEdge?.toId === tid;
+                  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
                   return (
-                    <path key={`edge-${node.id}-${tid}`} d={d}
-                      stroke={inPath ? "#334155" : "#cbd5e1"}
-                      strokeWidth={inPath ? 3 : 1.5} fill="none"
-                      markerEnd={inPath ? "url(#arr-active)" : "url(#arr)"}
-                      style={{ pointerEvents: "none" }}/>
+                    <g key={`edge-${node.id}-${tid}`}>
+                      <path d={d}
+                        stroke={isHovered ? "#ef4444" : inPath ? "#334155" : "#cbd5e1"}
+                        strokeWidth={inPath ? 3 : 1.5} fill="none"
+                        markerEnd={inPath ? "url(#arr-active)" : "url(#arr)"}
+                        style={{ pointerEvents: "none" }}/>
+                      {/* 히트 영역 */}
+                      <path d={d} stroke="transparent" strokeWidth="16" fill="none"
+                        style={{ pointerEvents: "stroke", cursor: "pointer" }}
+                        onMouseEnter={() => !pathEditMode && setHoveredEdge({ fromId: node.id, toId: tid })}
+                        onMouseLeave={() => setHoveredEdge(null)}
+                        onClick={e => { if (pathEditMode) { e.stopPropagation(); toggleEdge(node.id, tid); } }}/>
+                      {/* × 삭제 버튼 */}
+                      {isHovered && !pathEditMode && (
+                        <g transform={`translate(${mx},${my})`}
+                          style={{ cursor: "pointer" }}
+                          onMouseEnter={() => setHoveredEdge({ fromId: node.id, toId: tid })}
+                          onMouseLeave={() => setHoveredEdge(null)}
+                          onClick={e => { e.stopPropagation(); removeConnection(node.id, tid); setHoveredEdge(null); }}>
+                          <circle r="9" fill="white" stroke="#ef4444" strokeWidth="1.5"/>
+                          <text x="0" y="4" textAnchor="middle" fontSize="11" fill="#ef4444" fontWeight="bold" style={{ userSelect: "none" }}>×</text>
+                        </g>
+                      )}
+                    </g>
                   );
                 }).filter(Boolean)
               )}
 
-              {/* 클릭 히트 영역 (경로 편집 모드) */}
-              {pathEditMode && activePathStudentId && nodeList.flatMap(node =>
-                (node.nextNodes||[]).map(tid => {
-                  const to = nodes[tid]; if (!to) return null;
-                  const fp = getPos(node), tp = getPos(to);
-                  const x1 = fp.x + NODE_W + PORT_SIZE, y1 = fp.y + NODE_H / 2;
-                  const x2 = tp.x, y2 = tp.y + NODE_H / 2;
-                  const cx = (x1 + x2) / 2;
-                  const d = `M${x1} ${y1} C${cx} ${y1},${cx} ${y2},${x2} ${y2}`;
-                  const inPath = activePath.has(`${node.id}__${tid}`);
-                  return (
-                    <path key={`hit-${node.id}-${tid}`} d={d}
-                      stroke={inPath ? "#334155" : "rgba(0,0,0,0.06)"}
-                      strokeWidth="16" fill="none" opacity={0.2}
-                      style={{ pointerEvents: "stroke", cursor: "pointer" }}
-                      onClick={e => { e.stopPropagation(); toggleEdge(node.id, tid); }}/>
-                  );
-                }).filter(Boolean)
-              )}
             </svg>
 
             {nodeList.map(node => {
@@ -587,6 +864,13 @@ function CurriculumVisualEditor({ boardId, students, materials }) {
                           </div>
                           <div style={{ fontSize: 8, color: "#94a3b8", marginTop: 1 }}>{node.totalProblems}문제</div>
                         </>
+                      ) : node.type === "assessment" ? (
+                        <>
+                          <div style={{ fontSize: 9, fontWeight: 600, lineHeight: 1.2, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                            {node.assessmentName}
+                          </div>
+                          <div style={{ fontSize: 8, color: "#a78bfa", marginTop: 1 }}>{node.assessmentType || "일일테스트"}</div>
+                        </>
                       ) : (
                         <div style={{ fontSize: 9, fontWeight: 700, textAlign: "center", color: s.headerText }}>
                           {node.studentName}
@@ -626,7 +910,7 @@ function CurriculumVisualEditor({ boardId, students, materials }) {
 }
 
 // ── 평가 관리 탭 ──────────────────────────────────────────────────────────────
-function AssessmentsTab() {
+function AssessmentsTab({ students = [] }) {
   const SUBJECTS = ["중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"];
   const [step, setStep] = React.useState("select");
   const [testName, setTestName] = React.useState("");
@@ -635,12 +919,50 @@ function AssessmentsTab() {
   const [saving, setSaving] = React.useState(false);
   const [assessments, setAssessments] = React.useState([]);
   const [focusTarget, setFocusTarget] = React.useState(null);
+  const [generalName, setGeneralName] = React.useState("");
+  const [generalSubject, setGeneralSubject] = React.useState("공통수학1");
+  const [generalTotal, setGeneralTotal] = React.useState("");
+  const [mockName, setMockName] = React.useState("");
+  const [mockRound, setMockRound] = React.useState(1);
+  const [mockQCount, setMockQCount] = React.useState(20);
+  const [mockTotalScore, setMockTotalScore] = React.useState(100);
+  const [mockStudentIds, setMockStudentIds] = React.useState([]);
+  const [mockExams, setMockExams] = React.useState([]);
+  const [mockGradeFilter, setMockGradeFilter] = React.useState("전체");
+  const [mockScoringType, setMockScoringType] = React.useState("auto"); // "none"|"auto"|"manual"
+  const [mockScoring, setMockScoring] = React.useState({});  // {1:4, 2:4, ...} for manual
+  const [mockResultExam, setMockResultExam] = React.useState(null);
+  const [mockResults, setMockResults] = React.useState({});
+  const [scoreInputs, setScoreInputs] = React.useState({});
+  const [mockFolders, setMockFolders] = React.useState([]);
+  const [activeFolderId, setActiveFolderId] = React.useState(null);
+  const [folderForm, setFolderForm] = React.useState("");
+  const [editingFolderId, setEditingFolderId] = React.useState(null);
+  const [editingFolderName, setEditingFolderName] = React.useState("");
 
   React.useEffect(() => {
     const ref = db.ref("assessments");
     ref.on("value", snap => {
       const data = snap.val();
       setAssessments(data ? Object.values(data).sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||"")) : []);
+    });
+    return () => ref.off();
+  }, []);
+
+  React.useEffect(() => {
+    const ref = db.ref("mockExams");
+    ref.on("value", snap => {
+      const data = snap.val();
+      setMockExams(data ? Object.values(data).sort((a,b) => a.round - b.round) : []);
+    });
+    return () => ref.off();
+  }, []);
+
+  React.useEffect(() => {
+    const ref = db.ref("mockExamFolders");
+    ref.on("value", snap => {
+      const data = snap.val();
+      setMockFolders(data ? Object.values(data).sort((a,b) => a.createdAt - b.createdAt) : []);
     });
     return () => ref.off();
   }, []);
@@ -718,7 +1040,78 @@ function AssessmentsTab() {
     setStep("daily_test"); setDbEditId(null); setTestName(""); setTree([nm]);
     setFocusTarget({ type:"major", id: nm.id });
   };
-  const startEditAssessment = (a) => { setStep("daily_test"); setDbEditId(a.id); setTestName(a.name); setTree(a.tree || []); };
+  const startCreateGeneral = () => {
+    setStep("general_test"); setDbEditId(null); setGeneralName(""); setGeneralSubject("공통수학1"); setGeneralTotal("");
+  };
+  const startEditAssessment = (a) => {
+    if (a.type === "누적테스트") {
+      setStep("general_test"); setDbEditId(a.id); setGeneralName(a.name); setGeneralSubject(a.subject || "공통수학1"); setGeneralTotal(a.totalProblems || "");
+    } else {
+      setStep("daily_test"); setDbEditId(a.id); setTestName(a.name); setTree(a.tree || []);
+    }
+  };
+  const addFolder = async () => {
+    if (!folderForm.trim()) return;
+    const id = Date.now().toString();
+    await db.ref(`mockExamFolders/${id}`).set({ id, name: folderForm.trim(), createdAt: id });
+    setFolderForm("");
+  };
+  const saveEditFolder = async () => {
+    if (!editingFolderName.trim()) return;
+    await db.ref(`mockExamFolders/${editingFolderId}`).update({ name: editingFolderName.trim() });
+    setEditingFolderId(null);
+  };
+  const deleteFolder = async (id) => {
+    if (!confirm("폴더를 삭제하면 안에 있는 시험도 모두 삭제됩니다. 계속하시겠습니까?")) return;
+    for (const e of mockExams.filter(e => e.folderId === id)) await db.ref(`mockExams/${e.id}`).remove();
+    await db.ref(`mockExamFolders/${id}`).remove();
+  };
+  const openFolder = (folder) => { setActiveFolderId(folder.id); setStep("folder_view"); };
+
+  const startCreateMock = () => {
+    setStep("mock_exam"); setDbEditId(null); setMockName(""); setMockRound(1); setMockQCount(20); setMockTotalScore(100); setMockStudentIds([]); setMockScoringType("auto"); setMockScoring({});
+  };
+  const startEditMock = (e) => {
+    setStep("mock_exam"); setDbEditId(e.id); setMockName(e.name); setMockRound(e.round||1); setMockQCount(e.questionCount||20); setMockTotalScore(e.totalScore||100); setMockStudentIds(e.students||[]); setMockScoringType(e.scoringType||"auto"); setMockScoring(e.scoring||{});
+  };
+  const handleSaveMock = async () => {
+    if (!mockName.trim()) { alert("시험 이름을 입력해 주세요."); return; }
+    setSaving(true);
+    const data = { type: "내신모의평가", name: mockName.trim(), round: Number(mockRound), questionCount: Number(mockQCount), students: mockStudentIds, createdAt: todayString(), scoringType: mockScoringType, folderId: activeFolderId };
+    if (mockScoringType === "auto") data.totalScore = Number(mockTotalScore);
+    if (mockScoringType === "manual") {
+      const scoring = {};
+      for (let i = 1; i <= Number(mockQCount); i++) scoring[i] = Number(mockScoring[i]) || 0;
+      data.scoring = scoring;
+      data.totalScore = Math.round(Object.values(scoring).reduce((a,b)=>a+b, 0) * 100) / 100;
+    }
+    try {
+      if (dbEditId) { await db.ref(`mockExams/${dbEditId}`).update(data); }
+      else { const id = Date.now().toString(); await db.ref(`mockExams/${id}`).set({ id, ...data }); }
+      setStep(activeFolderId ? "folder_view" : "select");
+    } catch(e) { alert("저장 실패: " + e.message); }
+    setSaving(false);
+  };
+
+  const openMockResults = (exam) => {
+    setMockResultExam(exam);
+    setStep("mock_results");
+    const ref = db.ref(`mockExamResults/${exam.id}`);
+    ref.once("value", snap => {
+      const data = snap.val() || {};
+      setMockResults(data);
+      const inputs = {};
+      (exam.students||[]).forEach(sid => { inputs[sid] = data[sid]?.score ?? ""; });
+      setScoreInputs(inputs);
+    });
+  };
+
+  const saveMockScore = async (sid) => {
+    const score = scoreInputs[sid];
+    if (score === "" || score === undefined) return;
+    await db.ref(`mockExamResults/${mockResultExam.id}/${sid}/score`).set(Number(score));
+    setMockResults(r => ({...r, [sid]: {...(r[sid]||{}), score: Number(score)}}));
+  };
 
   const handleSave = async () => {
     if (!testName.trim()) { alert("테스트 제목을 입력해 주세요."); return; }
@@ -731,6 +1124,53 @@ function AssessmentsTab() {
     } catch(e) { alert("저장 실패: " + e.message); }
     setSaving(false);
   };
+
+  const handleSaveGeneral = async () => {
+    if (!generalName.trim()) { alert("평가 제목을 입력해 주세요."); return; }
+    if (!generalTotal || isNaN(Number(generalTotal)) || Number(generalTotal) <= 0) { alert("전체 문제 수를 입력해 주세요."); return; }
+    setSaving(true);
+    const data = { type: "누적테스트", name: generalName.trim(), subject: generalSubject, totalProblems: Number(generalTotal), createdAt: todayString() };
+    try {
+      if (dbEditId) { await db.ref(`assessments/${dbEditId}`).update(data); }
+      else { const id = Date.now().toString(); await db.ref(`assessments/${id}`).set({ id, ...data }); }
+      setStep("select");
+    } catch(e) { alert("저장 실패: " + e.message); }
+    setSaving(false);
+  };
+
+  if (step === "general_test") {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={()=>setStep("select")} className="text-sm text-slate-500 hover:text-slate-800">← 뒤로</button>
+          <h2 className="text-lg font-bold">누적테스트 만들기</h2>
+        </div>
+        <Card className="p-5 space-y-4">
+          <div className="space-y-1.5">
+            <Lbl>평가 제목</Lbl>
+            <Inp value={generalName} onChange={e=>setGeneralName(e.target.value)} placeholder="예: 3월 누적테스트"/>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Lbl>과목</Lbl>
+              <select value={generalSubject} onChange={e=>setGeneralSubject(e.target.value)}
+                className="w-full rounded-xl border border-input px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300">
+                {SUBJECTS.map(s=><option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Lbl>전체 문제 수</Lbl>
+              <Inp type="number" value={generalTotal} onChange={e=>setGeneralTotal(e.target.value)} placeholder="예: 100"/>
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Btn variant="outline" onClick={()=>setStep("select")}>취소</Btn>
+            <Btn onClick={handleSaveGeneral} disabled={saving}>{saving?"저장 중...":(dbEditId?"수정 완료":"저장")}</Btn>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   if (step === "daily_test") {
     const INP = "border-0 border-b border-slate-200 px-1 py-0.5 text-sm bg-transparent outline-none focus:border-blue-400 min-w-0 flex-1";
@@ -833,6 +1273,215 @@ function AssessmentsTab() {
     );
   }
 
+  if (step === "mock_exam") {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={()=>setStep(activeFolderId?"folder_view":"select")} className="text-sm text-slate-500 hover:text-slate-800">← 뒤로</button>
+          <h2 className="text-lg font-bold">내신모의평가 {dbEditId?"수정":"등록"}</h2>
+        </div>
+        <Card className="p-5 space-y-4">
+          <div className="space-y-1.5">
+            <Lbl>시험 이름</Lbl>
+            <Inp value={mockName} onChange={e=>setMockName(e.target.value)} placeholder="예: 2024 3월 모의고사"/>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Lbl>회차</Lbl>
+              <select value={mockRound} onChange={e=>setMockRound(e.target.value)}
+                className="w-full rounded-xl border border-input px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300">
+                {Array.from({length:12},(_,i)=>i+1).map(n=><option key={n} value={n}>{n}차</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Lbl>문항 수</Lbl>
+              <Inp type="number" min="1" max="30" value={mockQCount} onChange={e=>setMockQCount(e.target.value)} placeholder="20"/>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Lbl>배점 방식</Lbl>
+            <div className="flex gap-2">
+              {[["none","배점 없음"],["auto","자동 배점"],["manual","직접 입력"]].map(([v,l])=>(
+                <button key={v} type="button" onClick={()=>setMockScoringType(v)}
+                  className={`px-3 py-1.5 rounded-xl text-sm font-medium border transition ${mockScoringType===v?"bg-slate-700 text-white border-slate-700":"bg-white text-slate-600 border-slate-200 hover:border-slate-400"}`}>
+                  {l}
+                </button>
+              ))}
+            </div>
+            {mockScoringType === "auto" && (
+              <div className="space-y-1.5 pt-1">
+                <Lbl>총 배점</Lbl>
+                <Inp type="number" min="1" value={mockTotalScore} onChange={e=>setMockTotalScore(e.target.value)} placeholder="100"/>
+              </div>
+            )}
+            {mockScoringType === "manual" && (
+              <div className="pt-1 space-y-1.5">
+                <Lbl>문항별 배점 입력</Lbl>
+                <div className="grid grid-cols-5 sm:grid-cols-10 gap-1.5">
+                  {Array.from({length: Number(mockQCount)||20}, (_,i)=>i+1).map(q=>(
+                    <div key={q} className="space-y-0.5">
+                      <div className="text-[10px] text-slate-400 text-center">{q}번</div>
+                      <input type="number" min="0" value={mockScoring[q]||""}
+                        onChange={e=>setMockScoring(s=>({...s,[q]:e.target.value}))}
+                        className="w-full text-center text-sm rounded-lg border border-slate-200 px-1 py-1 focus:outline-none focus:ring-1 focus:ring-slate-300"/>
+                    </div>
+                  ))}
+                </div>
+                <div className="text-xs text-slate-400 text-right">
+                  합계: {Math.round(Array.from({length:Number(mockQCount)||20},(_,i)=>Number(mockScoring[i+1])||0).reduce((a,b)=>a+b,0)*100)/100}점
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Lbl>배정 학생</Lbl>
+            {students.length === 0
+              ? <div className="text-sm text-slate-400">학생 데이터 없음</div>
+              : (() => {
+                  const grades = ["전체", ...Array.from(new Set(students.map(s=>s.className||"미정"))).sort()];
+                  const filtered = mockGradeFilter === "전체" ? students : students.filter(s=>(s.className||"미정")===mockGradeFilter);
+                  const filteredIds = filtered.map(s=>s.id);
+                  const allOn = filteredIds.length > 0 && filteredIds.every(id=>mockStudentIds.includes(id));
+                  return (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {grades.map(g => (
+                          <button key={g} type="button" onClick={()=>setMockGradeFilter(g)}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition ${mockGradeFilter===g?"bg-slate-700 text-white border-slate-700":"bg-white text-slate-500 border-slate-200 hover:border-slate-400"}`}>
+                            {g}
+                          </button>
+                        ))}
+                        <button type="button" onClick={()=>setMockStudentIds(ids=>allOn?ids.filter(id=>!filteredIds.includes(id)):[...new Set([...ids,...filteredIds])])}
+                          className="ml-auto px-2.5 py-1 rounded-lg text-xs font-medium border bg-white text-slate-500 border-slate-200 hover:border-indigo-300 transition">
+                          {allOn?"전체 해제":"전체 선택"}
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {filtered.map(s => {
+                          const on = mockStudentIds.includes(s.id);
+                          return (
+                            <button key={s.id} type="button"
+                              onClick={()=>setMockStudentIds(ids=>on?ids.filter(id=>id!==s.id):[...ids,s.id])}
+                              className={`px-3 py-1.5 rounded-xl text-sm font-medium border transition ${on?"bg-indigo-500 text-white border-indigo-500":"bg-white text-slate-600 border-slate-200 hover:border-indigo-300"}`}>
+                              {s.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()
+            }
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Btn variant="outline" onClick={()=>setStep(activeFolderId?"folder_view":"select")}>취소</Btn>
+            <Btn onClick={handleSaveMock} disabled={saving}>{saving?"저장 중...":(dbEditId?"수정 완료":"저장")}</Btn>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (step === "mock_results" && mockResultExam) {
+    const exam = mockResultExam;
+    const assignedStudents = Object.values(exam.students||{}).map(sid => students.find(s=>s.id===sid)).filter(Boolean);
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={()=>setStep("select")} className="text-sm text-slate-500 hover:text-slate-800">← 뒤로</button>
+          <h2 className="text-lg font-bold">{exam.name} — {exam.round}차 결과</h2>
+        </div>
+        <Card className="p-5 space-y-3">
+          {assignedStudents.length === 0
+            ? <div className="text-sm text-slate-400 text-center py-4">배정된 학생이 없습니다.</div>
+            : assignedStudents.map(s => {
+                const result = mockResults[s.id];
+                const qCount = exam.questionCount || 20;
+                return (
+                  <div key={s.id} className="rounded-2xl border px-4 py-3 space-y-2">
+                    <div className="flex items-center gap-3">
+                      <span className="font-medium">{s.name}</span>
+                      <span className="text-xs text-slate-400">{s.className}</span>
+                      {result?.submittedAt
+                        ? <span className="text-xs bg-emerald-100 text-emerald-600 rounded-lg px-2 py-0.5">제출 {result.submittedAt}</span>
+                        : <span className="text-xs bg-slate-100 text-slate-400 rounded-lg px-2 py-0.5">미제출</span>
+                      }
+                      <div className="ml-auto flex items-center gap-2">
+                        <span className="text-sm text-slate-500">점수</span>
+                        <input type="number" min="0" value={scoreInputs[s.id]??""} onChange={e=>setScoreInputs(p=>({...p,[s.id]:e.target.value}))}
+                          onBlur={()=>saveMockScore(s.id)}
+                          onKeyDown={e=>e.key==="Enter"&&saveMockScore(s.id)}
+                          className="w-16 text-center text-sm rounded-lg border border-slate-200 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-300"/>
+                        <span className="text-sm text-slate-400">점</span>
+                      </div>
+                    </div>
+                    {result?.answers && (
+                      <div className="flex flex-wrap gap-1">
+                        {Array.from({length: qCount}, (_,i)=>i+1).map(q => {
+                          const ans = result.answers[q];
+                          return (
+                            <span key={q} className={`inline-flex flex-col items-center w-7 rounded-md border text-[10px] py-0.5
+                              ${ans==="O"?"bg-emerald-50 border-emerald-300 text-emerald-600":ans==="X"?"bg-red-50 border-red-300 text-red-500":"bg-slate-50 border-slate-200 text-slate-300"}`}>
+                              <span className="leading-none text-slate-400">{q}</span>
+                              <span className="font-bold leading-none">{ans==="O"?"O":ans==="X"?"X":"·"}</span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+          }
+        </Card>
+      </div>
+    );
+  }
+
+  if (step === "folder_view") {
+    const folder = mockFolders.find(f => f.id === activeFolderId);
+    const folderExams = mockExams.filter(e => e.folderId === activeFolderId).sort((a,b) => a.round - b.round);
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={()=>setStep("select")} className="text-sm text-slate-500 hover:text-slate-800">← 뒤로</button>
+          {editingFolderId === activeFolderId
+            ? <input autoFocus value={editingFolderName} onChange={e=>setEditingFolderName(e.target.value)}
+                onBlur={saveEditFolder} onKeyDown={e=>e.key==="Enter"&&saveEditFolder()}
+                className="text-lg font-bold border-b border-slate-400 outline-none bg-transparent"/>
+            : <h2 className="text-lg font-bold cursor-pointer hover:text-slate-600" onClick={()=>{ setEditingFolderId(activeFolderId); setEditingFolderName(folder?.name||""); }}>
+                📁 {folder?.name}
+              </h2>
+          }
+          <Btn onClick={startCreateMock} className="ml-auto">+ 시험 등록</Btn>
+        </div>
+        <Card className="p-5 space-y-3">
+          {folderExams.length === 0
+            ? <div className="rounded-2xl border border-dashed p-8 text-sm text-slate-400 text-center">시험을 등록해 주세요.</div>
+            : <div className="space-y-2">
+                {folderExams.map(e => (
+                  <div key={e.id} className="flex items-center gap-3 rounded-2xl border px-4 py-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium">{e.name}</span>
+                        <Badge variant="secondary">{e.round}차</Badge>
+                      </div>
+                      <div className="text-xs text-slate-500 mt-0.5">
+                        {e.questionCount}문항 · {e.totalScore ? Math.round(e.totalScore*100)/100 : "-"}점 · 학생 {Object.values(e.students||{}).length}명
+                      </div>
+                    </div>
+                    <Btn variant="outline" size="sm" onClick={()=>openMockResults(e)}>결과</Btn>
+                    <Btn variant="outline" size="sm" onClick={()=>startEditMock(e)}>수정</Btn>
+                    <Btn variant="outline" size="sm" onClick={async()=>{ if(!confirm("삭제?")) return; await db.ref(`mockExams/${e.id}`).remove(); }}>삭제</Btn>
+                  </div>
+                ))}
+              </div>
+          }
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
       <Card className="p-5 space-y-4">
@@ -843,6 +1492,12 @@ function AssessmentsTab() {
             <div className="text-2xl">📋</div>
             <div className="font-semibold text-sm group-hover:text-blue-700">일일테스트</div>
             <div className="text-xs text-slate-400">소단원별 테스트 구성</div>
+          </button>
+          <button type="button" onClick={startCreateGeneral}
+            className="rounded-2xl border-2 border-dashed border-slate-200 p-6 text-center hover:border-green-400 hover:bg-green-50 transition space-y-2 group">
+            <div className="text-2xl">📝</div>
+            <div className="font-semibold text-sm group-hover:text-green-700">누적테스트</div>
+            <div className="text-xs text-slate-400">전체 문제수 기반 추적</div>
           </button>
         </div>
       </Card>
@@ -859,13 +1514,48 @@ function AssessmentsTab() {
                       <Badge variant="secondary">{a.type}</Badge>
                     </div>
                     <div className="text-xs text-slate-500 mt-0.5">
-                      {a.createdAt}{a.tree ? " · " + a.tree.length + "개 대단원" : ""}
+                      {a.createdAt}
+                      {a.type === "누적테스트" ? (a.subject ? " · " + a.subject : "") + (a.totalProblems ? " · " + a.totalProblems + "문제" : "") : ""}
+                      {a.type === "일일테스트" && a.tree ? " · " + a.tree.length + "개 대단원" : ""}
                     </div>
                   </div>
                   <Btn variant="outline" size="sm" onClick={()=>startEditAssessment(a)}>수정</Btn>
                   <Btn variant="outline" size="sm" onClick={async()=>{ if(!confirm("삭제?")) return; await db.ref(`assessments/${a.id}`).remove(); }}>삭제</Btn>
                 </div>
               ))}
+            </div>
+        }
+      </Card>
+      <Card className="p-5 space-y-4">
+        <h2 className="text-lg font-bold">내신모의평가 폴더</h2>
+        <div className="flex gap-2">
+          <input value={folderForm} onChange={e=>setFolderForm(e.target.value)}
+            onKeyDown={e=>e.key==="Enter"&&addFolder()}
+            placeholder="새 폴더명 입력"
+            className="flex-1 rounded-xl border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"/>
+          <Btn onClick={addFolder}>+ 폴더 추가</Btn>
+        </div>
+        {mockFolders.length === 0
+          ? <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-400 text-center">폴더를 추가해 주세요.</div>
+          : <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+              {mockFolders.map(folder => {
+                const examCount = mockExams.filter(e => e.folderId === folder.id).length;
+                return (
+                  <div key={folder.id} className="group relative">
+                    <button type="button" onClick={() => openFolder(folder)}
+                      className="w-full aspect-square rounded-2xl border-2 border-amber-200 bg-amber-50 hover:bg-amber-100 transition flex flex-col items-center justify-center gap-2 p-3">
+                      <span className="text-4xl leading-none">📁</span>
+                      <span className="text-xs font-semibold text-amber-900 text-center leading-tight line-clamp-2">{folder.name}</span>
+                      <span className="text-[10px] text-amber-600">{examCount}개</span>
+                    </button>
+                    <button type="button"
+                      onClick={e=>{e.stopPropagation(); deleteFolder(folder.id);}}
+                      className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-300 text-xs leading-none opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                      ×
+                    </button>
+                  </div>
+                );
+              })}
             </div>
         }
       </Card>
@@ -879,12 +1569,24 @@ function CurriculumManager({ students, materials }) {
   const [activeBoardId, setActiveBoardId] = React.useState(null);
   const [editingBoardId, setEditingBoardId] = React.useState(null);
   const [editingName, setEditingName] = React.useState("");
+  const [editorAssessments, setEditorAssessments] = React.useState([]);
+  const [dragBoardId, setDragBoardId] = React.useState(null);
+  const [dragOverBoardId, setDragOverBoardId] = React.useState(null);
+
+  React.useEffect(() => {
+    const ref = db.ref("assessments");
+    ref.on("value", snap => {
+      const data = snap.val();
+      setEditorAssessments(data ? Object.values(data) : []);
+    });
+    return () => ref.off();
+  }, []);
 
   React.useEffect(() => {
     const ref = db.ref("curriculumBoards");
     ref.on("value", snap => {
       const data = snap.val();
-      const list = data ? Object.values(data).sort((a,b) => a.createdAt - b.createdAt) : [];
+      const list = data ? Object.values(data).sort((a,b) => (a.order ?? Number(a.createdAt)) - (b.order ?? Number(b.createdAt))) : [];
       setBoards(list);
       setActiveBoardId(id => id && list.find(b => b.id === id) ? id : (list[0]?.id || null));
     });
@@ -911,6 +1613,29 @@ function CurriculumManager({ students, materials }) {
     setActiveBoardId(remaining[0]?.id || null);
   };
 
+  const handleBoardDragStart = (e, boardId) => {
+    setDragBoardId(boardId);
+    e.dataTransfer.effectAllowed = "move";
+  };
+  const handleBoardDragOver = (e, boardId) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (boardId !== dragBoardId) setDragOverBoardId(boardId);
+  };
+  const handleBoardDrop = async (e, targetId) => {
+    e.preventDefault();
+    if (!dragBoardId || dragBoardId === targetId) { setDragBoardId(null); setDragOverBoardId(null); return; }
+    const dragIdx = boards.findIndex(b => b.id === dragBoardId);
+    const targetIdx = boards.findIndex(b => b.id === targetId);
+    const reordered = [...boards];
+    const [dragged] = reordered.splice(dragIdx, 1);
+    reordered.splice(targetIdx, 0, dragged);
+    for (let i = 0; i < reordered.length; i++)
+      await db.ref(`curriculumBoards/${reordered[i].id}`).update({ order: i });
+    setDragBoardId(null); setDragOverBoardId(null);
+  };
+  const handleBoardDragEnd = () => { setDragBoardId(null); setDragOverBoardId(null); };
+
   return (
     <div className="space-y-4">
       {/* 메인 탭 */}
@@ -928,7 +1653,15 @@ function CurriculumManager({ students, materials }) {
           {/* 캔버스 탭 목록 */}
           <div className="flex items-center gap-2 flex-wrap">
             {boards.map(board => (
-              <div key={board.id} className="flex items-center gap-1">
+              <div key={board.id} className="flex items-center gap-1"
+                draggable
+                onDragStart={e => handleBoardDragStart(e, board.id)}
+                onDragOver={e => handleBoardDragOver(e, board.id)}
+                onDrop={e => handleBoardDrop(e, board.id)}
+                onDragEnd={handleBoardDragEnd}
+                style={{ opacity: dragBoardId === board.id ? 0.4 : 1, cursor: "grab",
+                  outline: dragOverBoardId === board.id ? "2px solid #94a3b8" : "none", borderRadius: 12 }}
+              >
                 {editingBoardId === board.id ? (
                   <form onSubmit={e => { e.preventDefault(); renameBoard(board.id, editingName); }}>
                     <input
@@ -968,7 +1701,7 @@ function CurriculumManager({ students, materials }) {
           </div>
 
           {activeBoardId
-            ? <CurriculumVisualEditor key={activeBoardId} boardId={activeBoardId} students={students} materials={materials}/>
+            ? <CurriculumVisualEditor key={activeBoardId} boardId={activeBoardId} students={students} materials={materials} assessments={editorAssessments}/>
             : <div className="rounded-2xl border border-dashed p-10 text-sm text-slate-400 text-center">
                 "+ 캔버스 추가" 를 눌러 첫 번째 캔버스를 만드세요.
               </div>
@@ -976,7 +1709,7 @@ function CurriculumManager({ students, materials }) {
         </div>
       )}
       {subTab === "materials" && <MaterialsTab materials={materials}/>}
-      {subTab === "assessments" && <AssessmentsTab/>}
+      {subTab === "assessments" && <AssessmentsTab students={students}/>}
     </div>
   );
 }
@@ -998,26 +1731,21 @@ function StudentCurriculumView({ studentId }) {
   }, []);
 
   const startNodeId = `start_${studentId}`;
-  const endNodeId = `end_${studentId}`;
 
   const getPath = () => {
-    if (!allNodes[startNodeId] || !allNodes[endNodeId]) return [];
+    if (!allNodes[startNodeId]) return [];
     const visited = new Set();
+    const result = [];
     const dfs = (nodeId) => {
-      if (visited.has(nodeId)) return null;
+      if (visited.has(nodeId)) return;
       visited.add(nodeId);
-      if (nodeId === endNodeId) return [nodeId];
       const node = allNodes[nodeId];
-      if (!node) return null;
-      for (const nid of (node.nextNodes || [])) {
-        const result = dfs(nid);
-        if (result !== null) return [nodeId, ...result];
-      }
-      return null;
+      if (!node) return;
+      if (node.type === "material") result.push(node);
+      for (const nid of (node.nextNodes || [])) dfs(nid);
     };
-    const fullPath = dfs(startNodeId);
-    if (!fullPath) return [];
-    return fullPath.map(id => allNodes[id]).filter(n => n && n.type === "material");
+    dfs(startNodeId);
+    return result;
   };
 
   const path = getPath();

@@ -17,7 +17,9 @@ function StudentManager({ students, homeworks }) {
   const [profiles, setProfiles] = useState({});
   const [assessments, setAssessments] = useState([]);
   const [focusedRow, setFocusedRow] = useState(0);
+  const [subTab, setSubTab] = useState("students");
   const tableRef = React.useRef(null); // kept for potential future use
+  const composingRef = React.useRef(false);
 
   useEffect(() => {
     const ref = db.ref("studentProfiles");
@@ -123,8 +125,18 @@ function StudentManager({ students, homeworks }) {
       } else if (field === "pin") {
         if (!val || val.length < 4) { alert("PIN은 4자리 이상이어야 합니다."); return; }
         await db.ref(`students/${studentId}/pin`).set(val);
+      } else if (field === "problemCoeff" || field === "lectureCoeff") {
+        const num = parseFloat(val);
+        if (isNaN(num)) { alert("숫자를 입력해 주세요."); return; }
+        await db.ref(`studentProfiles/${studentId}/${field}`).set(num);
       }
     } catch(e) { alert("저장 실패: " + e.message); }
+  };
+
+  const saveXpField = async (studentId, field, val) => {
+    setEditingCell(null);
+    try { await db.ref(`studentProfiles/${studentId}/${field}`).set(val === "" ? null : isNaN(Number(val)) ? val : Number(val)); }
+    catch(e) { alert("저장 실패: " + e.message); }
   };
 
   const toggleProfileLock = async (studentId, currentLocked) => {
@@ -134,6 +146,11 @@ function StudentManager({ students, homeworks }) {
 
   const updateCurrentAssessment = async (studentId, assessmentId) => {
     try { await db.ref(`studentProfiles/${studentId}/currentAssessment`).set(assessmentId || null); }
+    catch(e) { alert("저장 실패: " + e.message); }
+  };
+
+  const updateAdvanceAssessment = async (studentId, assessmentId) => {
+    try { await db.ref(`studentProfiles/${studentId}/advanceAssessment`).set(assessmentId || null); }
     catch(e) { alert("저장 실패: " + e.message); }
   };
 
@@ -153,8 +170,168 @@ function StudentManager({ students, homeworks }) {
     if (e.key === "ArrowDown") { e.preventDefault(); setFocusedRow(r => Math.min(r + 1, sortedStudents.length - 1)); }
   };
 
+  // ── 경험치관리 탭 ────────────────────────────────────────────────────────
+  const XpTab = () => {
+    const ec = editingCell;
+    const isEdit = (sid, field) => ec?.studentId === sid && ec?.field === field;
+
+    const XpCell = ({ studentId, field, value, inputCls="w-20" }) => (
+      isEdit(studentId, field) ? (
+        <input autoFocus value={editValue} onChange={e=>setEditValue(e.target.value)}
+          onKeyDown={e=>{ if(e.key==="Enter"){ e.preventDefault(); saveXpField(studentId,field,editValue); } if(e.key==="Escape") setEditingCell(null); }}
+          onBlur={()=>saveXpField(studentId,field,editValue)}
+          className={`border-b-2 border-blue-400 bg-transparent outline-none text-sm px-0.5 ${inputCls}`}/>
+      ) : (
+        <div onClick={()=>startEdit(studentId,field,value)}
+          className="cursor-text hover:bg-blue-50 rounded px-1 -mx-1 min-h-[20px]">
+          {value != null && value !== "" ? value : <span className="text-slate-300">-</span>}
+        </div>
+      )
+    );
+
+    return (
+      <Card className="p-0 overflow-hidden">
+        <div className="p-4 flex items-center gap-3 flex-wrap border-b border-slate-100">
+          <div className="flex-1 min-w-0">
+            <h2 className="text-lg font-bold">경험치 관리</h2>
+            <p className="text-sm text-slate-500">{sortedStudents.length === students.length ? `총 ${students.length}명` : `${sortedStudents.length}명 (전체 ${students.length}명)`}</p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <select value={filterClass} onChange={e=>setFilterClass(e.target.value)}
+              className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white outline-none focus:ring-1 focus:ring-blue-300">
+              <option value="">전체 학년</option>
+              {classes.map(c=><option key={c} value={c}>{c} ({students.filter(s=>s.className===c).length}명)</option>)}
+            </select>
+            <select value={filterSchool} onChange={e=>setFilterSchool(e.target.value)}
+              className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white outline-none focus:ring-1 focus:ring-blue-300">
+              <option value="">전체 학교</option>
+              {schools.map(sc=><option key={sc} value={sc}>{sc}</option>)}
+            </select>
+            {(filterClass || filterSchool) && (
+              <button onClick={()=>{ setFilterClass(""); setFilterSchool(""); }}
+                className="text-xs text-slate-400 hover:text-slate-700 px-2 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50">
+                초기화
+              </button>
+            )}
+            <button onClick={() => {
+              const rows = sortedStudents
+                .map(st => {
+                  const p = profiles[st.id] || {};
+                  const cp = Number(p.unpaidCp || 0);
+                  if (!cp && !p.cardNumber) return null;
+                  const s3 = Number(p.season3Xp || 0);
+                  const rate = s3 >= 600 ? 11 : s3 >= 350 ? 10 : s3 >= 200 ? 9 : s3 >= -50 ? 8 : s3 >= -200 ? 7 : 6;
+                  return `="${p.cardNumber || ""}",${cp * rate}`;
+                })
+                .filter(Boolean);
+              const csv = "카드번호,지급액\n" + rows.join("\n");
+              const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url; a.download = "지급액.csv"; a.click();
+              URL.revokeObjectURL(url);
+            }}
+              className="text-xs text-white bg-emerald-500 hover:bg-emerald-600 px-3 py-1.5 rounded-lg font-medium transition">
+              📥 지급액 다운로드
+            </button>
+            <button onClick={async () => {
+              if (!confirm(`미지급 CP를 전체 초기화할까요? (${sortedStudents.length}명)`)) return;
+              const updates = {};
+              sortedStudents.forEach(st => { updates[`studentProfiles/${st.id}/unpaidCp`] = null; });
+              await db.ref().update(updates);
+            }}
+              className="text-xs text-white bg-red-400 hover:bg-red-500 px-3 py-1.5 rounded-lg font-medium transition">
+              🗑 미지급 CP 초기화
+            </button>
+          </div>
+        </div>
+        {students.length === 0
+          ? <div className="p-8 text-center text-sm text-slate-400 border border-dashed m-4 rounded-2xl">아직 등록된 학생이 없습니다.</div>
+          : <div className="overflow-x-auto">
+              <table className="text-sm border-collapse w-full">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100">
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 w-8">#</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">이름</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">학년</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">학교</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">티어</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">레벨</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">이전 시즌 누적 XP</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">시즌3 누적 XP</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-emerald-600">All 시즌 누적 XP</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">미지급 CP</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">카드번호</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">미지급액</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedStudents.map((s, rowIdx) => {
+                    const profile = profiles[s.id] || {};
+                    return (
+                      <tr key={s.id} className={`${rowIdx === focusedRow ? "bg-blue-50/40" : rowIdx % 2 === 0 ? "bg-white" : "bg-slate-50/30"} hover:bg-blue-50/20 transition-colors`}
+                        onClick={()=>setFocusedRow(rowIdx)}>
+                        <td className="px-4 py-2.5 text-xs text-slate-400">{rowIdx+1}</td>
+                        <td className="px-4 py-2.5 font-medium text-sm">{s.name}</td>
+                        <td className="px-4 py-2.5 text-xs text-slate-500">{s.className}</td>
+                        <td className="px-4 py-2.5 text-xs text-slate-500">{profile.school || <span className="text-slate-300">-</span>}</td>
+                        <td className="px-3 py-2 text-xs font-bold">
+                          {(xp => {
+                            if (xp >= 600)  return <span className="text-purple-600">마스터</span>;
+                            if (xp >= 350)  return <span className="text-cyan-500">다이아</span>;
+                            if (xp >= 200)  return <span className="text-teal-500">플래티넘</span>;
+                            if (xp >= -50)  return <span className="text-yellow-500">골드</span>;
+                            if (xp >= -200) return <span className="text-slate-400">실버</span>;
+                            return <span className="text-orange-400">브론즈</span>;
+                          })(Number(profile.season3Xp||0))}
+                        </td>
+                        <td className="px-3 py-2 text-xs font-bold text-blue-600">
+                          {Math.floor(1.25 * Math.sqrt(Math.max(Number(profile.prevSeasonXp||0) + Number(profile.season3Xp||0), 0)))}
+                        </td>
+                        <td className="px-3 py-2 text-xs"><XpCell studentId={s.id} field="prevSeasonXp" value={profile.prevSeasonXp} inputCls="w-20"/></td>
+                        <td className="px-3 py-2 text-xs"><XpCell studentId={s.id} field="season3Xp" value={profile.season3Xp} inputCls="w-20"/></td>
+                        <td className="px-3 py-2 text-xs font-bold text-emerald-600">
+                          {(Number(profile.prevSeasonXp||0) + Number(profile.season3Xp||0)) || <span className="text-slate-300 font-normal">-</span>}
+                        </td>
+                        <td className="px-3 py-2 text-xs"><XpCell studentId={s.id} field="unpaidCp" value={profile.unpaidCp} inputCls="w-20"/></td>
+                        <td className="px-3 py-2 text-xs"><XpCell studentId={s.id} field="cardNumber" value={profile.cardNumber} inputCls="w-28"/></td>
+                        <td className="px-3 py-2 text-xs font-bold text-slate-700">
+                          {(() => {
+                            const cp = Number(profile.unpaidCp || 0);
+                            if (!cp) return <span className="text-slate-300 font-normal">-</span>;
+                            const s3 = Number(profile.season3Xp || 0);
+                            const rate = s3 >= 600 ? 11 : s3 >= 350 ? 10 : s3 >= 200 ? 9 : s3 >= -50 ? 8 : s3 >= -200 ? 7 : 6;
+                            return (cp * rate).toLocaleString() + "원";
+                          })()}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+        }
+      </Card>
+    );
+  };
+
   return (
     <div className="space-y-6">
+      {/* 하위 탭 */}
+      <div className="flex gap-1 bg-slate-100 rounded-2xl p-1">
+        {[["students","👤 학생목록"],["grades","📊 성적관리"],["xp","⭐ 경험치관리"]].map(([t,l])=>(
+          <button key={t} type="button" onClick={()=>setSubTab(t)}
+            className={`flex-1 py-2 text-sm font-medium rounded-xl transition ${subTab===t?"bg-white shadow-sm":"text-slate-500 hover:text-slate-700"}`}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {subTab === "xp" && <XpTab/>}
+      {subTab === "grades" && (
+        <Card className="p-8 text-center text-sm text-slate-400">성적관리 준비 중</Card>
+      )}
+      {subTab === "students" && <>
       {/* 학생 추가 */}
       <Card className="p-5 space-y-4">
         <h2 className="text-lg font-bold">학생 추가</h2>
@@ -233,6 +410,22 @@ function StudentManager({ students, homeworks }) {
             <p className="text-sm text-slate-500">{sortedStudents.length === students.length ? `총 ${students.length}명` : `${sortedStudents.length}명 (전체 ${students.length}명)`}</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={async () => {
+              if (!confirm(`필터된 ${sortedStudents.length}명을 전체 확정할까요?`)) return;
+              const updates = {};
+              sortedStudents.forEach(st => { updates[`studentProfiles/${st.id}/locked`] = true; });
+              await db.ref().update(updates);
+            }} className="text-xs text-white bg-emerald-500 hover:bg-emerald-600 px-3 py-1.5 rounded-lg font-medium transition">
+              🔒 전체 확정
+            </button>
+            <button onClick={async () => {
+              if (!confirm(`필터된 ${sortedStudents.length}명을 전체 미확정으로 변경할까요?`)) return;
+              const updates = {};
+              sortedStudents.forEach(st => { updates[`studentProfiles/${st.id}/locked`] = false; });
+              await db.ref().update(updates);
+            }} className="text-xs text-slate-600 bg-white hover:bg-slate-50 px-3 py-1.5 rounded-lg font-medium border border-slate-200 transition">
+              🔓 전체 미확정
+            </button>
             <select value={filterClass} onChange={e=>setFilterClass(e.target.value)}
               className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white outline-none focus:ring-1 focus:ring-blue-300">
               <option value="">전체 학년</option>
@@ -265,7 +458,10 @@ function StudentManager({ students, homeworks }) {
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">출생연도</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">PIN</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">숙제</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-indigo-500">문제계수</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-indigo-500">강의계수</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">현행평가</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">선행평가</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">상태</th>
                     <th className="px-4 py-2.5 w-16"></th>
                   </tr>
@@ -283,9 +479,11 @@ function StudentManager({ students, homeworks }) {
 
                     const EditCell = ({ field, value, className: cls="", inputCls="w-24", children }) => (
                       isEdit(field) ? (
-                        <input autoFocus value={editValue} onChange={e=>setEditValue(e.target.value)}
-                          onKeyDown={e=>{ if(e.key==="Enter"){ e.preventDefault(); saveCell(s.id,field,editValue); } if(e.key==="Escape") setEditingCell(null); }}
-                          onBlur={()=>saveCell(s.id,field,editValue)}
+                        <input autoFocus defaultValue={editValue}
+                          onCompositionStart={()=>{ composingRef.current = true; }}
+                          onCompositionEnd={()=>{ composingRef.current = false; }}
+                          onKeyDown={e=>{ if(e.key==="Enter" && !composingRef.current){ e.preventDefault(); saveCell(s.id,field,e.target.value); } if(e.key==="Escape") setEditingCell(null); }}
+                          onBlur={e=>{ if(!composingRef.current) saveCell(s.id,field,e.target.value); }}
                           className={`border-b-2 border-blue-400 bg-transparent outline-none text-sm px-0.5 ${inputCls}`}/>
                       ) : (
                         <div onClick={()=>startEdit(s.id,field,value)}
@@ -318,9 +516,11 @@ function StudentManager({ students, homeworks }) {
                             </EditCell>
                           </td>
                           <td className="px-4 py-2 text-xs text-slate-500">
-                            <EditCell field="birthYear" value={profile?.birthYear||""} inputCls="w-20">
-                              {profile?.birthYear ? profile.birthYear+"년" : <span className="text-slate-300">-</span>}
-                            </EditCell>
+                            <select value={profile?.birthYear||""} onChange={e=>saveCell(s.id,"birthYear",e.target.value)}
+                              className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-1 focus:ring-blue-300">
+                              <option value="">-</option>
+                              {Array.from({length:16},(_,i)=>2003+i).map(y=><option key={y} value={y}>{y}년</option>)}
+                            </select>
                           </td>
                           <td className="px-4 py-2">
                             <EditCell field="pin" value={s.pin} cls="font-mono" inputCls="w-20 font-mono">
@@ -328,9 +528,26 @@ function StudentManager({ students, homeworks }) {
                             </EditCell>
                           </td>
                           <td className="px-4 py-2.5 text-xs text-slate-500">{hwCount}</td>
+                          <td className="px-3 py-2 text-xs">
+                            <EditCell field="problemCoeff" value={profile?.problemCoeff ?? ""} inputCls="w-14">
+                              <span className="font-mono">{profile?.problemCoeff != null ? Number(profile.problemCoeff).toFixed(1) : <span className="text-slate-400">1.0</span>}</span>
+                            </EditCell>
+                          </td>
+                          <td className="px-3 py-2 text-xs">
+                            <EditCell field="lectureCoeff" value={profile?.lectureCoeff ?? ""} inputCls="w-14">
+                              <span className="font-mono">{profile?.lectureCoeff != null ? Number(profile.lectureCoeff).toFixed(1) : <span className="text-slate-400">1.0</span>}</span>
+                            </EditCell>
+                          </td>
                           <td className="px-3 py-2">
                             <select value={profile?.currentAssessment || ""} onChange={e=>updateCurrentAssessment(s.id,e.target.value)}
                               className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-1 focus:ring-blue-300 max-w-[160px]">
+                              <option value="">-</option>
+                              {assessments.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+                            </select>
+                          </td>
+                          <td className="px-3 py-2">
+                            <select value={profile?.advanceAssessment || ""} onChange={e=>updateAdvanceAssessment(s.id,e.target.value)}
+                              className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-1 focus:ring-violet-300 max-w-[160px]">
                               <option value="">-</option>
                               {assessments.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
                             </select>
@@ -369,7 +586,7 @@ function StudentManager({ students, homeworks }) {
                         </tr>
                         {isExpanded && (
                           <tr>
-                            <td colSpan={10} className="px-4 pb-4 pt-2 border-b bg-slate-50/80">
+                            <td colSpan={12} className="px-4 pb-4 pt-2 border-b bg-slate-50/80">
                               <StudentProfileTab studentId={s.id} studentName={s.name} teacherMode={true}/>
                             </td>
                           </tr>
@@ -382,6 +599,7 @@ function StudentManager({ students, homeworks }) {
             </div>
         }
       </Card>
+      </>}
     </div>
   );
 }
