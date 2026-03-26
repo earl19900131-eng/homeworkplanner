@@ -832,11 +832,14 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
                   display: "flex", alignItems: "center",
                   zIndex: isSelected ? 10 : 2, userSelect: "none",
                 }}>
-                  {/* 왼쪽 포트 */}
-                  <button data-port="left"
-                    onMouseDown={e => { e.stopPropagation(); e.preventDefault(); }}
-                    onClick={e => handlePortClick(e, node.id)}
-                    style={portStyle(isConnSrc)}>⊕</button>
+                  {/* 왼쪽 포트 (학생 노드는 숨김) */}
+                  {node.type !== "start"
+                    ? <button data-port="left"
+                        onMouseDown={e => { e.stopPropagation(); e.preventDefault(); }}
+                        onClick={e => handlePortClick(e, node.id)}
+                        style={portStyle(isConnSrc)}>⊕</button>
+                    : <div style={{width: PORT_SIZE}}/>
+                  }
 
                   {/* 노드 본체 */}
                   <div onMouseDown={e => handleNodeMouseDown(e, node.id)} style={{
