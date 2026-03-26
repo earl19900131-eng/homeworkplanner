@@ -230,6 +230,16 @@ function TeacherHWCard({ hw, done, pct, today }) {
     setSaving(false);
   };
 
+  const toggleChunkDone = async (chunk, idx) => {
+    const done = !chunk.done;
+    const now = new Date();
+    const submittedAt = done
+      ? `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`
+      : null;
+    try { await db.ref(`homeworks/${hw._key}/chunks/${idx}`).update({ done, completedAmount: done ? chunk.plannedAmount : 0, submittedAt }); }
+    catch(err) { alert("저장 실패: "+err.message); }
+  };
+
   const isPastDue = hw.dueDate <= today;
   const verified = hw.teacherVerified; // null | "이행" | "미이행"
 
@@ -349,19 +359,20 @@ function TeacherHWCard({ hw, done, pct, today }) {
       </div>
       {expanded && !editing && (
         <div className="border-t bg-slate-50 p-3 space-y-1">
-          {(hw.chunks||[]).map(chunk=>{
+          {(hw.chunks||[]).map((chunk, idx)=>{
             const isOverdue = !chunk.done && chunk.date < today;
             const isToday = chunk.date === today;
             return (
               <div key={chunk.date}
-                className={"flex items-center justify-between rounded-xl px-3 py-2 text-xs " +
+                onClick={() => toggleChunkDone(chunk, idx)}
+                className={"flex items-center justify-between rounded-xl px-3 py-2 text-xs cursor-pointer transition hover:opacity-80 " +
                   (chunk.done?"bg-emerald-50 text-emerald-700":isOverdue?"bg-red-50 text-red-600":isToday?"bg-blue-50 text-blue-700":"bg-white text-slate-500")}>
                 <span className="font-medium">{chunk.date}{isToday?" · 오늘":""}</span>
                 <span>{chunk.startProblem}~{chunk.endProblem}번 ({chunk.plannedAmount}문제)</span>
                 <span className="font-semibold w-32 text-right">
                   {chunk.done
                     ? (chunk.submittedAt ? "✓ "+chunk.submittedAt : "✓ 완료")
-                    : isOverdue ? "⚠ 미완료" : "-"}
+                    : isOverdue ? "⚠ 미완료" : "- 클릭해서 완료"}
                 </span>
               </div>
             );
