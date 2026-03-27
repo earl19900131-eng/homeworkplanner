@@ -194,6 +194,7 @@ function WrongAnswerManager({ students = [], materials = [] }) {
   for (let i = 0; i < pickedList.length; i += 4) printGroups.push(pickedList.slice(i, i + 4));
 
   const handlePrint = () => {
+    const studentName = (students.find(s => s.id === selectedStudentId) || {}).name || "";
     const statusLabel = (s) => s === "wrong" ? "틀림" : s === "unknown" ? "모름" : s === "correct" ? "맞음" : "";
     const statusColor = (s) => s === "wrong" ? "#ef4444" : s === "unknown" ? "#f97316" : "#22c55e";
 
@@ -206,8 +207,12 @@ function WrongAnswerManager({ students = [], materials = [] }) {
         <div class="problem-body"></div>
       </div>` : `<div class="problem empty"></div>`;
 
-    const pages = printGroups.map(group => `
+    const pages = printGroups.map((group, gi) => `
       <div class="page">
+        <div class="page-header">
+          <span class="student-name">${studentName}</span>
+          <span class="page-info">오답 문제 (${gi * 4 + 1}–${Math.min(gi * 4 + 4, pickedList.length)}번째)</span>
+        </div>
         <div class="cols">
           <div class="col">
             ${problemBox(group[0])}
@@ -227,7 +232,10 @@ function WrongAnswerManager({ students = [], materials = [] }) {
   @page { size: A4 portrait; margin: 12mm 15mm; }
   .page { width: 100%; page-break-after: always; }
   .page:last-child { page-break-after: avoid; }
-  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; height: 257mm; }
+  .page-header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #1e293b; padding-bottom: 4px; margin-bottom: 6mm; }
+  .student-name { font-size: 16px; font-weight: 800; color: #0f172a; }
+  .page-info { font-size: 10px; color: #94a3b8; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; height: 240mm; }
   .col { display: flex; flex-direction: column; gap: 8mm; }
   .problem { flex: 1; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; }
   .problem.empty { border: 1px dashed #e2e8f0; }
