@@ -95,12 +95,12 @@ function WrongAnswerManager({ students = [], materials = [] }) {
           if (n.type === "material") {
             const mat = materials.find(m => m.id === n.materialId);
             if (mat && !mats.find(m => m.id === mat.id))
-              mats.push({ ...mat, totalProblems: n.totalProblems || mat.totalProblems });
+              mats.push({ ...mat, totalProblems: n.totalProblems || mat.totalProblems, x: n.x });
           }
           (n.nextNodes || []).forEach(id => queue.push(id));
         }
       }
-      setStudentMaterials(mats);
+      setStudentMaterials(mats.sort((a, b) => (a.x ?? 0) - (b.x ?? 0)));
     });
   }, [selectedStudentId]);
 

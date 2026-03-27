@@ -2323,7 +2323,7 @@ function StudentCurriculumView({ studentId }) {
       for (const nid of (node.nextNodes || [])) dfs(nid);
     };
     dfs(startNodeId);
-    return result;
+    return result.sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
   };
 
   const path = getPath();
