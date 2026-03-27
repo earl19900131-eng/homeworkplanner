@@ -230,7 +230,12 @@ function App() {
     return count;
   },[studentHW,today]);
 
-  const previewChunks = useMemo(()=>(!form.totalAmount||!form.startDate||!form.dueDate)?[]:splitHomework({...form, customDates: form.selectedDates}),[form]);
+  const previewChunks = useMemo(() => {
+    if (!form.totalAmount || !form.startDate || !form.dueDate) return [];
+    const raw = splitHomework({...form, customDates: form.selectedDates});
+    const offset = autoHwData && autoHwData.startProblem > 1 ? autoHwData.startProblem - 1 : 0;
+    return offset > 0 ? raw.map(c => ({ ...c, startProblem: c.startProblem + offset, endProblem: c.endProblem + offset })) : raw;
+  }, [form, autoHwData]);
 
   const handleCreate = async () => {
     if (!currentStudent) return;
