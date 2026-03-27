@@ -558,7 +558,9 @@ function LessonDetailView({ lesson, lessons = [], students, attendance, allAtten
       const text = (sRec.현행숙제 || "").trim();
       if (!text) continue;
       const type = sRec.lessonType === "추가1" ? "추가1" : sRec.lessonType === "추가2" ? "추가2" : "현행";
-      updates[`studentProfiles/${s.id}/confirmedHw/${type}`] = { text, date: lesson.date };
+      // text/date만 갱신 — isAuto 등 자동숙제 필드는 건드리지 않음
+      updates[`studentProfiles/${s.id}/confirmedHw/${type}/text`] = text;
+      updates[`studentProfiles/${s.id}/confirmedHw/${type}/date`] = lesson.date;
     }
     if (Object.keys(updates).length === 0) { alert("확정할 숙제가 없습니다.\n(숙제 열에 내용을 먼저 입력해 주세요)"); return; }
     try {
