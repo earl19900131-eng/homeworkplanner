@@ -1,3 +1,87 @@
+// ── 문제 이미지 관리 ──────────────────────────────────────────────────────────
+function ProblemImageManager({ materialId }) {
+  const [images, setImages] = React.useState({});   // { num: url }
+  const [numInput, setNumInput] = React.useState("");
+  const [uploading, setUploading] = React.useState(false);
+  const [uploadError, setUploadError] = React.useState("");
+  const fileRef = React.useRef();
+
+  React.useEffect(() => {
+    const ref = db.ref(`problemImages/${materialId}`);
+    ref.on("value", snap => setImages(snap.val() || {}));
+    return () => ref.off();
+  }, [materialId]);
+
+  const handleUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const num = numInput.trim();
+    if (!num) { setUploadError("문제 번호를 먼저 입력하세요."); return; }
+    setUploadError("");
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop();
+      const path = `problemImages/${materialId}/${num}.${ext}`;
+      const ref = storage.ref(path);
+      await ref.put(file);
+      const url = await ref.getDownloadURL();
+      await db.ref(`problemImages/${materialId}/${num}`).set(url);
+      setNumInput("");
+      if (fileRef.current) fileRef.current.value = "";
+    } catch(err) {
+      setUploadError("업로드 실패: " + err.message);
+    }
+    setUploading(false);
+  };
+
+  const handleDelete = async (num) => {
+    if (!confirm(`${num}번 이미지를 삭제할까요?`)) return;
+    await db.ref(`problemImages/${materialId}/${num}`).remove();
+  };
+
+  const sortedNums = Object.keys(images).sort((a, b) => Number(a) - Number(b));
+
+  return (
+    <Card className="p-5 space-y-4">
+      <h2 className="text-base font-bold">문제 이미지 관리</h2>
+      <div className="flex gap-2 items-end flex-wrap">
+        <div className="space-y-1.5">
+          <Lbl>문제 번호</Lbl>
+          <input type="number" value={numInput} onChange={e => setNumInput(e.target.value)}
+            placeholder="예: 42"
+            className="w-28 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"/>
+        </div>
+        <div className="space-y-1.5">
+          <Lbl>이미지 파일</Lbl>
+          <input ref={fileRef} type="file" accept="image/*" onChange={handleUpload} disabled={uploading}
+            className="text-sm text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer"/>
+        </div>
+        {uploading && <span className="text-xs text-slate-400 pb-2">업로드 중...</span>}
+      </div>
+      {uploadError && <div className="text-xs text-red-500 bg-red-50 rounded-xl px-3 py-2">{uploadError}</div>}
+      {sortedNums.length === 0
+        ? <div className="rounded-xl border border-dashed p-4 text-sm text-slate-400 text-center">등록된 이미지가 없습니다.</div>
+        : <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            {sortedNums.map(num => (
+              <div key={num} className="rounded-xl border border-slate-200 overflow-hidden">
+                <img src={images[num]} alt={`${num}번`} className="w-full object-contain bg-slate-50" style={{maxHeight:"140px"}}/>
+                <div className="flex items-center justify-between px-2 py-1.5 bg-white border-t border-slate-100">
+                  <span className="text-xs font-bold text-slate-700">{num}번</span>
+                  <div className="flex gap-1">
+                    <button onClick={() => { setNumInput(num); if(fileRef.current) fileRef.current.click(); }}
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 hover:bg-slate-200">교체</button>
+                    <button onClick={() => handleDelete(num)}
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-500 hover:bg-red-100">삭제</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+      }
+    </Card>
+  );
+}
+
 // ── 교재 문제 번호 파싱 ───────────────────────────────────────────────────────
 function parseProblemInput(raw) {
   const trimmed = raw.trim();
@@ -335,6 +419,9 @@ function MaterialsTab({ materials }) {
           {editId && <Btn variant="outline" onClick={()=>{ setEditId(null); setForm(empty); setError(""); }}>취소</Btn>}
         </div>
       </Card>
+
+      {/* 문제 이미지 관리 — 수정 모드일 때만 표시 */}
+      {editId && <ProblemImageManager materialId={editId} />}
 
       {/* 하위 폴더 */}
       <Card className="p-5 space-y-3">

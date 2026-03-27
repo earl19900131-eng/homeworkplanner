@@ -13,6 +13,7 @@ const firebaseConfig = {
 };
 if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
+const storage = firebase.storage();
 
 // ── 익명 인증 (DB 규칙 auth != null 적용을 위해) ──────────────────────────────
 firebase.auth().onAuthStateChanged(user => {
