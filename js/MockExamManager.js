@@ -1,6 +1,27 @@
 // ── 모의고사DB ────────────────────────────────────────────────────────────────
 
-const MOCK_SUBJECTS   = ["수학1(구)","수학2(구)","미적분(구)","기하","확률과통계","공통수학1","공통수학2","대수","미적분1"];
+const MOCK_CURRICULUM = {
+  "15개정": ["수학(상)","수학(하)","수학1","수학2","미적분","확률과통계","기하"],
+  "22개정": ["공통수학1","공통수학2","대수","미적분1","확률과통계","미적분2"],
+};
+
+// 개정+과목 2단계 선택 컴포넌트
+function SubjectPicker({ curriculum, subject, onChangeCurriculum, onChangeSubject, small }) {
+  const subjects = MOCK_CURRICULUM[curriculum] || [];
+  const sel = "rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-slate-300 " + (small ? "px-2 py-1.5 text-xs" : "px-3 py-2 text-sm");
+  return (
+    <div className="flex gap-2">
+      <select value={curriculum} onChange={e => { onChangeCurriculum(e.target.value); onChangeSubject(""); }} className={sel}>
+        <option value="">개정 선택</option>
+        {Object.keys(MOCK_CURRICULUM).map(c=><option key={c}>{c}</option>)}
+      </select>
+      <select value={subject} onChange={e => onChangeSubject(e.target.value)} disabled={!curriculum} className={sel + " disabled:opacity-40"}>
+        <option value="">과목 선택</option>
+        {subjects.map(s=><option key={s}>{s}</option>)}
+      </select>
+    </div>
+  );
+}
 const MOCK_GRADES     = ["중1","중2","중3","고1","고2","고3"];
 const MOCK_TYPES      = ["객관식","서술형","단답형"];
 const MOCK_DIFFICULTY = ["상","중","하"];
@@ -8,15 +29,15 @@ const MOCK_MONTHS     = ["01","02","03","04","05","06","07","08","09","10","11",
 
 // ── 태그 관리 탭 ────────────────────────────────────────────────────────────
 function TagManager({ tags }) {
-  const [form, setForm] = React.useState({ name:"", subject:"" });
+  const [form, setForm] = React.useState({ name:"", curriculum:"", subject:"" });
   const [saving, setSaving] = React.useState(false);
 
   const grouped = React.useMemo(() => {
     const g = {};
     Object.entries(tags).forEach(([id, t]) => {
-      const s = t.subject || "기타";
-      if (!g[s]) g[s] = [];
-      g[s].push({ id, ...t });
+      const key = [t.curriculum, t.subject].filter(Boolean).join(" · ") || "기타";
+      if (!g[key]) g[key] = [];
+      g[key].push({ id, ...t });
     });
     return g;
   }, [tags]);
@@ -24,8 +45,8 @@ function TagManager({ tags }) {
   const save = async () => {
     if (!form.name.trim()) return;
     setSaving(true);
-    await db.ref("mockTags").push({ name: form.name.trim(), subject: form.subject || "기타" });
-    setForm({ name:"", subject:"" });
+    await db.ref("mockTags").push({ name: form.name.trim(), curriculum: form.curriculum, subject: form.subject });
+    setForm({ name:"", curriculum:"", subject:"" });
     setSaving(false);
   };
 
@@ -49,11 +70,10 @@ function TagManager({ tags }) {
           </div>
           <div className="space-y-1">
             <Lbl>과목</Lbl>
-            <select value={form.subject} onChange={e=>setForm(f=>({...f,subject:e.target.value}))}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 bg-white">
-              <option value="">선택</option>
-              {MOCK_SUBJECTS.map(s=><option key={s} value={s}>{s}</option>)}
-            </select>
+            <SubjectPicker
+              curriculum={form.curriculum} subject={form.subject}
+              onChangeCurriculum={v=>setForm(f=>({...f,curriculum:v,subject:""}))}
+              onChangeSubject={v=>setForm(f=>({...f,subject:v}))}/>
           </div>
           <button onClick={save} disabled={saving}
             className="px-4 py-2 text-sm rounded-xl bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-40">
@@ -86,7 +106,7 @@ function TagManager({ tags }) {
 // ── 문제 편집 모달 ───────────────────────────────────────────────────────────
 function ProblemEditModal({ tags, initial, examId, onSave, onClose }) {
   const blankForm = {
-    num:"", subject:"", grade:"", year:"", month:"", source:"",
+    num:"", curriculum:"", subject:"", grade:"", year:"", month:"", source:"",
     type:"객관식", difficulty:"중", question:"", solution:"", tags:{}
   };
   const [form, setForm]   = React.useState(initial || blankForm);
@@ -155,12 +175,11 @@ function ProblemEditModal({ tags, initial, examId, onSave, onClose }) {
                 className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"/>
             </div>
             <div className="space-y-1">
-              <Lbl>과목</Lbl>
-              <select value={form.subject} onChange={e=>f("subject",e.target.value)}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300">
-                <option value="">선택</option>
-                {MOCK_SUBJECTS.map(s=><option key={s}>{s}</option>)}
-              </select>
+              <Lbl>개정 · 과목</Lbl>
+              <SubjectPicker
+                curriculum={form.curriculum} subject={form.subject}
+                onChangeCurriculum={v=>{f("curriculum",v); f("subject","");}}
+                onChangeSubject={v=>f("subject",v)}/>
             </div>
             <div className="space-y-1">
               <Lbl>학년</Lbl>
@@ -284,7 +303,7 @@ function ProblemEditModal({ tags, initial, examId, onSave, onClose }) {
 function ProblemListTab({ tags }) {
   const [problems, setProblems] = React.useState({});
   const [modal, setModal]       = React.useState(null); // null | "new" | { id, ...prob }
-  const [filter, setFilter]     = React.useState({ subject:"", grade:"", year:"", difficulty:"", tag:"" });
+  const [filter, setFilter]     = React.useState({ curriculum:"", subject:"", grade:"", year:"", difficulty:"", tag:"" });
 
   React.useEffect(() => {
     const ref = db.ref("mockProblems");
@@ -299,6 +318,7 @@ function ProblemListTab({ tags }) {
 
   const filtered = React.useMemo(() => {
     return Object.entries(problems).filter(([,p]) => {
+      if (filter.curriculum && p.curriculum !== filter.curriculum) return false;
       if (filter.subject   && p.subject   !== filter.subject)   return false;
       if (filter.grade     && p.grade     !== filter.grade)     return false;
       if (filter.year      && p.year      !== filter.year)      return false;
@@ -319,8 +339,14 @@ function ProblemListTab({ tags }) {
       {/* 필터 바 */}
       <Card className="p-4">
         <div className="flex flex-wrap gap-3 items-end">
+          <div className="space-y-1">
+            <Lbl>개정 · 과목</Lbl>
+            <SubjectPicker
+              curriculum={filter.curriculum} subject={filter.subject}
+              onChangeCurriculum={v=>setFilter(f=>({...f,curriculum:v,subject:""}))}
+              onChangeSubject={v=>setFilter(f=>({...f,subject:v}))}/>
+          </div>
           {[
-            ["subject", "과목", ["", ...MOCK_SUBJECTS]],
             ["grade",   "학년", ["", ...MOCK_GRADES]],
             ["difficulty","난이도",["","상","중","하"]],
           ].map(([key,label,opts])=>(
@@ -369,6 +395,7 @@ function ProblemListTab({ tags }) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap gap-1.5 mb-1.5">
+                      {p.curriculum && <Badge gray>{p.curriculum}</Badge>}
                       {p.subject    && <Badge>{p.subject}</Badge>}
                       {p.grade      && <Badge>{p.grade}</Badge>}
                       {(p.year||p.month) && <Badge>{[p.year,p.month].filter(Boolean).join("-")}</Badge>}
@@ -427,7 +454,7 @@ function ExamListTab({ tags }) {
   const [allProblems, setAllProblems] = React.useState({});
   const [selId, setSelId]       = React.useState(null);
   const [addingExam, setAddingExam] = React.useState(false);
-  const [examForm, setExamForm] = React.useState({ title:"", subject:"", year:"", month:"", grade:"" });
+  const [examForm, setExamForm] = React.useState({ title:"", curriculum:"", subject:"", year:"", month:"", grade:"" });
   const [probModal, setProbModal] = React.useState(false);
 
   React.useEffect(() => {
@@ -441,7 +468,7 @@ function ExamListTab({ tags }) {
   const saveExam = async () => {
     if (!examForm.title.trim()) return;
     const ref = await db.ref("mockExams").push({ ...examForm, createdAt: new Date().toISOString() });
-    setExamForm({ title:"", subject:"", year:"", month:"", grade:"" });
+    setExamForm({ title:"", curriculum:"", subject:"", year:"", month:"", grade:"" });
     setAddingExam(false);
     setSelId(ref.key);
   };
@@ -488,13 +515,12 @@ function ExamListTab({ tags }) {
               </div>
             ))}
             <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Lbl>과목</Lbl>
-                <select value={examForm.subject} onChange={e=>setExamForm(f=>({...f,subject:e.target.value}))}
-                  className="w-full rounded-xl border border-slate-200 px-2 py-1.5 text-sm bg-white focus:outline-none">
-                  <option value="">-</option>
-                  {MOCK_SUBJECTS.map(s=><option key={s}>{s}</option>)}
-                </select>
+              <div className="space-y-1 col-span-2">
+                <Lbl>개정 · 과목</Lbl>
+                <SubjectPicker small
+                  curriculum={examForm.curriculum} subject={examForm.subject}
+                  onChangeCurriculum={v=>setExamForm(f=>({...f,curriculum:v,subject:""}))}
+                  onChangeSubject={v=>setExamForm(f=>({...f,subject:v}))}/>
               </div>
               <div className="space-y-1">
                 <Lbl>학년</Lbl>
@@ -537,7 +563,7 @@ function ExamListTab({ tags }) {
                   <div className="min-w-0">
                     <div className="text-sm font-medium truncate">{ex.title}</div>
                     <div className={`text-[10px] ${selId===id?"text-white/60":"text-slate-400"}`}>
-                      {[ex.subject,ex.grade,ex.year&&ex.month?`${ex.year}.${ex.month}`:ex.year].filter(Boolean).join(" · ")}
+                      {[ex.curriculum,ex.subject,ex.grade,ex.year&&ex.month?`${ex.year}.${ex.month}`:ex.year].filter(Boolean).join(" · ")}
                     </div>
                   </div>
                   <button onClick={e=>{e.stopPropagation();delExam(id);}}
