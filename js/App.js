@@ -173,6 +173,17 @@ function App() {
       const submittedAt = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
       try { await db.ref(`homeworks/${hwKey}/chunks/${idx}`).update({done:true, completedAmount:chunk.plannedAmount, submittedAt}); }
       catch(e) { alert("저장 실패: "+e.message); }
+      // isAuto 숙제: 완료된 청크의 endProblem 기준으로 진행 현황 기록
+      if (hw.isAuto && hw.materialNodeId) {
+        const allChunks = hw.chunks.map((c,i) => i===idx ? {...c, done:true, endProblem:c.endProblem} : c);
+        const maxEnd = allChunks.filter(c=>c.done).reduce((m,c)=>Math.max(m, c.endProblem||0), chunk.endProblem);
+        try {
+          await db.ref(`studentProfiles/${hw.studentId}/materialProgress/${hw.materialNodeId}`).set({
+            currentProblem: maxEnd + 1,
+            completedAt: submittedAt,
+          });
+        } catch(e) { console.warn("materialProgress 저장 실패", e); }
+      }
     } else {
       // 완료 → 숫자입력 모드
       setChunkInput({ hwKey, idx, val: String(chunk.completedAmount ?? chunk.plannedAmount) });

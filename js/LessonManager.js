@@ -609,13 +609,14 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
 
   // 자동 숙제 계산 모달 열기
   const openAutoHwModal = async (studentId, studentName) => {
-    // 커리큘럼 + 학생 프로필(계수) 병렬 로드
+    // 커리큘럼 + 학생 프로필(계수+진행현황) 병렬 로드
     const [nodesSnap, profileSnap] = await Promise.all([
       db.ref("curriculumNodes").once("value"),
       db.ref(`studentProfiles/${studentId}`).once("value"),
     ]);
     const allBoards = nodesSnap.val() || {};
     const profile = profileSnap.val() || {};
+    const progress = profile.materialProgress || {};
     const mats = [];
     for (const boardId of Object.keys(allBoards)) {
       const board = allBoards[boardId];
@@ -624,13 +625,24 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
       for (const toId of (startNode.nextNodes || [])) {
         const matNode = board[toId];
         if (!matNode || matNode.type !== "material") continue;
-        const startNum = startNode.edgeMeta?.[toId]?.startNum || 1;
-        mats.push({ nodeId: toId, materialName: matNode.materialName, totalProblems: matNode.totalProblems || 0, startNum });
+        const edgeStartNum = startNode.edgeMeta?.[toId]?.startNum || 1;
+        // 진행 기록이 있으면 그 다음 번호부터 시작
+        const startNum = progress[toId]?.currentProblem ?? edgeStartNum;
+        const lastDone = progress[toId] ? `${progress[toId].currentProblem - 1}번까지 완료` : null;
+        mats.push({
+          nodeId: toId,
+          materialName: matNode.materialName,
+          totalProblems: matNode.totalProblems || 0,
+          startNum,
+          lastDone,
+          hwType: startNode.hwType || "현행",
+        });
       }
     }
     setAutoHwModal({
       studentId, studentName, materials: mats, selectedIdx: 0,
       days: "4", minPerProb: "3",
+      subject: "수학",
       coeff: profile.problemCoeff != null ? String(profile.problemCoeff) : "1",
     });
   };
@@ -818,7 +830,7 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
                   <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>교재 선택</div>
                   <select value={m.selectedIdx} onChange={e=>set({selectedIdx:Number(e.target.value)})} className={inputCls}>
                     {m.materials.map((mat,i) => (
-                      <option key={i} value={i}>{mat.materialName} ({mat.startNum}번~, 총{mat.totalProblems}문제)</option>
+                      <option key={i} value={i}>{mat.materialName} ({mat.startNum}번~{mat.lastDone ? " ✓"+mat.lastDone : ""}, 총{mat.totalProblems}문제)</option>
                     ))}
                   </select>
                 </div>
@@ -826,8 +838,13 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
               {m.materials.length === 1 && (
                 <div style={{ fontSize:12, color:"#475569", background:"#f1f5f9", borderRadius:8, padding:"6px 10px" }}>
                   📚 {m.materials[0].materialName} · <b>{m.materials[0].startNum}번</b>부터 시작 · 총 {m.materials[0].totalProblems}문제
+                  {m.materials[0].lastDone && <span style={{ color:"#10b981", marginLeft:6 }}>✓ {m.materials[0].lastDone}</span>}
                 </div>
               )}
+              <div>
+                <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>과목</div>
+                <input value={m.subject||"수학"} onChange={e=>set({subject:e.target.value})} className={inputCls} placeholder="수학"/>
+              </div>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
                 <div>
                   <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>몇 일치</div>
@@ -852,7 +869,39 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
           )}
           <div style={{ display:"flex", gap:8 }}>
             {result && (
-              <button onClick={() => { saveHW(m.studentId, result.text); setAutoHwModal(null); }}
+              <button onClick={async () => {
+                const mat = m.materials[m.selectedIdx];
+                // 1. 수업일지 텍스트 저장
+                await saveHW(m.studentId, result.text);
+                // 2. 구조화된 숙제 생성 (isAuto:true)
+                const id = Date.now();
+                const startDate = lesson.date || todayString();
+                const days = Math.max(1, parseInt(m.days) || 1);
+                const endDateObj = new Date(startDate);
+                endDateObj.setDate(endDateObj.getDate() + days - 1);
+                const dueDate = endDateObj.toISOString().slice(0,10);
+                const rawChunks = splitHomework({ totalAmount: result.numProblems, startDate, dueDate, includeWeekend: false, dailyMax: null, customDates: [] });
+                const offset = result.start - 1;
+                const chunks = rawChunks.map(c => ({ ...c, startProblem: c.startProblem + offset, endProblem: c.endProblem + offset }));
+                const student = (lesson.studentIds || []).includes(m.studentId)
+                  ? { id: m.studentId, name: m.studentName } : { id: m.studentId, name: m.studentName };
+                await db.ref(`homeworks/${id}`).set({
+                  id, title: result.text,
+                  subject: m.subject || "수학",
+                  hwType: mat.hwType || "현행",
+                  studentId: m.studentId,
+                  studentName: m.studentName,
+                  totalAmount: result.numProblems,
+                  startDate, dueDate,
+                  includeWeekend: false,
+                  dailyMax: null,
+                  createdAt: startDate,
+                  isAuto: true,
+                  materialNodeId: mat.nodeId,
+                  chunks,
+                });
+                setAutoHwModal(null);
+              }}
                 style={{ flex:1, padding:"8px 0", borderRadius:8, border:"none", background:"#1e293b", color:"white", fontWeight:700, fontSize:13, cursor:"pointer" }}>
                 적용
               </button>
