@@ -1087,28 +1087,23 @@ function LessonDetailView({ lesson, lessons = [], students, attendance, allAtten
                       </div>
                     </td>
 
-                    {/* 지난 숙제 */}
-                    <td className="border-b border-r border-slate-100 px-3 py-2.5">
-                      {prevHwMap[s.id] ? (
-                        <div className="space-y-1">
-                          {[["현행","text-sky-600","bg-sky-50 border-sky-200"],["추가1","text-violet-600","bg-violet-50 border-violet-200"],["추가2","text-rose-600","bg-rose-50 border-rose-200"]].map(([type, tc, bc]) => {
-                            const entry = prevHwMap[s.id][type];
-                            if (!entry) return null;
-                            return (
-                              <div key={type} className="flex items-start gap-1">
-                                <span className={`text-[9px] font-bold px-1 py-0.5 rounded border shrink-0 mt-0.5 ${bc} ${tc}`}>{type}</span>
-                                <div>
-                                  <div className="text-xs text-slate-600 leading-snug">{entry.text}</div>
-                                  <div className="text-[10px] text-slate-300">{entry.date}</div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <span className="text-[11px] text-slate-200">—</span>
-                      )}
-                    </td>
+                    {/* 지난 숙제 — 현재 lessonType과 같은 타입의 이전 숙제만 표시 */}
+                    {(() => {
+                      const curType = sRec.lessonType || "현행";
+                      const entry = prevHwMap[s.id]?.[curType];
+                      return (
+                        <td className="border-b border-r border-slate-100 px-3 py-2.5">
+                          {entry ? (
+                            <div>
+                              <div className="text-xs text-slate-600 leading-snug">{entry.text}</div>
+                              <div className="text-[10px] text-slate-300 mt-0.5">{entry.date}</div>
+                            </div>
+                          ) : (
+                            <span className="text-[11px] text-slate-200">—</span>
+                          )}
+                        </td>
+                      );
+                    })()}
 
                     {/* 숙제 */}
                     <td className={`border-b border-r border-slate-100 px-3 py-2.5 cursor-text transition ${isFocused(si, 0) ? focusRing : ""}`}
