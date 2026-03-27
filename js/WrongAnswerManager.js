@@ -11,13 +11,17 @@ const COLS = 20;
 function MaterialStatusCard({ mat, allStatuses, studentId }) {
   const statuses = allStatuses[mat.id] || {};
   const totalProblems = Number(mat.totalProblems) || 0;
+  const startNum = Number(mat.startNum) || 1;
+  const endNum = startNum + totalProblems - 1;
 
   const counts = { correct: 0, wrong: 0, unknown: 0, null: 0 };
-  for (let i = 1; i <= totalProblems; i++) counts[statuses[i] || "null"]++;
+  for (let i = startNum; i <= endNum; i++) counts[statuses[i] || "null"]++;
 
   const rows = [];
   for (let r = 0; r < Math.ceil(totalProblems / COLS); r++) {
-    rows.push(Array.from({ length: Math.min(COLS, totalProblems - r * COLS) }, (_, c) => r * COLS + c + 1));
+    const rowStart = startNum + r * COLS;
+    const rowEnd = Math.min(endNum, rowStart + COLS - 1);
+    rows.push(Array.from({ length: rowEnd - rowStart + 1 }, (_, c) => rowStart + c));
   }
 
   const toggleStatus = async (num) => {
@@ -82,22 +86,25 @@ function WrongAnswerManager({ students = [], materials = [] }) {
       const mats = [];
       for (const boardId of Object.keys(allBoards)) {
         const board = allBoards[boardId];
-        const startNode = board[`start_${selectedStudentId}`];
+        const startId = `start_${selectedStudentId}`;
+        const startNode = board[startId];
         if (!startNode) continue;
         const visited = new Set();
-        const queue = [...(startNode.nextNodes || [])];
+        const queue = (startNode.nextNodes || []).map(nid => ({ nid, parentId: startId }));
         while (queue.length) {
-          const nid = queue.shift();
+          const { nid, parentId } = queue.shift();
           if (visited.has(nid)) continue;
           visited.add(nid);
           const n = board[nid];
           if (!n) continue;
           if (n.type === "material") {
+            const parent = board[parentId];
+            const startNum = parent?.edgeMeta?.[nid]?.startNum || 1;
             const mat = materials.find(m => m.id === n.materialId);
             if (mat && !mats.find(m => m.id === mat.id))
-              mats.push({ ...mat, totalProblems: n.totalProblems || mat.totalProblems, x: n.x });
+              mats.push({ ...mat, totalProblems: n.totalProblems || mat.totalProblems, startNum });
           }
-          (n.nextNodes || []).forEach(id => queue.push(id));
+          (n.nextNodes || []).forEach(id => queue.push({ nid: id, parentId: nid }));
         }
       }
       setStudentMaterials(mats);

@@ -2314,15 +2314,19 @@ function StudentCurriculumView({ studentId }) {
     if (!allNodes[startNodeId]) return [];
     const visited = new Set();
     const result = [];
-    const queue = [startNodeId];
+    const queue = [{ nodeId: startNodeId, parentId: null }];
     while (queue.length) {
-      const nodeId = queue.shift();
+      const { nodeId, parentId } = queue.shift();
       if (visited.has(nodeId)) continue;
       visited.add(nodeId);
       const node = allNodes[nodeId];
       if (!node) continue;
-      if (node.type === "material") result.push(node);
-      for (const nid of (node.nextNodes || [])) queue.push(nid);
+      if (node.type === "material") {
+        const parent = parentId ? allNodes[parentId] : null;
+        const startNum = parent?.edgeMeta?.[nodeId]?.startNum || 1;
+        result.push({ ...node, startNum });
+      }
+      for (const nid of (node.nextNodes || [])) queue.push({ nodeId: nid, parentId: nodeId });
     }
     return result;
   };
