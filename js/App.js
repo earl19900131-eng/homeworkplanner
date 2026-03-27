@@ -104,7 +104,7 @@ function App() {
     let total=0,done=0,overdue=0,overdueHyun=0,overdueSum=0,todayInc=0;
     items.forEach(hw=>(hw.chunks||[]).forEach(c=>{
       if(!hw.teacherVerified){ total++; if(c.done) done++; }
-      if(!c.done&&c.date<today&&!hw.teacherVerified){ overdue++; if(hw.hwType==="추가") overdueSum++; else overdueHyun++; }
+      if(!c.done&&c.date<today&&!hw.teacherVerified){ overdue++; if(hw.hwType==="추가1"||hw.hwType==="추가2") overdueSum++; else overdueHyun++; }
       if(!c.done&&c.date===today&&!hw.teacherVerified) todayInc++;
     }));
     return {...s,homeworkCount:items.length,totalChunks:total,doneChunks:done,overdueChunks:overdue,overdueHyun,overdueSum,todayIncomplete:todayInc,progress:total>0?Math.round(done/total*100):0};
@@ -513,7 +513,7 @@ function App() {
                     <div><h2 className="text-lg font-bold">숙제 직접 등록</h2><p className="text-sm text-slate-500">공지된 숙제를 입력하면 하루 분량이 자동 계산됩니다.</p></div>
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 space-y-1.5">
                       <div className="text-xs font-bold text-slate-500 mb-1">📌 선생님이 공지한 최신 숙제</div>
-                      {!confirmedHw?.현행 && !confirmedHw?.추가 && (
+                      {!confirmedHw?.현행 && !confirmedHw?.추가1 && !confirmedHw?.추가2 && (
                         <div className="text-xs text-slate-400 py-1">아직 공지된 숙제가 없습니다.</div>
                       )}
                       {confirmedHw?.현행 && (
@@ -526,12 +526,22 @@ function App() {
                           </div>
                         </div>
                       )}
-                      {confirmedHw?.추가 && (
+                      {confirmedHw?.추가1 && (
                         <div className="flex items-center justify-between gap-2 bg-violet-50 border border-violet-100 rounded-xl px-3 py-2">
-                          <span className="text-sm"><span className="text-[11px] font-bold text-violet-600 mr-1.5">(추)</span>{confirmedHw.추가.text}</span>
+                          <span className="text-sm"><span className="text-[11px] font-bold text-violet-600 mr-1.5">(추1)</span>{confirmedHw.추가1.text}</span>
                           <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-[11px] text-slate-400">{confirmedHw.추가.date && (() => { const d=new Date(confirmedHw.추가.date); return `${confirmedHw.추가.date} (${["일","월","화","수","목","금","토"][d.getDay()]})`; })()}</span>
-                            <button type="button" title="복사" onClick={() => { navigator.clipboard?.writeText(confirmedHw.추가.text); setCopyToast(true); setTimeout(()=>setCopyToast(false),2000); }}
+                            <span className="text-[11px] text-slate-400">{confirmedHw.추가1.date && (() => { const d=new Date(confirmedHw.추가1.date); return `${confirmedHw.추가1.date} (${["일","월","화","수","목","금","토"][d.getDay()]})`; })()}</span>
+                            <button type="button" title="복사" onClick={() => { navigator.clipboard?.writeText(confirmedHw.추가1.text); setCopyToast(true); setTimeout(()=>setCopyToast(false),2000); }}
+                              className="text-slate-400 hover:text-slate-600 text-base">⧉</button>
+                          </div>
+                        </div>
+                      )}
+                      {confirmedHw?.추가2 && (
+                        <div className="flex items-center justify-between gap-2 bg-rose-50 border border-rose-100 rounded-xl px-3 py-2">
+                          <span className="text-sm"><span className="text-[11px] font-bold text-rose-600 mr-1.5">(추2)</span>{confirmedHw.추가2.text}</span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-[11px] text-slate-400">{confirmedHw.추가2.date && (() => { const d=new Date(confirmedHw.추가2.date); return `${confirmedHw.추가2.date} (${["일","월","화","수","목","금","토"][d.getDay()]})`; })()}</span>
+                            <button type="button" title="복사" onClick={() => { navigator.clipboard?.writeText(confirmedHw.추가2.text); setCopyToast(true); setTimeout(()=>setCopyToast(false),2000); }}
                               className="text-slate-400 hover:text-slate-600 text-base">⧉</button>
                           </div>
                         </div>
@@ -541,7 +551,7 @@ function App() {
                       <div className="space-y-1.5 sm:col-span-2">
                         <Lbl>종류</Lbl>
                         <div className="flex gap-2">
-                          {["현행","추가"].map(t=>(
+                          {["현행","추가1","추가2"].map(t=>(
                             <button key={t} type="button" onClick={()=>setForm({...form,hwType:t})}
                               className={`flex-1 py-2 rounded-xl text-sm font-medium border transition ${form.hwType===t?"bg-slate-900 text-white border-slate-900":"bg-white text-slate-500 border-slate-200 hover:bg-slate-50"}`}>
                               {t}

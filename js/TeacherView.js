@@ -278,8 +278,10 @@ function TeacherHWCard({ hw, done, pct, today }) {
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-semibold">{hw.title}</span>
                   <Badge variant="secondary">{hw.studentName}</Badge>
-                  {hw.hwType==="추가"
-                    ? <span className="text-xs font-bold text-violet-600 bg-violet-50 border border-violet-200 rounded-lg px-2 py-0.5">추가</span>
+                  {hw.hwType==="추가1"
+                    ? <span className="text-xs font-bold text-violet-600 bg-violet-50 border border-violet-200 rounded-lg px-2 py-0.5">추가1</span>
+                    : hw.hwType==="추가2"
+                    ? <span className="text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-2 py-0.5">추가2</span>
                     : <span className="text-xs font-bold text-sky-600 bg-sky-50 border border-sky-200 rounded-lg px-2 py-0.5">현행</span>}
                   <Badge variant="outline">{hw.subject}</Badge>
                   {verified==="이행"&&<span className="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-0.5">✓ 이행</span>}
@@ -352,7 +354,7 @@ function TeacherHWCard({ hw, done, pct, today }) {
               <div className="space-y-1 sm:col-span-2">
                 <Lbl>종류</Lbl>
                 <div className="flex gap-2">
-                  {["현행","추가"].map(t=>(
+                  {["현행","추가1","추가2"].map(t=>(
                     <button key={t} type="button" onClick={()=>setEF(p=>({...p,hwType:t}))}
                       className={`flex-1 py-1.5 rounded-xl text-xs font-medium border transition ${ef.hwType===t?"bg-slate-900 text-white border-slate-900":"bg-white text-slate-500 border-slate-200 hover:bg-slate-50"}`}>
                       {t}

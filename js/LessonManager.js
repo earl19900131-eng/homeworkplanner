@@ -483,10 +483,10 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
     return () => { ref1.off("value", h1); ref2.off("value", h2); };
   }, []);
 
-  // assessmentId → 평가 정보 반환 (lessonType: "추가" 이면 advanceAssessment 사용)
+  // assessmentId → 평가 정보 반환 (lessonType: "추가1"/"추가2" 이면 advanceAssessment 사용)
   const getStudentAssessmentInfo = (studentId, lessonType) => {
     const profile = profiles[studentId] || {};
-    const assessmentId = lessonType === "추가" ? profile.advanceAssessment : profile.currentAssessment;
+    const assessmentId = (lessonType === "추가1" || lessonType === "추가2") ? profile.advanceAssessment : profile.currentAssessment;
     if (!assessmentId) return { name: "", type: "", units: [], totalProblems: 0 };
     const assessment = assessmentList.find(a => a.id === assessmentId);
     if (!assessment) return { name: "", type: "", units: [], totalProblems: 0 };
@@ -533,7 +533,7 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
       const sRec = freshRec[s.id] || {};
       const text = (sRec.현행숙제 || "").trim();
       if (!text) continue;
-      const type = sRec.lessonType === "추가" ? "추가" : "현행";
+      const type = sRec.lessonType === "추가1" ? "추가1" : sRec.lessonType === "추가2" ? "추가2" : "현행";
       updates[`studentProfiles/${s.id}/confirmedHw/${type}`] = { text, date: lesson.date };
     }
     if (Object.keys(updates).length === 0) { alert("확정할 숙제가 없습니다.\n(숙제 열에 내용을 먼저 입력해 주세요)"); return; }
@@ -811,8 +811,8 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
                 <div className="flex-1 min-w-0 space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-base text-slate-900">{s.name}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold border ${sRec.lessonType === "추가" ? "bg-violet-100 text-violet-700 border-violet-200" : "bg-sky-50 text-sky-600 border-sky-200"}`}>
-                      {sRec.lessonType === "추가" ? "추가" : "현행"}
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold border ${sRec.lessonType === "추가1" ? "bg-violet-100 text-violet-700 border-violet-200" : sRec.lessonType === "추가2" ? "bg-rose-100 text-rose-700 border-rose-200" : "bg-sky-50 text-sky-600 border-sky-200"}`}>
+                      {sRec.lessonType === "추가1" ? "추가1" : sRec.lessonType === "추가2" ? "추가2" : "현행"}
                     </span>
                     <span className="text-xs text-slate-400">{s.className}</span>
                     {tags.length > 0 && <span className={`text-xs font-bold ml-auto ${xp >= 0 ? "text-emerald-600" : "text-red-500"}`}>{xp >= 0 ? "+" : ""}{xp}XP</span>}
@@ -820,7 +820,7 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
                   </div>
                   {sRec.현행숙제 && (
                     <div className="text-sm text-slate-700">
-                      <span className={`text-[10px] font-bold mr-1 ${sRec.lessonType === "추가" ? "text-violet-500" : "text-sky-500"}`}>{sRec.lessonType === "추가" ? "(추)" : "(현)"}</span>
+                      <span className={`text-[10px] font-bold mr-1 ${sRec.lessonType === "추가1" ? "text-violet-500" : sRec.lessonType === "추가2" ? "text-rose-500" : "text-sky-500"}`}>{sRec.lessonType === "추가1" ? "(추1)" : sRec.lessonType === "추가2" ? "(추2)" : "(현)"}</span>
                       {sRec.현행숙제}
                     </div>
                   )}
@@ -872,12 +872,14 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
                           <div className="flex items-center gap-1.5">
                             <span className="font-semibold text-sm">{s.name}</span>
                             <button type="button"
-                              onClick={e => { e.stopPropagation(); saveLessonType(s.id, sRec.lessonType === "추가" ? "현행" : "추가"); }}
+                              onClick={e => { e.stopPropagation(); saveLessonType(s.id, sRec.lessonType === "현행" ? "추가1" : sRec.lessonType === "추가1" ? "추가2" : "현행"); }}
                               className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold border transition shrink-0
-                                ${sRec.lessonType === "추가"
+                                ${sRec.lessonType === "추가1"
                                   ? "bg-violet-100 text-violet-700 border-violet-300 hover:bg-violet-200"
+                                  : sRec.lessonType === "추가2"
+                                  ? "bg-rose-100 text-rose-700 border-rose-300 hover:bg-rose-200"
                                   : "bg-sky-50 text-sky-600 border-sky-200 hover:bg-sky-100"}`}>
-                              {sRec.lessonType === "추가" ? "추가" : "현행"}
+                              {sRec.lessonType === "추가1" ? "추가1" : sRec.lessonType === "추가2" ? "추가2" : "현행"}
                             </button>
                           </div>
                           <div className="text-[10px] text-slate-400 flex gap-2">
@@ -896,8 +898,8 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
                       onDoubleClick={() => { selectCell(si, 0); setEditingHW(s.id); setHwValue(sRec.현행숙제 || ""); }}>
                       {editingHW === s.id ? (
                         <div className="flex items-center gap-1.5">
-                          <span className={`text-[10px] font-bold shrink-0 ${sRec.lessonType === "추가" ? "text-violet-500" : "text-sky-500"}`}>
-                            {sRec.lessonType === "추가" ? "(추)" : "(현)"}
+                          <span className={`text-[10px] font-bold shrink-0 ${sRec.lessonType === "추가1" ? "text-violet-500" : sRec.lessonType === "추가2" ? "text-rose-500" : "text-sky-500"}`}>
+                            {sRec.lessonType === "추가1" ? "(추1)" : sRec.lessonType === "추가2" ? "(추2)" : "(현)"}
                           </span>
                           <input autoFocus value={hwValue} onChange={e => setHwValue(e.target.value)}
                             onBlur={() => saveHW(s.id, hwValue)}
@@ -906,8 +908,8 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
                         </div>
                       ) : (
                         <div className="flex items-center gap-1.5">
-                          <span className={`text-[10px] font-bold shrink-0 ${sRec.lessonType === "추가" ? "text-violet-500" : "text-sky-500"}`}>
-                            {sRec.lessonType === "추가" ? "(추)" : "(현)"}
+                          <span className={`text-[10px] font-bold shrink-0 ${sRec.lessonType === "추가1" ? "text-violet-500" : sRec.lessonType === "추가2" ? "text-rose-500" : "text-sky-500"}`}>
+                            {sRec.lessonType === "추가1" ? "(추1)" : sRec.lessonType === "추가2" ? "(추2)" : "(현)"}
                           </span>
                           <span className="text-xs text-slate-600">{sRec.현행숙제 || <span className="text-slate-300">입력</span>}</span>
                         </div>
