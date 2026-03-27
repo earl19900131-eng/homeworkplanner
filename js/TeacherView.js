@@ -233,14 +233,14 @@ function TeacherHWCard({ hw, done, pct, today }) {
   };
 
   const toggleChunkDone = async (chunk, idx) => {
-    if (chunkInputIdx === idx) {
-      // 노란색(숫자입력) → 안함
+    // 입력 모드 중이면 row 클릭 무시
+    if (chunkInputIdx === idx) return;
+    const isYellow = !chunk.done && (chunk.completedAmount||0) > 0;
+    if (isYellow) {
+      // 노란색 → 안함
       try { await db.ref(`homeworks/${hw._key}/chunks/${idx}`).update({done:false, completedAmount:0, submittedAt:null}); }
       catch(err) { alert("저장 실패: "+err.message); }
-      setChunkInputIdx(null); setChunkInputVal("");
-      return;
-    }
-    if (!chunk.done) {
+    } else if (!chunk.done) {
       // 안함 → 완료
       const now = new Date();
       const submittedAt = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
@@ -258,9 +258,9 @@ function TeacherHWCard({ hw, done, pct, today }) {
         } catch(e) { console.warn("materialProgress 저장 실패", e); }
       }
     } else {
-      // 완료 → 숫자입력 모드
-      setChunkInputIdx(idx);
-      setChunkInputVal(String(chunk.completedAmount ?? chunk.plannedAmount));
+      // 완료 → 노란색 (DB에 partial 상태로 저장, 입력 없이)
+      try { await db.ref(`homeworks/${hw._key}/chunks/${idx}`).update({done:false, completedAmount:chunk.completedAmount||chunk.plannedAmount, submittedAt:null}); }
+      catch(err) { alert("저장 실패: "+err.message); }
     }
   };
 
@@ -397,12 +397,13 @@ function TeacherHWCard({ hw, done, pct, today }) {
           {(hw.chunks||[]).map((chunk, idx)=>{
             const isOverdue = !chunk.done && chunk.date < today;
             const isToday = chunk.date === today;
+            const isYellow = !chunk.done && (chunk.completedAmount||0) > 0;
             const isInputMode = chunkInputIdx === idx;
             return (
               <div key={chunk.date}
                 onClick={() => toggleChunkDone(chunk, idx)}
                 className={"flex items-center justify-between rounded-xl px-3 py-2 text-xs transition " +
-                  (isInputMode ? "bg-amber-50 text-amber-700 cursor-default" :
+                  (isYellow||isInputMode ? "bg-amber-50 text-amber-700 cursor-pointer hover:opacity-80" :
                    chunk.done ? "bg-emerald-50 text-emerald-700 cursor-pointer hover:opacity-80" :
                    isOverdue ? "bg-red-50 text-red-600 cursor-pointer hover:opacity-80" :
                    isToday ? "bg-blue-50 text-blue-700 cursor-pointer hover:opacity-80" :
@@ -418,13 +419,17 @@ function TeacherHWCard({ hw, done, pct, today }) {
                         onChange={e => setChunkInputVal(e.target.value)}
                         onKeyDown={e => { e.stopPropagation(); if(e.key==="Enter") confirmChunkInput(chunk,idx); if(e.key==="Escape"){setChunkInputIdx(null);setChunkInputVal("");} }}
                         onClick={e => e.stopPropagation()}
-                        autoFocus
                         className="w-14 border border-amber-300 rounded px-1 py-0.5 text-xs text-center bg-white"
                       />
                       <span className="text-amber-600">문제</span>
                       <button onClick={e=>{e.stopPropagation();confirmChunkInput(chunk,idx);}} className="text-amber-700 hover:text-amber-900 font-bold">✓</button>
                       <button onClick={e=>{e.stopPropagation();setChunkInputIdx(null);setChunkInputVal("");}} className="text-slate-400 hover:text-slate-600">✕</button>
                     </>
+                  ) : isYellow ? (
+                    <span onClick={e=>{e.stopPropagation();setChunkInputIdx(idx);setChunkInputVal(String(chunk.completedAmount));}}
+                      className="underline decoration-dotted cursor-pointer">
+                      {chunk.completedAmount}/{chunk.plannedAmount}문제
+                    </span>
                   ) : chunk.done ? (
                     chunk.submittedAt ? "✓ "+chunk.submittedAt : "✓ 완료"
                   ) : isOverdue ? "⚠ 미완료" : "- 클릭해서 완료"}

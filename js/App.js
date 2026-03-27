@@ -160,14 +160,14 @@ function App() {
     const hw=homeworks.find(h=>h._key===hwKey); if(!hw) return;
     const idx=(hw.chunks||[]).findIndex(c=>c.date===date); if(idx===-1) return;
     const chunk=hw.chunks[idx];
-    if (chunkInput?.hwKey===hwKey && chunkInput?.idx===idx) {
-      // 노란색(숫자입력) → 안함
+    // 입력 모드 중이면 row 클릭 무시 (숫자 영역 탭으로만 제어)
+    if (chunkInput?.hwKey===hwKey && chunkInput?.idx===idx) return;
+    const isYellow = !chunk.done && (chunk.completedAmount||0) > 0;
+    if (isYellow) {
+      // 노란색 → 안함
       try { await db.ref(`homeworks/${hwKey}/chunks/${idx}`).update({done:false, completedAmount:0, submittedAt:null}); }
       catch(e) { alert("저장 실패: "+e.message); }
-      setChunkInput(null);
-      return;
-    }
-    if (!chunk.done) {
+    } else if (!chunk.done) {
       // 안함 → 완료
       const now = new Date();
       const submittedAt = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
@@ -175,7 +175,7 @@ function App() {
       catch(e) { alert("저장 실패: "+e.message); }
       // isAuto 숙제: 완료된 청크의 endProblem 기준으로 진행 현황 기록
       if (hw.isAuto && hw.materialNodeId) {
-        const allChunks = hw.chunks.map((c,i) => i===idx ? {...c, done:true, endProblem:c.endProblem} : c);
+        const allChunks = hw.chunks.map((c,i) => i===idx ? {...c, done:true} : c);
         const maxEnd = allChunks.filter(c=>c.done).reduce((m,c)=>Math.max(m, c.endProblem||0), chunk.endProblem);
         try {
           await db.ref(`studentProfiles/${hw.studentId}/materialProgress/${hw.materialNodeId}`).set({
@@ -185,8 +185,9 @@ function App() {
         } catch(e) { console.warn("materialProgress 저장 실패", e); }
       }
     } else {
-      // 완료 → 숫자입력 모드
-      setChunkInput({ hwKey, idx, val: String(chunk.completedAmount ?? chunk.plannedAmount) });
+      // 완료 → 노란색 (DB에 partial 상태로 저장, 입력 없이)
+      try { await db.ref(`homeworks/${hwKey}/chunks/${idx}`).update({done:false, completedAmount:chunk.completedAmount||chunk.plannedAmount, submittedAt:null}); }
+      catch(e) { alert("저장 실패: "+e.message); }
     }
   };
 
@@ -194,7 +195,6 @@ function App() {
     if (!chunkInput) return;
     const { hwKey, idx, val } = chunkInput;
     const hw = homeworks.find(h=>h._key===hwKey); if(!hw) return;
-    const chunk = hw.chunks[idx];
     const amount = parseInt(val);
     if (!isNaN(amount) && amount >= 0) {
       try { await db.ref(`homeworks/${hwKey}/chunks/${idx}`).update({done:false, completedAmount:amount, submittedAt:null}); }
@@ -691,12 +691,13 @@ function App() {
                             {(hw.chunks||[]).map((chunk, cidx)=>{
                               const isOverdue=!chunk.done&&chunk.date<today;
                               const isToday=chunk.date===today;
+                              const isYellow = !chunk.done && (chunk.completedAmount||0) > 0;
                               const isInputMode = chunkInput?.hwKey===hw._key && chunkInput?.idx===cidx;
                               return(
                                 <div key={chunk.date}
                                   onClick={()=>toggleDone(hw._key,chunk.date)}
                                   className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition cursor-pointer
-                                    ${isInputMode?"bg-amber-50 text-amber-700":chunk.done?"bg-emerald-50 text-emerald-700":isOverdue?"bg-red-50 text-red-700":isToday?"bg-blue-50 text-blue-700":"bg-slate-50 text-slate-600"}`}>
+                                    ${isYellow||isInputMode?"bg-amber-50 text-amber-700":chunk.done?"bg-emerald-50 text-emerald-700":isOverdue?"bg-red-50 text-red-700":isToday?"bg-blue-50 text-blue-700":"bg-slate-50 text-slate-600"}`}>
                                   <span>{chunk.date}{isToday?" · 오늘":""}</span>
                                   <span className="font-medium flex items-center gap-1">
                                     {isInputMode ? (
@@ -706,12 +707,16 @@ function App() {
                                           onChange={e=>setChunkInput(s=>({...s,val:e.target.value}))}
                                           onKeyDown={e=>{e.stopPropagation();if(e.key==="Enter")confirmChunkInput();if(e.key==="Escape")setChunkInput(null);}}
                                           onClick={e=>e.stopPropagation()}
-                                          autoFocus
                                           className="w-14 border border-amber-300 rounded px-1 py-0.5 text-xs text-center bg-white"/>
                                         <span className="text-xs">문제</span>
                                         <button onClick={e=>{e.stopPropagation();confirmChunkInput();}} className="text-amber-700 hover:text-amber-900 font-bold">✓</button>
                                         <button onClick={e=>{e.stopPropagation();setChunkInput(null);}} className="text-slate-400 hover:text-slate-600">✕</button>
                                       </>
+                                    ) : isYellow ? (
+                                      <span onClick={e=>{e.stopPropagation();setChunkInput({hwKey:hw._key,idx:cidx,val:String(chunk.completedAmount)});}}
+                                        className="underline decoration-dotted cursor-pointer">
+                                        {chunk.completedAmount}/{chunk.plannedAmount}문제
+                                      </span>
                                     ) : (
                                       <>
                                         {chunk.startProblem}~{chunk.endProblem}번 ({chunk.plannedAmount}문제)
