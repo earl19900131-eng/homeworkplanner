@@ -175,7 +175,24 @@ function WrongAnswerManager({ students = [], materials = [] }) {
     return s;
   });
 
-  const pickedList = wrongList.filter(p => picked.has(p.key));
+  const pickedList = React.useMemo(() => {
+    const result = [];
+    for (const mat of studentMaterials) {
+      const totalProblems = Number(mat.totalProblems) || 0;
+      if (totalProblems === 0) continue;
+      const startNum = Number(mat.problemStart) || 1;
+      const endNum = mat.problemEnd ? Number(mat.problemEnd) : startNum + totalProblems - 1;
+      const matStatuses = allStatuses[mat.id] || {};
+      for (let num = startNum; num <= endNum; num++) {
+        const key = `${mat.id}:${num}`;
+        if (picked.has(key)) {
+          result.push({ key, matId: mat.id, matName: mat.name, num, status: matStatuses[num] || null });
+        }
+      }
+    }
+    return result;
+  }, [picked, studentMaterials, allStatuses]);
+
   // 2단, 단당 2문제 → 4개씩 그룹
   const printGroups = [];
   for (let i = 0; i < pickedList.length; i += 4) printGroups.push(pickedList.slice(i, i + 4));
@@ -200,7 +217,7 @@ function WrongAnswerManager({ students = [], materials = [] }) {
       ))}
 
       {/* 문제 뽑기 */}
-      {selectedStudentId && wrongList.length > 0 && (
+      {selectedStudentId && studentMaterials.length > 0 && (
         <Card className="p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-sm">📋 문제 뽑기</h3>
@@ -209,23 +226,33 @@ function WrongAnswerManager({ students = [], materials = [] }) {
               선택 문제 보기 ({pickedList.length})
             </button>
           </div>
-          <div className="text-xs text-slate-400">틀림·모름으로 표시된 문제를 선택해 뽑기</div>
+          <div className="text-xs text-slate-400">문제를 클릭해 선택 — 틀림 <span style={{color:"#b91c1c"}}>●</span> 모름 <span style={{color:"#c2410c"}}>●</span> 미체크 ●</div>
           {studentMaterials.map(mat => {
-            const matWrong = wrongList.filter(p => p.matId === mat.id);
-            if (matWrong.length === 0) return null;
+            const totalProblems = Number(mat.totalProblems) || 0;
+            if (totalProblems === 0) return null;
+            const startNum = Number(mat.problemStart) || 1;
+            const endNum = mat.problemEnd ? Number(mat.problemEnd) : startNum + totalProblems - 1;
+            const matStatuses = allStatuses[mat.id] || {};
+            const allNums = Array.from({ length: endNum - startNum + 1 }, (_, i) => startNum + i);
             return (
               <div key={mat.id} className="space-y-1.5">
                 <div className="text-xs font-semibold text-slate-500">{mat.name}</div>
                 <div className="flex flex-wrap gap-1.5">
-                  {matWrong.map(p => {
-                    const sel = picked.has(p.key);
-                    const bg = sel ? "#1e293b" : p.status === "wrong" ? "#fee2e2" : "#ffedd5";
-                    const col = sel ? "#fff" : p.status === "wrong" ? "#b91c1c" : "#c2410c";
+                  {allNums.map(num => {
+                    const key = `${mat.id}:${num}`;
+                    const status = matStatuses[num] || null;
+                    const sel = picked.has(key);
+                    let bg, col;
+                    if (sel) { bg = "#1e293b"; col = "#fff"; }
+                    else if (status === "wrong")   { bg = "#fee2e2"; col = "#b91c1c"; }
+                    else if (status === "unknown") { bg = "#ffedd5"; col = "#c2410c"; }
+                    else if (status === "correct") { bg = "#dcfce7"; col = "#15803d"; }
+                    else                           { bg = "#f1f5f9"; col = "#94a3b8"; }
                     return (
-                      <button key={p.key} onClick={() => togglePick(p.key)}
+                      <button key={key} onClick={() => togglePick(key)}
                         style={{ background: bg, color: col }}
                         className="w-9 h-9 rounded-lg text-[11px] font-bold border border-white/20 transition hover:opacity-80">
-                        {p.num}
+                        {num}
                       </button>
                     );
                   })}
@@ -252,9 +279,11 @@ function WrongAnswerManager({ students = [], materials = [] }) {
                     <div key={p.key} className="border border-slate-200 rounded-xl overflow-hidden">
                       <div className="bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 border-b border-slate-200">
                         {p.matName} {p.num}번
-                        <span className="ml-2 text-[10px]" style={{ color: p.status === "wrong" ? "#ef4444" : "#f97316" }}>
-                          {p.status === "wrong" ? "틀림" : "모름"}
-                        </span>
+                        {p.status && (
+                          <span className="ml-2 text-[10px]" style={{ color: p.status === "wrong" ? "#ef4444" : p.status === "unknown" ? "#f97316" : "#22c55e" }}>
+                            {p.status === "wrong" ? "틀림" : p.status === "unknown" ? "모름" : "맞음"}
+                          </span>
+                        )}
                       </div>
                       <div className="h-36 flex items-center justify-center text-xs text-slate-300 bg-white">이미지 없음</div>
                     </div>
@@ -266,9 +295,11 @@ function WrongAnswerManager({ students = [], materials = [] }) {
                     <div key={p.key} className="border border-slate-200 rounded-xl overflow-hidden">
                       <div className="bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 border-b border-slate-200">
                         {p.matName} {p.num}번
-                        <span className="ml-2 text-[10px]" style={{ color: p.status === "wrong" ? "#ef4444" : "#f97316" }}>
-                          {p.status === "wrong" ? "틀림" : "모름"}
-                        </span>
+                        {p.status && (
+                          <span className="ml-2 text-[10px]" style={{ color: p.status === "wrong" ? "#ef4444" : p.status === "unknown" ? "#f97316" : "#22c55e" }}>
+                            {p.status === "wrong" ? "틀림" : p.status === "unknown" ? "모름" : "맞음"}
+                          </span>
+                        )}
                       </div>
                       <div className="h-36 flex items-center justify-center text-xs text-slate-300 bg-white">이미지 없음</div>
                     </div>
