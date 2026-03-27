@@ -556,22 +556,20 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
       const sid = selectedStudentIds[i];
       const student = students.find(s => s.id === sid);
       if (!student || nodes[`start_${sid}`]) continue;
-      const baseY = 60 + (existingCount + i) * 60;
-      await db.ref(`${nodesRef}/start_${sid}`).set({
+      const baseY = 60 + (existingCount + i) * 80;
+      const updates = {};
+      updates[`${nodesRef}/start_${sid}`] = {
         id: `start_${sid}`, type: "start", studentId: student.id, studentName: student.name,
         nextNodes: [], x: 30, y: baseY, createdAt: new Date().toISOString(),
-      });
+      };
+      updates[`${nodesRef}/end_${sid}`] = {
+        id: `end_${sid}`, type: "end", studentId: student.id, studentName: student.name,
+        nextNodes: [], x: 400, y: baseY, createdAt: new Date().toISOString(),
+      };
+      await db.ref().update(updates);
     }
     setShowAddStudent(false);
     setSelectedStudentIds([]);
-  };
-
-  const addEndNode = async () => {
-    const id = `end_${Date.now()}`;
-    const endCount = nodeList.filter(n => n.type === "end").length;
-    await db.ref(`${nodesRef}/${id}`).set({
-      id, type: "end", nextNodes: [], x: 400, y: 60 + endCount * 80, createdAt: new Date().toISOString(),
-    });
   };
 
   // 경로 역추적으로 end 노드 통계 계산
@@ -843,7 +841,6 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
         <Btn onClick={() => { setShowAddMaterial(s=>!s); setShowAddStudent(false); }} disabled={materials.length === 0}>+ 교재 노드</Btn>
         <Btn variant="outline" onClick={addAssessmentNode} disabled={assessments.length === 0}>+ 평가 노드</Btn>
         <Btn variant="outline" onClick={() => { setShowAddStudent(s=>!s); setShowAddMaterial(false); }}>+ 학생 노드</Btn>
-        <Btn variant="outline" onClick={addEndNode}>+ 끝 노드</Btn>
         <div className="h-4 w-px bg-slate-200 shrink-0"/>
         {connectingFrom ? (
           <>
@@ -1175,8 +1172,8 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
                         const timeStr = h > 0 ? (m > 0 ? `${h}시간 ${m}분` : `${h}시간`) : `${m}분`;
                         return (
                           <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:2 }}>
-                            <div style={{ fontSize:9, fontWeight:700, color:"#166534" }}>{total > 0 ? `${total}문제` : "—"}</div>
-                            <div style={{ fontSize:8, color:"#15803d" }}>{total > 0 ? `약 ${timeStr}` : "연결 없음"}</div>
+                            <div style={{ fontSize:9, fontWeight:700, color:"#166534", textAlign:"center" }}>{node.studentName}</div>
+                            <div style={{ fontSize:8, color:"#15803d" }}>{total > 0 ? `${total}문제 · 약 ${timeStr}` : "연결 없음"}</div>
                           </div>
                         );
                       })() : node.type === "material" ? (
