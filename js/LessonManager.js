@@ -631,14 +631,14 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
     setAutoHwModal({
       studentId, studentName, materials: mats, selectedIdx: 0,
       days: "4", minPerProb: "3",
-      coeff: profile.hwCoeff != null ? String(profile.hwCoeff) : "1",
+      coeff: profile.problemCoeff != null ? String(profile.problemCoeff) : "1",
     });
   };
 
   const saveCoeff = async (studentId, val) => {
     const num = parseFloat(val);
     if (!isNaN(num) && num > 0)
-      await db.ref(`studentProfiles/${studentId}/hwCoeff`).set(num);
+      await db.ref(`studentProfiles/${studentId}/problemCoeff`).set(num);
   };
 
   // 자동 계산 결과 생성
