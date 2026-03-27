@@ -4,21 +4,56 @@ const MOCK_CURRICULUM = {
   "15개정": ["수학(상)","수학(하)","수학1","수학2","미적분","확률과통계","기하"],
   "22개정": ["공통수학1","공통수학2","대수","미적분1","확률과통계","미적분2"],
 };
+const MOCK_CURR_OPTIONS = ["15개정","22개정","해당없음"];
 
-// 개정+과목 2단계 선택 컴포넌트
-function SubjectPicker({ curriculum, subject, onChangeCurriculum, onChangeSubject, small }) {
-  const subjects = MOCK_CURRICULUM[curriculum] || [];
-  const sel = "rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-slate-300 " + (small ? "px-2 py-1.5 text-xs" : "px-3 py-2 text-sm");
+// curriculum = { "15개정": true } 형태의 객체
+function getSubjectsForCurricula(curricula) {
+  const seen = new Set();
+  const result = [];
+  Object.keys(curricula || {}).forEach(c => {
+    (MOCK_CURRICULUM[c] || []).forEach(s => { if(!seen.has(s)){ seen.add(s); result.push(s); } });
+  });
+  return result;
+}
+
+// 개정 토글 + 과목 선택 컴포넌트
+// curricula: {} 형태 객체, subject: string
+function SubjectPicker({ curricula, subject, onChangeCurricula, onChangeSubject }) {
+  const toggle = (c) => {
+    let next;
+    if (c === "해당없음") {
+      next = curricula["해당없음"] ? {} : { "해당없음": true };
+    } else {
+      next = { ...curricula };
+      delete next["해당없음"];
+      if (next[c]) delete next[c]; else next[c] = true;
+    }
+    onChangeCurricula(next);
+    const subs = getSubjectsForCurricula(next);
+    if (subject && !subs.includes(subject)) onChangeSubject("");
+  };
+
+  const subjects = getSubjectsForCurricula(curricula);
+  const hasNone  = !!curricula["해당없음"];
+  const btnBase  = "px-2.5 py-1 text-xs rounded-lg border font-medium transition";
+
   return (
-    <div className="flex gap-2">
-      <select value={curriculum} onChange={e => { onChangeCurriculum(e.target.value); onChangeSubject(""); }} className={sel}>
-        <option value="">개정 선택</option>
-        {Object.keys(MOCK_CURRICULUM).map(c=><option key={c}>{c}</option>)}
-      </select>
-      <select value={subject} onChange={e => onChangeSubject(e.target.value)} disabled={!curriculum} className={sel + " disabled:opacity-40"}>
-        <option value="">과목 선택</option>
-        {subjects.map(s=><option key={s}>{s}</option>)}
-      </select>
+    <div className="space-y-2">
+      <div className="flex gap-1.5 flex-wrap">
+        {MOCK_CURR_OPTIONS.map(c => (
+          <button key={c} type="button" onClick={()=>toggle(c)}
+            className={`${btnBase} ${curricula[c] ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-600 border-slate-200 hover:border-slate-400"}`}>
+            {c}
+          </button>
+        ))}
+      </div>
+      {!hasNone && subjects.length > 0 && (
+        <select value={subject} onChange={e=>onChangeSubject(e.target.value)}
+          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300">
+          <option value="">과목 선택</option>
+          {subjects.map(s=><option key={s}>{s}</option>)}
+        </select>
+      )}
     </div>
   );
 }
@@ -29,13 +64,14 @@ const MOCK_MONTHS     = ["01","02","03","04","05","06","07","08","09","10","11",
 
 // ── 태그 관리 탭 ────────────────────────────────────────────────────────────
 function TagManager({ tags }) {
-  const [form, setForm] = React.useState({ name:"", curriculum:"", subject:"" });
+  const [form, setForm] = React.useState({ name:"", curriculum:{}, subject:"" });
   const [saving, setSaving] = React.useState(false);
 
   const grouped = React.useMemo(() => {
     const g = {};
     Object.entries(tags).forEach(([id, t]) => {
-      const key = [t.curriculum, t.subject].filter(Boolean).join(" · ") || "기타";
+      const currKeys = Object.keys(t.curriculum || {}).join("+");
+      const key = [currKeys, t.subject].filter(Boolean).join(" · ") || "기타";
       if (!g[key]) g[key] = [];
       g[key].push({ id, ...t });
     });
@@ -46,7 +82,7 @@ function TagManager({ tags }) {
     if (!form.name.trim()) return;
     setSaving(true);
     await db.ref("mockTags").push({ name: form.name.trim(), curriculum: form.curriculum, subject: form.subject });
-    setForm({ name:"", curriculum:"", subject:"" });
+    setForm({ name:"", curriculum:{}, subject:"" });
     setSaving(false);
   };
 
@@ -71,8 +107,8 @@ function TagManager({ tags }) {
           <div className="space-y-1">
             <Lbl>과목</Lbl>
             <SubjectPicker
-              curriculum={form.curriculum} subject={form.subject}
-              onChangeCurriculum={v=>setForm(f=>({...f,curriculum:v,subject:""}))}
+              curricula={form.curriculum} subject={form.subject}
+              onChangeCurricula={v=>setForm(f=>({...f,curriculum:v,subject:""}))}
               onChangeSubject={v=>setForm(f=>({...f,subject:v}))}/>
           </div>
           <button onClick={save} disabled={saving}
@@ -106,7 +142,7 @@ function TagManager({ tags }) {
 // ── 문제 편집 모달 ───────────────────────────────────────────────────────────
 function ProblemEditModal({ tags, initial, examId, onSave, onClose }) {
   const blankForm = {
-    num:"", curriculum:"", subject:"", grade:"", year:"", month:"", source:"",
+    num:"", curriculum:{}, subject:"", grade:"", year:"", month:"", source:"",
     type:"객관식", difficulty:"중", question:"", solution:"", tags:{}
   };
   const [form, setForm]   = React.useState(initial || blankForm);
@@ -177,8 +213,8 @@ function ProblemEditModal({ tags, initial, examId, onSave, onClose }) {
             <div className="space-y-1">
               <Lbl>개정 · 과목</Lbl>
               <SubjectPicker
-                curriculum={form.curriculum} subject={form.subject}
-                onChangeCurriculum={v=>{f("curriculum",v); f("subject","");}}
+                curricula={form.curriculum} subject={form.subject}
+                onChangeCurricula={v=>{f("curriculum",v); f("subject","");}}
                 onChangeSubject={v=>f("subject",v)}/>
             </div>
             <div className="space-y-1">
@@ -303,7 +339,7 @@ function ProblemEditModal({ tags, initial, examId, onSave, onClose }) {
 function ProblemListTab({ tags }) {
   const [problems, setProblems] = React.useState({});
   const [modal, setModal]       = React.useState(null); // null | "new" | { id, ...prob }
-  const [filter, setFilter]     = React.useState({ curriculum:"", subject:"", grade:"", year:"", difficulty:"", tag:"" });
+  const [filter, setFilter]     = React.useState({ curriculum:{}, subject:"", grade:"", year:"", difficulty:"", tag:"" });
 
   React.useEffect(() => {
     const ref = db.ref("mockProblems");
@@ -318,7 +354,8 @@ function ProblemListTab({ tags }) {
 
   const filtered = React.useMemo(() => {
     return Object.entries(problems).filter(([,p]) => {
-      if (filter.curriculum && p.curriculum !== filter.curriculum) return false;
+      const fCurr = Object.keys(filter.curriculum || {});
+      if (fCurr.length > 0 && !fCurr.some(c => p.curriculum && p.curriculum[c])) return false;
       if (filter.subject   && p.subject   !== filter.subject)   return false;
       if (filter.grade     && p.grade     !== filter.grade)     return false;
       if (filter.year      && p.year      !== filter.year)      return false;
@@ -342,8 +379,8 @@ function ProblemListTab({ tags }) {
           <div className="space-y-1">
             <Lbl>개정 · 과목</Lbl>
             <SubjectPicker
-              curriculum={filter.curriculum} subject={filter.subject}
-              onChangeCurriculum={v=>setFilter(f=>({...f,curriculum:v,subject:""}))}
+              curricula={filter.curriculum} subject={filter.subject}
+              onChangeCurricula={v=>setFilter(f=>({...f,curriculum:v,subject:""}))}
               onChangeSubject={v=>setFilter(f=>({...f,subject:v}))}/>
           </div>
           {[
@@ -395,7 +432,7 @@ function ProblemListTab({ tags }) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex flex-wrap gap-1.5 mb-1.5">
-                      {p.curriculum && <Badge gray>{p.curriculum}</Badge>}
+                      {p.curriculum && Object.keys(p.curriculum).map(c=><Badge key={c} gray>{c}</Badge>)}
                       {p.subject    && <Badge>{p.subject}</Badge>}
                       {p.grade      && <Badge>{p.grade}</Badge>}
                       {(p.year||p.month) && <Badge>{[p.year,p.month].filter(Boolean).join("-")}</Badge>}
@@ -454,7 +491,7 @@ function ExamListTab({ tags }) {
   const [allProblems, setAllProblems] = React.useState({});
   const [selId, setSelId]       = React.useState(null);
   const [addingExam, setAddingExam] = React.useState(false);
-  const [examForm, setExamForm] = React.useState({ title:"", curriculum:"", subject:"", year:"", month:"", grade:"" });
+  const [examForm, setExamForm] = React.useState({ title:"", curriculum:{}, subject:"", year:"", month:"", grade:"" });
   const [probModal, setProbModal] = React.useState(false);
 
   React.useEffect(() => {
@@ -468,7 +505,7 @@ function ExamListTab({ tags }) {
   const saveExam = async () => {
     if (!examForm.title.trim()) return;
     const ref = await db.ref("mockExams").push({ ...examForm, createdAt: new Date().toISOString() });
-    setExamForm({ title:"", curriculum:"", subject:"", year:"", month:"", grade:"" });
+    setExamForm({ title:"", curriculum:{}, subject:"", year:"", month:"", grade:"" });
     setAddingExam(false);
     setSelId(ref.key);
   };
@@ -518,8 +555,8 @@ function ExamListTab({ tags }) {
               <div className="space-y-1 col-span-2">
                 <Lbl>개정 · 과목</Lbl>
                 <SubjectPicker small
-                  curriculum={examForm.curriculum} subject={examForm.subject}
-                  onChangeCurriculum={v=>setExamForm(f=>({...f,curriculum:v,subject:""}))}
+                  curricula={examForm.curriculum} subject={examForm.subject}
+                  onChangeCurricula={v=>setExamForm(f=>({...f,curriculum:v,subject:""}))}
                   onChangeSubject={v=>setExamForm(f=>({...f,subject:v}))}/>
               </div>
               <div className="space-y-1">
@@ -563,7 +600,7 @@ function ExamListTab({ tags }) {
                   <div className="min-w-0">
                     <div className="text-sm font-medium truncate">{ex.title}</div>
                     <div className={`text-[10px] ${selId===id?"text-white/60":"text-slate-400"}`}>
-                      {[ex.curriculum,ex.subject,ex.grade,ex.year&&ex.month?`${ex.year}.${ex.month}`:ex.year].filter(Boolean).join(" · ")}
+                      {[Object.keys(ex.curriculum||{}).join("+"),ex.subject,ex.grade,ex.year&&ex.month?`${ex.year}.${ex.month}`:ex.year].filter(Boolean).join(" · ")}
                     </div>
                   </div>
                   <button onClick={e=>{e.stopPropagation();delExam(id);}}
