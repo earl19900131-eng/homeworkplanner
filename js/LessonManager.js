@@ -631,14 +631,15 @@ function LessonDetailView({ lesson, lessons = [], students, attendance, allAtten
 
   // 자동 숙제 계산 모달 열기
   const openAutoHwModal = async (studentId, studentName) => {
-    // 커리큘럼 + 학생 프로필(계수+진행현황) 병렬 로드
-    const [nodesSnap, profileSnap] = await Promise.all([
+    // 커리큘럼 + 학생 프로필(계수+진행현황) + 오답상태 병렬 로드
+    const [nodesSnap, profileSnap, statusSnap] = await Promise.all([
       db.ref("curriculumNodes").once("value"),
       db.ref(`studentProfiles/${studentId}`).once("value"),
+      db.ref(`problemStatus/${studentId}`).once("value"),
     ]);
     const allBoards = nodesSnap.val() || {};
     const profile = profileSnap.val() || {};
-    const progress = profile.materialProgress || {};
+    const allStatus = statusSnap.val() || {};
     const mats = [];
     for (const boardId of Object.keys(allBoards)) {
       const board = allBoards[boardId];
@@ -648,13 +649,20 @@ function LessonDetailView({ lesson, lessons = [], students, attendance, allAtten
         const matNode = board[toId];
         if (!matNode || matNode.type !== "material") continue;
         const edgeStartNum = startNode.edgeMeta?.[toId]?.startNum || 1;
-        // 진행 기록이 있으면 그 다음 번호부터 시작
-        const startNum = progress[toId]?.currentProblem ?? edgeStartNum;
-        const lastDone = progress[toId] ? `${progress[toId].currentProblem - 1}번까지 완료` : null;
+        const matStatus = allStatus[matNode.materialId] || {};
+        const totalProblems = matNode.totalProblems || 0;
+        // 오답관리에서 체크 안 된 첫 번째 문제번호 찾기 (없으면 edgeStartNum)
+        let startNum = edgeStartNum;
+        for (let p = edgeStartNum; p <= totalProblems; p++) {
+          if (!matStatus[p]) { startNum = p; break; }
+        }
+        const checkedCount = Object.keys(matStatus).filter(k => Number(k) >= edgeStartNum).length;
+        const lastDone = checkedCount > 0 ? `${checkedCount}문제 체크됨` : null;
         mats.push({
           nodeId: toId,
+          materialNodeId: matNode.materialId,
           materialName: matNode.materialName,
-          totalProblems: matNode.totalProblems || 0,
+          totalProblems,
           startNum,
           lastDone,
           hwType: startNode.hwType || "현행",

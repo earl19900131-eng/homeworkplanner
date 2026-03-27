@@ -360,8 +360,8 @@ function App() {
           <div className="space-y-4">
             <div className="flex gap-2 bg-white rounded-2xl shadow-sm p-1">
               {(currentViewer
-                ? [["lessons","📓 수업일지"],["dashboard","📊 숙제 현황"],["stats","📈 통계"]]
-                : [["lessons","📓 수업일지"],["dashboard","📊 숙제 현황"],["stats","📈 통계"],["students","👥 학생 관리"],["curriculum","📚 커리큘럼"]]
+                ? [["lessons","📓 수업일지"],["dashboard","📊 숙제 현황"],["wronganswer","❌ 오답관리"],["stats","📈 통계"]]
+                : [["lessons","📓 수업일지"],["dashboard","📊 숙제 현황"],["wronganswer","❌ 오답관리"],["stats","📈 통계"],["students","👥 학생 관리"],["curriculum","📚 커리큘럼"]]
               ).map(([tab,label])=>(
                 <button key={tab} onClick={()=>setTeacherTab(tab)}
                   className={`flex-1 py-2.5 text-sm font-medium rounded-xl transition ${teacherTab===tab?"bg-slate-900 text-white":"text-slate-500 hover:text-slate-700"}`}>
@@ -464,6 +464,7 @@ function App() {
             )}
 
             {teacherTab==="lessons" && <LessonManager students={students} isViewer={!!currentViewer}/>}
+            {teacherTab==="wronganswer" && <WrongAnswerManager students={students} materials={materials}/>}
             {teacherTab==="stats" && <TeacherStatsTab students={students} homeworks={homeworks} today={today}/>}
             {teacherTab==="students" && !currentViewer && <StudentManager students={students} homeworks={homeworks}/>}
             {teacherTab==="curriculum" && !currentViewer && <CurriculumManager students={students} materials={materials}/>}
