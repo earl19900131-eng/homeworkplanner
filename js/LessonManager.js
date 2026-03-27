@@ -672,7 +672,7 @@ function LessonDetailView({ lesson, lessons = [], students, attendance, allAtten
     setAutoHwModal({
       studentId, studentName, materials: mats, selectedIdx: 0,
       days: "4", minPerProb: "3",
-      subject: "수학",
+      subject: mats[0]?.materialName || "공통수학1",
       coeff: profile.problemCoeff != null ? String(profile.problemCoeff) : "1",
     });
   };
@@ -858,7 +858,7 @@ function LessonDetailView({ lesson, lessons = [], students, attendance, allAtten
               {m.materials.length > 1 && (
                 <div>
                   <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>교재 선택</div>
-                  <select value={m.selectedIdx} onChange={e=>set({selectedIdx:Number(e.target.value)})} className={inputCls}>
+                  <select value={m.selectedIdx} onChange={e=>{ const idx=Number(e.target.value); set({selectedIdx:idx,subject:m.materials[idx]?.materialName||m.subject}); }} className={inputCls}>
                     {m.materials.map((mat,i) => (
                       <option key={i} value={i}>{mat.materialName} ({mat.startNum}번~{mat.lastDone ? " ✓"+mat.lastDone : ""}, 총{mat.totalProblems}문제)</option>
                     ))}
