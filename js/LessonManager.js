@@ -415,7 +415,7 @@ function RemainingPickerModal({ studentName, assessmentName, totalProblems, curr
   );
 }
 
-function LessonDetailView({ lesson, students, attendance, allAttendance, isViewer = false, onBack, onEdit }) {
+function LessonDetailView({ lesson, lessons = [], students, attendance, allAttendance, isViewer = false, onBack, onEdit }) {
   const [editingHW, setEditingHW] = React.useState(null);
   const [hwValue, setHwValue] = React.useState("");
   const [unitModal, setUnitModal] = React.useState(null); // studentId
@@ -467,6 +467,22 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
     });
     return totals;
   }, [allAttendance]);
+
+  // 학생별 이전 수업 숙제: 현재 수업 날짜 이전에서 가장 최근 수업의 현행숙제
+  const prevHwMap = React.useMemo(() => {
+    const map = {};
+    const sortedLessons = [...lessons]
+      .filter(l => l._key !== lesson._key && l.date < lesson.date)
+      .sort((a, b) => b.date.localeCompare(a.date));
+    lessonStudents.forEach(s => {
+      for (const l of sortedLessons) {
+        if (!(l.studentIds || []).includes(s.id)) continue;
+        const hw = (allAttendance[l._key] || {})[s.id]?.현행숙제;
+        if (hw) { map[s.id] = { text: hw, date: l.date }; break; }
+      }
+    });
+    return map;
+  }, [lessons, lesson._key, lesson.date, lessonStudents, allAttendance]);
 
   const refocusContainer = () => setTimeout(() => containerRef.current?.focus(), 30);
 
@@ -1017,13 +1033,14 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
       /* 일반 표 */
       <Card className="p-0 overflow-hidden">
         <div ref={containerRef} tabIndex={0} className="overflow-x-auto outline-none">
-          <table className="text-sm border-collapse w-full">
+          <table className="text-sm border-collapse">
             <thead>
               <tr className="bg-slate-50">
-                <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3 text-left text-xs font-bold text-slate-500 border-b border-r border-slate-200 min-w-[140px]">학생</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[160px]">숙제</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[160px]">평가</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[200px]">행동태그</th>
+                <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3 text-left text-xs font-bold text-slate-500 border-b border-r border-slate-200 min-w-[150px]">학생</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 border-b border-r border-slate-200 min-w-[220px]">지난 숙제</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[220px]">숙제</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[180px]">평가</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[220px]">행동태그</th>
                 <th className="px-4 py-3 text-center text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[80px]">획득 XP</th>
                 <th className="px-4 py-3 text-center text-xs font-bold text-slate-600 border-b border-slate-200 min-w-[80px]">획득 CP</th>
               </tr>
@@ -1062,6 +1079,18 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
                           </div>
                         </div>
                       </div>
+                    </td>
+
+                    {/* 지난 숙제 */}
+                    <td className="border-b border-r border-slate-100 px-3 py-2.5">
+                      {prevHwMap[s.id] ? (
+                        <div>
+                          <div className="text-xs text-slate-500 leading-snug">{prevHwMap[s.id].text}</div>
+                          <div className="text-[10px] text-slate-300 mt-0.5">{prevHwMap[s.id].date}</div>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-slate-200">—</span>
+                      )}
                     </td>
 
                     {/* 숙제 */}
@@ -1553,6 +1582,7 @@ function LessonManager({ students, isViewer = false }) {
       <>
         <LessonDetailView
           lesson={currentLesson}
+          lessons={lessons}
           students={students}
           attendance={attendance}
           allAttendance={attendance}
