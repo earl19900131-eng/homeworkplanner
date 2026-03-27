@@ -193,6 +193,54 @@ function WrongAnswerManager({ students = [], materials = [] }) {
   const printGroups = [];
   for (let i = 0; i < pickedList.length; i += 4) printGroups.push(pickedList.slice(i, i + 4));
 
+  const handlePrint = () => {
+    const statusLabel = (s) => s === "wrong" ? "틀림" : s === "unknown" ? "모름" : s === "correct" ? "맞음" : "";
+    const statusColor = (s) => s === "wrong" ? "#ef4444" : s === "unknown" ? "#f97316" : "#22c55e";
+
+    const problemBox = (p) => p ? `
+      <div class="problem">
+        <div class="problem-header">
+          ${p.matName} ${p.num}번
+          ${p.status ? `<span style="color:${statusColor(p.status)};font-size:10px;margin-left:6px">${statusLabel(p.status)}</span>` : ""}
+        </div>
+        <div class="problem-body"></div>
+      </div>` : `<div class="problem empty"></div>`;
+
+    const pages = printGroups.map(group => `
+      <div class="page">
+        <div class="cols">
+          <div class="col">
+            ${problemBox(group[0])}
+            ${problemBox(group[1])}
+          </div>
+          <div class="col">
+            ${problemBox(group[2])}
+            ${problemBox(group[3])}
+          </div>
+        </div>
+      </div>`).join("");
+
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: white; }
+  @page { size: A4 portrait; margin: 12mm 15mm; }
+  .page { width: 100%; page-break-after: always; }
+  .page:last-child { page-break-after: avoid; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; height: 257mm; }
+  .col { display: flex; flex-direction: column; gap: 8mm; }
+  .problem { flex: 1; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; }
+  .problem.empty { border: 1px dashed #e2e8f0; }
+  .problem-header { background: #f8fafc; padding: 5px 10px; font-size: 11px; font-weight: 700; color: #334155; border-bottom: 1px solid #e2e8f0; flex-shrink: 0; }
+  .problem-body { flex: 1; }
+</style></head><body>${pages}</body></html>`;
+
+    const win = window.open("", "_blank");
+    win.document.write(html);
+    win.document.close();
+    win.onload = () => { win.focus(); win.print(); };
+  };
+
   return (
     <div className="space-y-4">
       <Card className="p-4">
@@ -224,7 +272,10 @@ function WrongAnswerManager({ students = [], materials = [] }) {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl space-y-4 p-6" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-base">뽑은 문제 — {pickedList.length}문제</h3>
-              <button onClick={() => setShowPrint(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
+              <div className="flex items-center gap-2">
+                <button onClick={handlePrint} className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">🖨️ 인쇄</button>
+                <button onClick={() => setShowPrint(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
+              </div>
             </div>
             {printGroups.map((group, gi) => (
               <div key={gi} className="grid grid-cols-2 gap-3">
