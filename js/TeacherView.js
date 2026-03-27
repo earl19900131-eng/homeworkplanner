@@ -188,7 +188,7 @@ function TeacherHWCard({ hw, done, pct, today }) {
   const handleDelete = async (e) => {
     e.stopPropagation();
     try {
-      await aRef(`homeworks/${hw._key}`).remove();
+      await db.ref(`homeworks/${hw._key}`).remove();
       setDeleteConfirm(false);
     } catch(err) { alert("삭제 실패: " + err.message); }
   };
@@ -210,7 +210,7 @@ function TeacherHWCard({ hw, done, pct, today }) {
     const merged = newChunks.map(c=>doneMap[c.date]?{...c,done:true,completedAmount:doneMap[c.date].completedAmount,submittedAt:doneMap[c.date].submittedAt}:c);
     setSaving(true);
     try {
-      await aRef(`homeworks/${hw._key}`).update({ title:editForm.title.trim(), subject:editForm.subject, hwType:editForm.hwType||"현행", totalAmount:Number(editForm.totalAmount), startDate:editForm.startDate, dueDate:editForm.dueDate, includeWeekend:editForm.includeWeekend, dailyMax:editForm.dailyMax?Number(editForm.dailyMax):null, chunks:merged });
+      await db.ref(`homeworks/${hw._key}`).update({ title:editForm.title.trim(), subject:editForm.subject, hwType:editForm.hwType||"현행", totalAmount:Number(editForm.totalAmount), startDate:editForm.startDate, dueDate:editForm.dueDate, includeWeekend:editForm.includeWeekend, dailyMax:editForm.dailyMax?Number(editForm.dailyMax):null, chunks:merged });
       setEditing(false);
     } catch(err) { alert("저장 실패: "+err.message); }
     setSaving(false);
@@ -220,14 +220,14 @@ function TeacherHWCard({ hw, done, pct, today }) {
     e.stopPropagation();
     const updated = redistributeHomework(hw, today);
     setSaving(true);
-    try { await aRef(`homeworks/${hw._key}/chunks`).set(updated.chunks); }
+    try { await db.ref(`homeworks/${hw._key}/chunks`).set(updated.chunks); }
     catch(err) { alert("저장 실패: "+err.message); }
     setSaving(false);
   };
 
   const handleVerify = async (value) => {
     setSaving(true);
-    try { await aRef(`homeworks/${hw._key}/teacherVerified`).set(value); }
+    try { await db.ref(`homeworks/${hw._key}/teacherVerified`).set(value); }
     catch(err) { alert("저장 실패: "+err.message); }
     setSaving(false);
   };
@@ -238,20 +238,20 @@ function TeacherHWCard({ hw, done, pct, today }) {
     const isYellow = !chunk.done && (chunk.completedAmount||0) > 0;
     if (isYellow) {
       // 노란색 → 안함
-      try { await aRef(`homeworks/${hw._key}/chunks/${idx}`).update({done:false, completedAmount:0, submittedAt:null}); }
+      try { await db.ref(`homeworks/${hw._key}/chunks/${idx}`).update({done:false, completedAmount:0, submittedAt:null}); }
       catch(err) { alert("저장 실패: "+err.message); }
     } else if (!chunk.done) {
       // 안함 → 완료
       const now = new Date();
       const submittedAt = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-      try { await aRef(`homeworks/${hw._key}/chunks/${idx}`).update({ done: true, completedAmount: chunk.plannedAmount, submittedAt }); }
+      try { await db.ref(`homeworks/${hw._key}/chunks/${idx}`).update({ done: true, completedAmount: chunk.plannedAmount, submittedAt }); }
       catch(err) { alert("저장 실패: "+err.message); }
       // isAuto 숙제: 완료된 청크의 endProblem 기준으로 진행 현황 기록
       if (hw.isAuto && hw.materialNodeId) {
         const allChunks = hw.chunks.map((c,i) => i===idx ? {...c, done:true} : c);
         const maxEnd = allChunks.filter(c=>c.done).reduce((m,c)=>Math.max(m, c.endProblem||0), chunk.endProblem);
         try {
-          await aRef(`studentProfiles/${hw.studentId}/materialProgress/${hw.materialNodeId}`).set({
+          await db.ref(`studentProfiles/${hw.studentId}/materialProgress/${hw.materialNodeId}`).set({
             currentProblem: maxEnd + 1,
             completedAt: submittedAt,
           });
@@ -259,7 +259,7 @@ function TeacherHWCard({ hw, done, pct, today }) {
       }
     } else {
       // 완료 → 노란색 (DB에 partial 상태로 저장, 입력 없이)
-      try { await aRef(`homeworks/${hw._key}/chunks/${idx}`).update({done:false, completedAmount:chunk.completedAmount||chunk.plannedAmount, submittedAt:null}); }
+      try { await db.ref(`homeworks/${hw._key}/chunks/${idx}`).update({done:false, completedAmount:chunk.completedAmount||chunk.plannedAmount, submittedAt:null}); }
       catch(err) { alert("저장 실패: "+err.message); }
     }
   };
@@ -267,7 +267,7 @@ function TeacherHWCard({ hw, done, pct, today }) {
   const confirmChunkInput = async (chunk, idx) => {
     const amount = parseInt(chunkInputVal);
     if (isNaN(amount) || amount < 0) { setChunkInputIdx(null); setChunkInputVal(""); return; }
-    try { await aRef(`homeworks/${hw._key}/chunks/${idx}`).update({ done: false, completedAmount: amount, submittedAt: null }); }
+    try { await db.ref(`homeworks/${hw._key}/chunks/${idx}`).update({ done: false, completedAmount: amount, submittedAt: null }); }
     catch(err) { alert("저장 실패: "+err.message); }
     setChunkInputIdx(null);
     setChunkInputVal("");

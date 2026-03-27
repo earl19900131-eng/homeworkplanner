@@ -17,7 +17,7 @@ function MaterialStatusCard({ mat, allStatuses, studentId, picked, togglePick })
 
   React.useEffect(() => {
     if (!previewNum) { setPreviewImgUrl(null); return; }
-    aRef(`problemImages/${mat.id}/${previewNum}`).once("value", snap => {
+    db.ref(`problemImages/${mat.id}/${previewNum}`).once("value", snap => {
       setPreviewImgUrl(snap.val() || null);
     });
   }, [previewNum, mat.id]);
@@ -55,7 +55,7 @@ function MaterialStatusCard({ mat, allStatuses, studentId, picked, togglePick })
     for (const num of Object.keys(prev)) {
       if (!(num in local)) updates[`problemStatus/${studentId}/${mat.id}/${num}`] = null;
     }
-    await aRef().update(updates);
+    await db.ref().update(updates);
     setSaving(false);
     setEditMode(false);
   };
@@ -165,7 +165,7 @@ function WrongAnswerManager({ students = [], materials = [] }) {
 
   React.useEffect(() => {
     if (!selectedStudentId) { setStudentMaterials([]); return; }
-    aRef("curriculumNodes").once("value", snap => {
+    db.ref("curriculumNodes").once("value", snap => {
       const allBoards = snap.val() || {};
       const mats = [];
       for (const boardId of Object.keys(allBoards)) {
@@ -195,7 +195,7 @@ function WrongAnswerManager({ students = [], materials = [] }) {
 
   React.useEffect(() => {
     if (!selectedStudentId) { setAllStatuses({}); return; }
-    const ref = aRef(`problemStatus/${selectedStudentId}`);
+    const ref = db.ref(`problemStatus/${selectedStudentId}`);
     ref.on("value", snap => setAllStatuses(snap.val() || {}));
     return () => ref.off();
   }, [selectedStudentId]);

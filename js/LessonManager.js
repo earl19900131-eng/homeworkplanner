@@ -497,8 +497,8 @@ function LessonDetailView({ lesson, lessons = [], students, attendance, allAtten
 
   // studentProfiles, assessments 구독
   React.useEffect(() => {
-    const ref1 = aRef("studentProfiles");
-    const ref2 = aRef("assessments");
+    const ref1 = db.ref("studentProfiles");
+    const ref2 = db.ref("assessments");
     const h1 = ref1.on("value", snap => setProfiles(snap.val() || {}));
     const h2 = ref2.on("value", snap => {
       const val = snap.val() || {};
@@ -530,14 +530,14 @@ function LessonDetailView({ lesson, lessons = [], students, attendance, allAtten
 
   // 현행평가 소단원 저장 (studentProfile에 저장)
   const saveUnit = async (studentId, unitNum) => {
-    await aRef(`studentProfiles/${studentId}/currentUnit`).set(unitNum || null);
+    await db.ref(`studentProfiles/${studentId}/currentUnit`).set(unitNum || null);
     setUnitModal(null);
     refocusContainer();
   };
 
   // 누적테스트 남은 문제수 저장
   const saveRemaining = async (studentId, count) => {
-    await aRef(`studentProfiles/${studentId}/remainingProblems`).set(count);
+    await db.ref(`studentProfiles/${studentId}/remainingProblems`).set(count);
     setRemainingModal(null);
     refocusContainer();
   };
@@ -550,7 +550,7 @@ function LessonDetailView({ lesson, lessons = [], students, attendance, allAtten
       setEditingHW(null);
     }
     // Firebase에서 직접 최신 데이터 읽기 (race condition 방지)
-    const snap = await aRef(`lessonAttendance/${lesson._key}`).once("value");
+    const snap = await db.ref(`lessonAttendance/${lesson._key}`).once("value");
     const freshRec = snap.val() || {};
     const updates = {};
     for (const s of lessonStudents) {
@@ -564,7 +564,7 @@ function LessonDetailView({ lesson, lessons = [], students, attendance, allAtten
     }
     if (Object.keys(updates).length === 0) { alert("확정할 숙제가 없습니다.\n(숙제 열에 내용을 먼저 입력해 주세요)"); return; }
     try {
-      await aRef().update(updates);
+      await db.ref().update(updates);
       setConfirmDone(true);
       setTimeout(() => setConfirmDone(false), 2000);
     } catch(e) {
@@ -578,29 +578,29 @@ function LessonDetailView({ lesson, lessons = [], students, attendance, allAtten
 
   // 낮은 수준 저장 (undo 스택 안 쌓음)
   const rawSaveHW = async (studentId, val) => {
-    if (val === "") await aRef(`lessonAttendance/${lesson._key}/${studentId}/현행숙제`).remove();
-    else await aRef(`lessonAttendance/${lesson._key}/${studentId}/현행숙제`).set(val);
+    if (val === "") await db.ref(`lessonAttendance/${lesson._key}/${studentId}/현행숙제`).remove();
+    else await db.ref(`lessonAttendance/${lesson._key}/${studentId}/현행숙제`).set(val);
   };
   const rawSaveEval = async (studentId, val) => {
-    if (val === "") await aRef(`lessonAttendance/${lesson._key}/${studentId}/현행평가`).remove();
-    else await aRef(`lessonAttendance/${lesson._key}/${studentId}/현행평가`).set(val);
+    if (val === "") await db.ref(`lessonAttendance/${lesson._key}/${studentId}/현행평가`).remove();
+    else await db.ref(`lessonAttendance/${lesson._key}/${studentId}/현행평가`).set(val);
   };
   const rawSaveTags = async (studentId, tags) => {
     const { xp: newXp, cp: newCp } = calcPoints(tags);
 
     // 이전 값 읽어서 delta 계산
-    const oldSnap = await aRef(`lessonAttendance/${lesson._key}/${studentId}`).get();
+    const oldSnap = await db.ref(`lessonAttendance/${lesson._key}/${studentId}`).get();
     const old = oldSnap.val() || {};
     const xpDelta = newXp - (old.xp || 0);
     const cpDelta = newCp - (old.cp || 0);
     const tagsChanged = JSON.stringify(tags) !== JSON.stringify(old.tags || []);
 
     // lessonAttendance 저장
-    await aRef(`lessonAttendance/${lesson._key}/${studentId}`).update({ tags, xp: newXp, cp: newCp });
+    await db.ref(`lessonAttendance/${lesson._key}/${studentId}`).update({ tags, xp: newXp, cp: newCp });
 
     // studentProfiles에 누적 + 로그 기록
     if (tagsChanged) {
-      const profileSnap = await aRef(`studentProfiles/${studentId}`).get();
+      const profileSnap = await db.ref(`studentProfiles/${studentId}`).get();
       const profile = profileSnap.val() || {};
       const updates = {};
       const newTotalXp = Number(profile.season3Xp || 0) + xpDelta;
@@ -619,7 +619,7 @@ function LessonDetailView({ lesson, lessons = [], students, attendance, allAtten
         totalCp: newTotalCp,
         createdAt: Date.now(),
       };
-      await aRef().update(updates);
+      await db.ref().update(updates);
     }
   };
 
@@ -635,9 +635,9 @@ function LessonDetailView({ lesson, lessons = [], students, attendance, allAtten
   const openAutoHwModal = async (studentId, studentName) => {
     // 커리큘럼 + 학생 프로필(계수+진행현황) + 오답상태 병렬 로드
     const [nodesSnap, profileSnap, statusSnap] = await Promise.all([
-      aRef("curriculumNodes").once("value"),
-      aRef(`studentProfiles/${studentId}`).once("value"),
-      aRef(`problemStatus/${studentId}`).once("value"),
+      db.ref("curriculumNodes").once("value"),
+      db.ref(`studentProfiles/${studentId}`).once("value"),
+      db.ref(`problemStatus/${studentId}`).once("value"),
     ]);
     const allBoards = nodesSnap.val() || {};
     const profile = profileSnap.val() || {};
@@ -684,7 +684,7 @@ function LessonDetailView({ lesson, lessons = [], students, attendance, allAtten
   const saveCoeff = async (studentId, val) => {
     const num = parseFloat(val);
     if (!isNaN(num) && num > 0)
-      await aRef(`studentProfiles/${studentId}/problemCoeff`).set(num);
+      await db.ref(`studentProfiles/${studentId}/problemCoeff`).set(num);
   };
 
   // 자동 계산 결과 생성
@@ -704,7 +704,7 @@ function LessonDetailView({ lesson, lessons = [], students, attendance, allAtten
 
   // 현행/추가 저장
   const saveLessonType = async (studentId, val) => {
-    await aRef(`lessonAttendance/${lesson._key}/${studentId}/lessonType`).set(val);
+    await db.ref(`lessonAttendance/${lesson._key}/${studentId}/lessonType`).set(val);
   };
 
   // 태그 모달 열기 (원본 스냅샷 저장)
@@ -911,7 +911,7 @@ function LessonDetailView({ lesson, lessons = [], students, attendance, allAtten
                 // 1. 수업일지 텍스트 저장
                 await saveHW(m.studentId, result.text);
                 // 2. confirmedHw에 자동 숙제 데이터 저장 (학생이 직접 등록)
-                await aRef(`studentProfiles/${m.studentId}/confirmedHw/${hwType}`).set({
+                await db.ref(`studentProfiles/${m.studentId}/confirmedHw/${hwType}`).set({
                   text: result.text,
                   date: lesson.date || todayString(),
                   isAuto: true,
@@ -1344,7 +1344,7 @@ function LessonCalendar({ lessons, today, focusDateOverride, focusTrigger, onDay
       // 삭제 취소 → 수업들 복원
       for (const lesson of last.lessons) {
         const { _key, ...data } = lesson;
-        await aRef(`lessons/${_key}`).set(data);
+        await db.ref(`lessons/${_key}`).set(data);
       }
     }
   };
@@ -1556,12 +1556,12 @@ function LessonManager({ students, materials = [], isViewer = false }) {
   };
 
   React.useEffect(() => {
-    const lRef = aRef("lessons");
+    const lRef = db.ref("lessons");
     lRef.on("value", snap => {
       const data = snap.val();
       setLessons(data ? Object.entries(data).map(([key, val]) => ({ ...val, _key: key })) : []);
     });
-    const aRef = aRef("lessonAttendance");
+    const aRef = db.ref("lessonAttendance");
     aRef.on("value", snap => setAttendance(snap.val() || {}));
     return () => { lRef.off(); aRef.off(); };
   }, []);
@@ -1570,23 +1570,23 @@ function LessonManager({ students, materials = [], isViewer = false }) {
 
   const handleSaveLesson = async (data) => {
     if (addModal?.lesson) {
-      await aRef(`lessons/${addModal.lesson._key}`).update(data);
+      await db.ref(`lessons/${addModal.lesson._key}`).update(data);
     } else {
       const id = "lesson-" + Date.now();
-      await aRef(`lessons/${id}`).set({ ...data, createdAt: today });
+      await db.ref(`lessons/${id}`).set({ ...data, createdAt: today });
     }
   };
 
   const handlePasteLesson = async (date, lesson) => {
     const { _key, createdAt, date: _d, ...rest } = lesson;
     const id = "lesson-" + Date.now() + "-" + Math.random().toString(36).slice(2, 5);
-    await aRef(`lessons/${id}`).set({ ...rest, date, createdAt: today });
+    await db.ref(`lessons/${id}`).set({ ...rest, date, createdAt: today });
     return id;
   };
 
   const handleDeleteLesson = async (key) => {
-    await aRef(`lessons/${key}`).remove();
-    await aRef(`lessonAttendance/${key}`).remove();
+    await db.ref(`lessons/${key}`).remove();
+    await db.ref(`lessonAttendance/${key}`).remove();
   };
 
   if (currentLesson) {

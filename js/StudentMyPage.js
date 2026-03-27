@@ -48,7 +48,7 @@ function StudentProfileTab({ studentId, studentName, currentPin, teacherMode = f
   const [editing, setEditing] = useState(teacherMode);
 
   useEffect(() => {
-    const ref = aRef(`studentProfiles/${studentId}`);
+    const ref = db.ref(`studentProfiles/${studentId}`);
     ref.on("value", snap => {
       const data = snap.val() || { school: "", birthYear: "", grades: {}, locked: false };
       setProfile(data);
@@ -61,10 +61,10 @@ function StudentProfileTab({ studentId, studentName, currentPin, teacherMode = f
     if (!draft) return;
     setSaving(true);
     try {
-      await aRef(`studentProfiles/${studentId}`).update({ school: draft.school, birthYear: draft.birthYear, grades: draft.grades });
+      await db.ref(`studentProfiles/${studentId}`).update({ school: draft.school, birthYear: draft.birthYear, grades: draft.grades });
       const grade = gradeFromBirthYear(draft.birthYear);
-      if (grade) await aRef(`students/${studentId}/className`).set(grade);
-      if (teacherMode && draftName.trim()) await aRef(`students/${studentId}/name`).set(draftName.trim());
+      if (grade) await db.ref(`students/${studentId}/className`).set(grade);
+      if (teacherMode && draftName.trim()) await db.ref(`students/${studentId}/name`).set(draftName.trim());
       if (!teacherMode) setEditing(false);
     } catch(e) { alert("저장 실패: " + e.message); }
     setSaving(false);
@@ -76,7 +76,7 @@ function StudentProfileTab({ studentId, studentName, currentPin, teacherMode = f
     if (pinForm.next.length < 4) { setPinMsg({ type:"err", text:"새 비밀번호는 4자리 이상이어야 합니다." }); return; }
     if (pinForm.next !== pinForm.confirm) { setPinMsg({ type:"err", text:"새 비밀번호가 일치하지 않습니다." }); return; }
     try {
-      await aRef(`students/${studentId}/pin`).set(pinForm.next);
+      await db.ref(`students/${studentId}/pin`).set(pinForm.next);
       setPinMsg({ type:"ok", text:"비밀번호가 변경되었습니다." });
       setPinForm({ current:"", next:"", confirm:"" });
     } catch(e) { setPinMsg({ type:"err", text:"저장 실패: "+e.message }); }
@@ -291,7 +291,7 @@ function StudentLogTab({ studentId, teacherMode = false }) {
   const [deleting, setDeleting] = useState(null);
 
   useEffect(() => {
-    const ref = aRef(`studentLogs/${studentId}`);
+    const ref = db.ref(`studentLogs/${studentId}`);
     ref.on("value", snap => {
       const data = snap.val();
       if (!data) { setLogs([]); return; }
@@ -304,7 +304,7 @@ function StudentLogTab({ studentId, teacherMode = false }) {
     if (!confirm(`이 로그를 삭제할까요?\nXP ${log.xpDelta >= 0 ? '+' : ''}${log.xpDelta ?? 0}, CP ${log.cpDelta >= 0 ? '+' : ''}${log.cpDelta ?? 0} 가 역산됩니다.`)) return;
     setDeleting(log.id);
     try {
-      const profileSnap = await aRef(`studentProfiles/${studentId}`).get();
+      const profileSnap = await db.ref(`studentProfiles/${studentId}`).get();
       const profile = profileSnap.val() || {};
       const updates = {};
       updates[`studentLogs/${studentId}/${log.id}`] = null;
@@ -316,7 +316,7 @@ function StudentLogTab({ studentId, teacherMode = false }) {
       if (cpDelta !== 0) {
         updates[`studentProfiles/${studentId}/unpaidCp`] = Math.max(0, Number(profile.unpaidCp || 0) - cpDelta);
       }
-      await aRef().update(updates);
+      await db.ref().update(updates);
     } catch(e) { alert("삭제 실패: " + e.message); }
     setDeleting(null);
   };
@@ -527,7 +527,7 @@ function StudentExamTab({ studentId }) {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    const ref = aRef("mockExams");
+    const ref = db.ref("mockExams");
     ref.on("value", snap => {
       const data = snap.val() || {};
       const list = Object.values(data).filter(e => Object.values(e.students||{}).includes(studentId));
@@ -538,7 +538,7 @@ function StudentExamTab({ studentId }) {
 
   const openExam = async (exam) => {
     setActiveExam(exam);
-    const snap = await aRef(`mockExamResults/${exam.id}/${studentId}`).once("value");
+    const snap = await db.ref(`mockExamResults/${exam.id}/${studentId}`).once("value");
     const result = snap.val();
     if (result) { setAnswers(result.answers || {}); setSavedResult(result); }
     else { setAnswers({}); setSavedResult(null); }
@@ -572,7 +572,7 @@ function StudentExamTab({ studentId }) {
     const score = calcScore();
     const data = { answers, submittedAt: new Date().toISOString().slice(0,10) };
     if (score !== null) data.score = score;
-    await aRef(`mockExamResults/${activeExam.id}/${studentId}`).set(data);
+    await db.ref(`mockExamResults/${activeExam.id}/${studentId}`).set(data);
     setSavedResult(data);
     setSaving(false);
   };
