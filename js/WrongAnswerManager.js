@@ -218,11 +218,19 @@ function WrongAnswerManager({ students = [], materials = [] }) {
 
   const bulkSelect = (matId, status, startNum, endNum) => {
     const matStatuses = allStatuses[matId] || {};
+    const targets = [];
+    for (let num = startNum; num <= endNum; num++) {
+      const s = matStatuses[num] || null;
+      if (status === "all" || s === status) targets.push(`${matId}:${num}`);
+    }
+    if (targets.length === 0) return;
     setPicked(prev => {
+      const allSelected = targets.every(k => prev[k]);
       const copy = { ...prev };
-      for (let num = startNum; num <= endNum; num++) {
-        const s = matStatuses[num] || null;
-        if (status === "all" || s === status) copy[`${matId}:${num}`] = true;
+      if (allSelected) {
+        targets.forEach(k => delete copy[k]);
+      } else {
+        targets.forEach(k => { copy[k] = true; });
       }
       return copy;
     });
