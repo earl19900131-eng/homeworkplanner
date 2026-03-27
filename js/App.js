@@ -688,7 +688,7 @@ function App() {
                                     ) : (
                                       <>
                                         {chunk.startProblem}~{chunk.endProblem}번 ({chunk.plannedAmount}문제)
-                                        {chunk.done ? " ✓" : chunk.completedAmount>0 ? ` (${chunk.completedAmount}문제 완료)` : isOverdue?" ⚠":""}
+                                        {chunk.done ? " ✓" : isOverdue?" ⚠":""}
                                       </>
                                     )}
                                   </span>

@@ -408,8 +408,6 @@ function TeacherHWCard({ hw, done, pct, today }) {
                     </>
                   ) : chunk.done ? (
                     chunk.submittedAt ? "✓ "+chunk.submittedAt : "✓ 완료"
-                  ) : chunk.completedAmount > 0 ? (
-                    `${chunk.completedAmount}문제 완료`
                   ) : isOverdue ? "⚠ 미완료" : "- 클릭해서 완료"}
                 </span>
               </div>
