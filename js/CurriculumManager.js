@@ -1300,6 +1300,8 @@ function AssessmentsTab({ students = [] }) {
   const [activeAssessmentFolderId, setActiveAssessmentFolderId] = React.useState(null);
   const [editingAssessmentFolderId, setEditingAssessmentFolderId] = React.useState(null);
   const [editingAssessmentFolderName, setEditingAssessmentFolderName] = React.useState("");
+  const [draggingAssessmentId, setDraggingAssessmentId] = React.useState(null);
+  const [dragOverAssessmentFolder, setDragOverAssessmentFolder] = React.useState(null);
 
   React.useEffect(() => {
     const ref = db.ref("assessments");
@@ -1437,6 +1439,13 @@ function AssessmentsTab({ students = [] }) {
     await db.ref(`mockExamFolders/${id}`).remove();
   };
   const openFolder = (folder) => { setActiveFolderId(folder.id); setStep("folder_view"); };
+
+  const dropAssessment = async (targetFolderId) => {
+    if (!draggingAssessmentId) return;
+    await db.ref(`assessments/${draggingAssessmentId}/folderId`).set(targetFolderId || null);
+    setDraggingAssessmentId(null);
+    setDragOverAssessmentFolder(null);
+  };
 
   const addAssessmentFolder = async () => {
     if (!assessmentFolderForm.trim()) return;
@@ -1884,7 +1893,11 @@ function AssessmentsTab({ students = [] }) {
             ? <div className="rounded-2xl border border-dashed p-8 text-sm text-slate-400 text-center">평가를 추가해 주세요.</div>
             : <div className="space-y-2">
                 {folderAssessments.map(a => (
-                  <div key={a.id} className="flex items-center gap-3 rounded-2xl border px-4 py-3">
+                  <div key={a.id} draggable
+                    onDragStart={()=>setDraggingAssessmentId(a.id)}
+                    onDragEnd={()=>{setDraggingAssessmentId(null);setDragOverAssessmentFolder(null);}}
+                    className={`flex items-center gap-3 rounded-2xl border px-4 py-3 transition cursor-grab active:cursor-grabbing ${draggingAssessmentId===a.id?"opacity-40":""}`}>
+                    <span className="text-slate-300 text-sm select-none">⠿</span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-medium">{a.name}</span>
@@ -1986,19 +1999,26 @@ function AssessmentsTab({ students = [] }) {
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 mb-4">
               {assessmentFolders.map(folder => {
                 const count = assessments.filter(a => a.folderId === folder.id).length;
+                const isDragOver = draggingAssessmentId && dragOverAssessmentFolder === folder.id;
                 return (
-                  <div key={folder.id} className="group relative">
-                    <button type="button" onClick={() => openAssessmentFolder(folder)}
-                      className="w-full aspect-square rounded-2xl border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 transition flex flex-col items-center justify-center gap-2 p-3">
+                  <div key={folder.id} className="group relative"
+                    onDragOver={draggingAssessmentId ? (e=>{e.preventDefault();setDragOverAssessmentFolder(folder.id);}) : undefined}
+                    onDragLeave={draggingAssessmentId ? (()=>setDragOverAssessmentFolder(null)) : undefined}
+                    onDrop={draggingAssessmentId ? (e=>{e.preventDefault();dropAssessment(folder.id);}) : undefined}>
+                    <button type="button" onClick={() => !draggingAssessmentId && openAssessmentFolder(folder)}
+                      className={`w-full aspect-square rounded-2xl border-2 transition flex flex-col items-center justify-center gap-2 p-3
+                        ${isDragOver ? "border-blue-500 bg-blue-200 scale-105" : "border-blue-200 bg-blue-50 hover:bg-blue-100"}`}>
                       <span className="text-4xl leading-none">📁</span>
                       <span className="text-xs font-semibold text-blue-900 text-center leading-tight line-clamp-2">{folder.name}</span>
                       <span className="text-[10px] text-blue-600">{count}개</span>
                     </button>
-                    <button type="button"
-                      onClick={e=>{e.stopPropagation(); deleteAssessmentFolder(folder.id);}}
-                      className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-300 text-xs leading-none opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-                      ×
-                    </button>
+                    {!draggingAssessmentId && (
+                      <button type="button"
+                        onClick={e=>{e.stopPropagation(); deleteAssessmentFolder(folder.id);}}
+                        className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-300 text-xs leading-none opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                        ×
+                      </button>
+                    )}
                   </div>
                 );
               })}
@@ -2014,10 +2034,23 @@ function AssessmentsTab({ students = [] }) {
             <div>
               {assessmentFolders.length > 0 && <div className="text-xs font-semibold text-slate-400 mb-2">미분류</div>}
               {unclassified.length === 0
-                ? <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-400 text-center">아직 등록된 평가가 없습니다.</div>
-                : <div className="space-y-2">
+                ? <div
+                    onDragOver={draggingAssessmentId ? (e=>{e.preventDefault();setDragOverAssessmentFolder("__root__");}) : undefined}
+                    onDragLeave={draggingAssessmentId ? (()=>setDragOverAssessmentFolder(null)) : undefined}
+                    onDrop={draggingAssessmentId ? (e=>{e.preventDefault();dropAssessment(null);}) : undefined}
+                    className={`rounded-2xl border border-dashed p-6 text-sm text-center transition ${dragOverAssessmentFolder==="__root__"?"border-blue-400 bg-blue-50 text-blue-500":"text-slate-400"}`}>
+                    {dragOverAssessmentFolder==="__root__" ? "여기에 놓으면 미분류로 이동" : "아직 등록된 평가가 없습니다."}
+                  </div>
+                : <div className="space-y-2"
+                    onDragOver={draggingAssessmentId ? (e=>{e.preventDefault();setDragOverAssessmentFolder("__root__");}) : undefined}
+                    onDragLeave={draggingAssessmentId ? (e=>{if(!e.currentTarget.contains(e.relatedTarget))setDragOverAssessmentFolder(null);}) : undefined}
+                    onDrop={draggingAssessmentId ? (e=>{e.preventDefault();dropAssessment(null);}) : undefined}>
                     {unclassified.map(a => (
-                      <div key={a.id} className="flex items-center gap-3 rounded-2xl border px-4 py-3">
+                      <div key={a.id} draggable
+                        onDragStart={()=>setDraggingAssessmentId(a.id)}
+                        onDragEnd={()=>{setDraggingAssessmentId(null);setDragOverAssessmentFolder(null);}}
+                        className={`flex items-center gap-3 rounded-2xl border px-4 py-3 transition cursor-grab active:cursor-grabbing ${draggingAssessmentId===a.id?"opacity-40":""}`}>
+                        <span className="text-slate-300 text-sm select-none">⠿</span>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-medium">{a.name}</span>
