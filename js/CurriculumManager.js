@@ -413,7 +413,9 @@ function MaterialsTab({ materials }) {
 // ── 커리큘럼 비주얼 에디터 ───────────────────────────────────────────────────
 const NODE_W = 105;
 const NODE_H = 50;
+const NODE_H_START = 72;
 const PORT_SIZE = 14;
+const getNodeH = (node) => (node?.type === "start" ? NODE_H_START : NODE_H);
 const PATH_COLORS = ["#ef4444","#f97316","#eab308","#22c55e","#06b6d4","#3b82f6","#8b5cf6","#ec4899","#14b8a6","#f59e0b"];
 
 // 노드 스타일
@@ -708,7 +710,7 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
       const minY = Math.min(y1, y2), maxY2 = Math.max(y1, y2);
       const hit = nodeList.filter(n => {
         const p = getPos(n);
-        return p.x + NODE_W > minX && p.x < maxX2 && p.y + NODE_H > minY && p.y < maxY2;
+        return p.x + NODE_W > minX && p.x < maxX2 && p.y + getNodeH(n) > minY && p.y < maxY2;
       });
       if (hit.length > 0) setSelectedIds(new Set(hit.map(n => n.id)));
       setBoxSelect(null);
@@ -796,7 +798,7 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
   const activePath = activePathStudentId ? computeStudentPath(activePathStudentId) : new Set();
 
   const maxX = Math.max(900, ...nodeList.map(n => getPos(n).x + NODE_W + PORT_SIZE * 2 + 80));
-  const maxY = Math.max(500, ...nodeList.map(n => getPos(n).y + NODE_H + 80));
+  const maxY = Math.max(500, ...nodeList.map(n => getPos(n).y + getNodeH(n) + 80));
 
   // 단일 선택일 때만 사이드패널 표시
   const selectedId = selectedIds.size === 1 ? [...selectedIds][0] : null;
@@ -1050,8 +1052,8 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
                 (node.nextNodes||[]).map(tid => {
                   const to = nodes[tid]; if (!to) return null;
                   const fp = getPos(node), tp = getPos(to);
-                  const x1 = fp.x + NODE_W + PORT_SIZE, y1 = fp.y + NODE_H / 2;
-                  const x2 = tp.x, y2 = tp.y + NODE_H / 2;
+                  const x1 = fp.x + NODE_W + PORT_SIZE, y1 = fp.y + getNodeH(node) / 2;
+                  const x2 = tp.x, y2 = tp.y + getNodeH(to) / 2;
                   const cx = (x1 + x2) / 2;
                   const d = `M${x1} ${y1} C${cx} ${y1},${cx} ${y2},${x2} ${y2}`;
                   const inPath = activePath.has(`${node.id}__${tid}`);
@@ -1125,7 +1127,7 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
 
                   {/* 노드 본체 */}
                   <div onMouseDown={e => handleNodeMouseDown(e, node.id)} style={{
-                    flex: 1, height: NODE_H,
+                    flex: 1, height: getNodeH(node),
                     cursor: dragging?.nodeId === node.id ? "grabbing" : "grab",
                     border: `2px solid ${isSelected ? "#64748b" : s.border}`,
                     background: s.bg, borderRadius: 10, overflow: "hidden",
@@ -1157,8 +1159,30 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
                           <div style={{ fontSize: 8, color: "#a78bfa", marginTop: 1 }}>{node.assessmentType || "일일테스트"}</div>
                         </>
                       ) : (
-                        <div style={{ fontSize: 9, fontWeight: 700, textAlign: "center", color: s.headerText }}>
-                          {node.studentName}
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                          <div style={{ fontSize: 9, fontWeight: 700, color: s.headerText, textAlign: "center", lineHeight: 1.2 }}>
+                            {node.studentName}
+                          </div>
+                          <div style={{ display: "flex", gap: 2, width: "100%" }}
+                            onMouseDown={e => e.stopPropagation()}>
+                            <select
+                              value={node.hwType || "현행"}
+                              onChange={async e => { e.stopPropagation(); await db.ref(`${nodesRef}/${node.id}`).update({ hwType: e.target.value }); }}
+                              onClick={e => e.stopPropagation()}
+                              style={{ flex: 1, fontSize: 7, padding: "1px 0px", borderRadius: 4, border: "1px solid #f9a8d4", background: "#fdf2f8", color: "#9d174d", cursor: "pointer", minWidth: 0 }}>
+                              <option value="현행">현행</option>
+                              <option value="추가1">추가1</option>
+                              <option value="추가2">추가2</option>
+                            </select>
+                            <select
+                              value={node.trackType || "진도"}
+                              onChange={async e => { e.stopPropagation(); await db.ref(`${nodesRef}/${node.id}`).update({ trackType: e.target.value }); }}
+                              onClick={e => e.stopPropagation()}
+                              style={{ flex: 1, fontSize: 7, padding: "1px 0px", borderRadius: 4, border: "1px solid #f9a8d4", background: "#fdf2f8", color: "#9d174d", cursor: "pointer", minWidth: 0 }}>
+                              <option value="진도">진도</option>
+                              <option value="평가">평가</option>
+                            </select>
+                          </div>
                         </div>
                       )}
                     </div>
