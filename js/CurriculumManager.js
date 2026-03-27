@@ -7,7 +7,7 @@ function ProblemImageManager({ materialId }) {
   const fileRef = React.useRef();
 
   React.useEffect(() => {
-    const ref = db.ref(`problemImages/${materialId}`);
+    const ref = aRef(`problemImages/${materialId}`);
     ref.on("value", snap => setImages(snap.val() || {}));
     return () => ref.off();
   }, [materialId]);
@@ -22,10 +22,10 @@ function ProblemImageManager({ materialId }) {
     try {
       const ext = file.name.split(".").pop();
       const path = `problemImages/${materialId}/${num}.${ext}`;
-      const ref = storage.ref(path);
+      const ref = sRef(path);
       await ref.put(file);
       const url = await ref.getDownloadURL();
-      await db.ref(`problemImages/${materialId}/${num}`).set(url);
+      await aRef(`problemImages/${materialId}/${num}`).set(url);
       setNumInput("");
       if (fileRef.current) fileRef.current.value = "";
     } catch(err) {
@@ -36,7 +36,7 @@ function ProblemImageManager({ materialId }) {
 
   const handleDelete = async (num) => {
     if (!confirm(`${num}번 이미지를 삭제할까요?`)) return;
-    await db.ref(`problemImages/${materialId}/${num}`).remove();
+    await aRef(`problemImages/${materialId}/${num}`).remove();
   };
 
   const sortedNums = Object.keys(images).sort((a, b) => Number(a) - Number(b));
@@ -127,7 +127,7 @@ function MaterialsTab({ materials }) {
   const atRoot = folderPath.length === 0;
 
   React.useEffect(() => {
-    const ref = db.ref("materialFolders");
+    const ref = aRef("materialFolders");
     ref.on("value", snap => {
       const data = snap.val();
       setFolders(data ? Object.values(data).sort((a,b) => (a.createdAt||0) - (b.createdAt||0)) : []);
@@ -144,13 +144,13 @@ function MaterialsTab({ materials }) {
     const id = Date.now().toString();
     const data = { id, name: folderForm.trim(), createdAt: id };
     if (activeFolderId) data.parentId = activeFolderId;
-    await db.ref(`materialFolders/${id}`).set(data);
+    await aRef(`materialFolders/${id}`).set(data);
     setFolderForm("");
   };
 
   const saveEditFolder = async () => {
     if (!editingFolderName.trim()) return;
-    await db.ref(`materialFolders/${editingFolderId}`).update({ name: editingFolderName.trim() });
+    await aRef(`materialFolders/${editingFolderId}`).update({ name: editingFolderName.trim() });
     setEditingFolderId(null);
   };
 
@@ -158,8 +158,8 @@ function MaterialsTab({ materials }) {
   const deleteFolderRecursive = async (id) => {
     const children = folders.filter(f => f.parentId === id);
     for (const child of children) await deleteFolderRecursive(child.id);
-    for (const m of materials.filter(m => m.folderId === id)) await db.ref(`materials/${m.id}`).remove();
-    await db.ref(`materialFolders/${id}`).remove();
+    for (const m of materials.filter(m => m.folderId === id)) await aRef(`materials/${m.id}`).remove();
+    await aRef(`materialFolders/${id}`).remove();
   };
 
   const deleteFolder = async (id) => {
@@ -172,7 +172,7 @@ function MaterialsTab({ materials }) {
 
   const dropMaterial = async (targetFolderId) => {
     if (!draggingMatId) return;
-    await db.ref(`materials/${draggingMatId}/folderId`).set(targetFolderId || null);
+    await aRef(`materials/${draggingMatId}/folderId`).set(targetFolderId || null);
     setDraggingMatId(null);
     setDragOverTarget(null);
   };
@@ -213,8 +213,8 @@ function MaterialsTab({ materials }) {
       }
     }
     try {
-      if (editId) { await db.ref(`materials/${editId}`).update(data); }
-      else { const id = Date.now().toString(); await db.ref(`materials/${id}`).set({ id, ...data }); }
+      if (editId) { await aRef(`materials/${editId}`).update(data); }
+      else { const id = Date.now().toString(); await aRef(`materials/${id}`).set({ id, ...data }); }
       setForm(empty); setEditId(null);
     } catch(e) { setError("저장 실패: " + e.message); }
     setSaving(false);
@@ -320,13 +320,13 @@ function MaterialsTab({ materials }) {
                       {rootFolders.length > 0 && (
                         <select defaultValue="" onChange={async e => {
                           if (!e.target.value) return;
-                          await db.ref(`materials/${mat.id}/folderId`).set(e.target.value);
+                          await aRef(`materials/${mat.id}/folderId`).set(e.target.value);
                         }} className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white outline-none">
                           <option value="">폴더로 이동</option>
                           {rootFolders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
                         </select>
                       )}
-                      <Btn variant="outline" size="sm" onClick={async()=>{ if(!confirm("삭제?")) return; await db.ref(`materials/${mat.id}`).remove(); }}>삭제</Btn>
+                      <Btn variant="outline" size="sm" onClick={async()=>{ if(!confirm("삭제?")) return; await aRef(`materials/${mat.id}`).remove(); }}>삭제</Btn>
                     </div>
                   );
                 })}
@@ -486,7 +486,7 @@ function MaterialsTab({ materials }) {
                       )}
                     </div>
                     <Btn variant="outline" size="sm" onClick={()=>handleEdit(mat)}>수정</Btn>
-                    <Btn variant="outline" size="sm" onClick={async()=>{ if(!confirm("삭제?")) return; await db.ref(`materials/${mat.id}`).remove(); }}>삭제</Btn>
+                    <Btn variant="outline" size="sm" onClick={async()=>{ if(!confirm("삭제?")) return; await aRef(`materials/${mat.id}`).remove(); }}>삭제</Btn>
                   </div>
                 );
               })}
@@ -541,19 +541,19 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
   const canvasRef = React.useRef(null);
 
   React.useEffect(() => {
-    const ref = db.ref(`curriculumNodes/${boardId}`);
+    const ref = aRef(`curriculumNodes/${boardId}`);
     ref.on("value", snap => setNodes(snap.val() || {}));
     return () => ref.off();
   }, [boardId]);
 
   React.useEffect(() => {
-    const ref = db.ref(`studentPaths/${boardId}`);
+    const ref = aRef(`studentPaths/${boardId}`);
     ref.on("value", snap => setStudentPaths(snap.val() || {}));
     return () => ref.off();
   }, [boardId]);
 
   React.useEffect(() => {
-    const ref = db.ref("materialFolders");
+    const ref = aRef("materialFolders");
     ref.once("value", snap => {
       const data = snap.val() || {};
       setMatFolders(data);
@@ -609,7 +609,7 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
     const id = Date.now().toString();
     const mat = materials[0];
     const existing = nodeList.filter(n => n.type === "material");
-    await db.ref(`${nodesRef}/${id}`).set({
+    await aRef(`${nodesRef}/${id}`).set({
       id, type: "material",
       materialId: mat.id, materialName: mat.name, totalProblems: mat.totalProblems,
       nextNodes: [],
@@ -625,7 +625,7 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
     const id = Date.now().toString();
     const a = assessments[0];
     const existing = nodeList.filter(n => n.type === "assessment");
-    await db.ref(`${nodesRef}/${id}`).set({
+    await aRef(`${nodesRef}/${id}`).set({
       id, type: "assessment",
       assessmentId: a.id, assessmentName: a.name, assessmentType: a.type || "일일테스트",
       nextNodes: [],
@@ -653,7 +653,7 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
         id: `end_${sid}`, type: "end", studentId: student.id, studentName: student.name,
         nextNodes: [], x: 400, y: baseY, createdAt: new Date().toISOString(),
       };
-      await db.ref().update(updates);
+      await aRef().update(updates);
     }
     setShowAddStudent(false);
     setSelectedStudentIds([]);
@@ -705,7 +705,7 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
             setConnectingFrom(null);
             return;
           }
-          db.ref(`${nodesRef}/${cf}`).update({ nextNodes: [...cur, nodeId] });
+          aRef(`${nodesRef}/${cf}`).update({ nextNodes: [...cur, nodeId] });
         }
       }
       setConnectingFrom(null);
@@ -736,7 +736,7 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
             setSelectedIds(new Set([nodeId]));
             return;
           }
-          db.ref(`${nodesRef}/${cf}`).update({ nextNodes: [...cur, nodeId] });
+          aRef(`${nodesRef}/${cf}`).update({ nextNodes: [...cur, nodeId] });
         }
       }
       setConnectingFrom(null);
@@ -815,7 +815,7 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
       const updates = Object.keys(dragging.offsets);
       for (const nid of updates) {
         const pos = localPos[nid];
-        if (pos) db.ref(`${nodesRef}/${nid}`).update({ x: pos.x, y: pos.y });
+        if (pos) aRef(`${nodesRef}/${nid}`).update({ x: pos.x, y: pos.y });
       }
       setDragging(null);
     }
@@ -834,7 +834,7 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
 
   const removeConnection = async (fromId, toId) => {
     const n = nodes[fromId]; if (!n) return;
-    await db.ref(`${nodesRef}/${fromId}`).update({ nextNodes: (n.nextNodes||[]).filter(x=>x!==toId) });
+    await aRef(`${nodesRef}/${fromId}`).update({ nextNodes: (n.nextNodes||[]).filter(x=>x!==toId) });
   };
 
   const deleteSelected = async () => {
@@ -844,8 +844,8 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
     for (const nodeId of ids) {
       for (const n of nodeList)
         if ((n.nextNodes||[]).includes(nodeId))
-          await db.ref(`${nodesRef}/${n.id}`).update({ nextNodes: n.nextNodes.filter(x=>x!==nodeId) });
-      await db.ref(`${nodesRef}/${nodeId}`).remove();
+          await aRef(`${nodesRef}/${n.id}`).update({ nextNodes: n.nextNodes.filter(x=>x!==nodeId) });
+      await aRef(`${nodesRef}/${nodeId}`).remove();
     }
     setSelectedIds(new Set());
   };
@@ -859,7 +859,7 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
       if (!mat) continue;
       const id = Date.now().toString() + "_" + i;
       const idx = existing + i;
-      await db.ref(`${nodesRef}/${id}`).set({
+      await aRef(`${nodesRef}/${id}`).set({
         id, type: "material",
         materialId: mat.id, materialName: mat.name, totalProblems: mat.totalProblems,
         nextNodes: [],
@@ -878,8 +878,8 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
     const from = nodes[fromId];
     const cur = from?.nextNodes || [];
     const num = parseInt(pendingStartNum) || 1;
-    await db.ref(`${nodesRef}/${fromId}`).update({ nextNodes: [...cur, toId] });
-    await db.ref(`${nodesRef}/${fromId}/edgeMeta/${toId}`).set({ startNum: num });
+    await aRef(`${nodesRef}/${fromId}`).update({ nextNodes: [...cur, toId] });
+    await aRef(`${nodesRef}/${fromId}/edgeMeta/${toId}`).set({ startNum: num });
     setPendingEdge(null);
     setPendingStartNum("1");
   };
@@ -888,8 +888,8 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
     if (!activePathStudentId) return;
     const key = `${fromId}__${toId}`;
     const isSet = (studentPaths[activePathStudentId] || {})[key];
-    if (isSet) await db.ref(`studentPaths/${boardId}/${activePathStudentId}/${key}`).remove();
-    else await db.ref(`studentPaths/${boardId}/${activePathStudentId}/${key}`).set(true);
+    if (isSet) await aRef(`studentPaths/${boardId}/${activePathStudentId}/${key}`).remove();
+    else await aRef(`studentPaths/${boardId}/${activePathStudentId}/${key}`).set(true);
   };
 
   // 학생 경로 계산: 커스텀 있으면 사용, 없으면 DFS 첫 번째 경로
@@ -963,7 +963,7 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
                 <select value={selectedNode.materialId}
                   onChange={async e => {
                     const mat = materials.find(m => m.id === e.target.value);
-                    if (mat) await db.ref(`${nodesRef}/${selectedId}`).update({
+                    if (mat) await aRef(`${nodesRef}/${selectedId}`).update({
                       materialId: mat.id, materialName: mat.name, totalProblems: mat.totalProblems
                     });
                   }}
@@ -979,7 +979,7 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
                 <select value={selectedNode.assessmentId}
                   onChange={async e => {
                     const a = assessments.find(a => a.id === e.target.value);
-                    if (a) await db.ref(`${nodesRef}/${selectedId}`).update({
+                    if (a) await aRef(`${nodesRef}/${selectedId}`).update({
                       assessmentId: a.id, assessmentName: a.name, assessmentType: a.type || "일일테스트"
                     });
                   }}
@@ -996,7 +996,7 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
                   {pathEditMode ? "✏️ 화살표 클릭 → 경로 추가/제거" : "경로 편집"}
                 </button>
                 {pathEditMode && studentPaths[selectedNode.studentId] && (
-                  <button onClick={async () => { if(confirm("커스텀 경로를 초기화할까요? 기본 경로로 돌아갑니다.")) await db.ref(`studentPaths/${boardId}/${selectedNode.studentId}`).remove(); }}
+                  <button onClick={async () => { if(confirm("커스텀 경로를 초기화할까요? 기본 경로로 돌아갑니다.")) await aRef(`studentPaths/${boardId}/${selectedNode.studentId}`).remove(); }}
                     className="text-xs text-slate-400 hover:text-red-500 shrink-0">초기화</button>
                 )}
               </>
@@ -1293,7 +1293,7 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
                             onMouseDown={e => e.stopPropagation()}>
                             <select
                               value={node.hwType || "현행"}
-                              onChange={async e => { e.stopPropagation(); await db.ref(`${nodesRef}/${node.id}`).update({ hwType: e.target.value }); }}
+                              onChange={async e => { e.stopPropagation(); await aRef(`${nodesRef}/${node.id}`).update({ hwType: e.target.value }); }}
                               onClick={e => e.stopPropagation()}
                               style={{ flex: 1, fontSize: 7, padding: "1px 0px", borderRadius: 4, border: "1px solid #f9a8d4", background: "#fdf2f8", color: "#9d174d", cursor: "pointer", minWidth: 0 }}>
                               <option value="현행">현행</option>
@@ -1302,7 +1302,7 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
                             </select>
                             <select
                               value={node.trackType || "진도"}
-                              onChange={async e => { e.stopPropagation(); await db.ref(`${nodesRef}/${node.id}`).update({ trackType: e.target.value }); }}
+                              onChange={async e => { e.stopPropagation(); await aRef(`${nodesRef}/${node.id}`).update({ trackType: e.target.value }); }}
                               onClick={e => e.stopPropagation()}
                               style={{ flex: 1, fontSize: 7, padding: "1px 0px", borderRadius: 4, border: "1px solid #f9a8d4", background: "#fdf2f8", color: "#9d174d", cursor: "pointer", minWidth: 0 }}>
                               <option value="진도">진도</option>
@@ -1433,7 +1433,7 @@ function AssessmentsTab({ students = [] }) {
   const [dragOverAssessmentFolder, setDragOverAssessmentFolder] = React.useState(null);
 
   React.useEffect(() => {
-    const ref = db.ref("assessments");
+    const ref = aRef("assessments");
     ref.on("value", snap => {
       const data = snap.val();
       setAssessments(data ? Object.values(data).sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||"")) : []);
@@ -1442,7 +1442,7 @@ function AssessmentsTab({ students = [] }) {
   }, []);
 
   React.useEffect(() => {
-    const ref = db.ref("mockExams");
+    const ref = aRef("mockExams");
     ref.on("value", snap => {
       const data = snap.val();
       setMockExams(data ? Object.values(data).sort((a,b) => a.round - b.round) : []);
@@ -1451,7 +1451,7 @@ function AssessmentsTab({ students = [] }) {
   }, []);
 
   React.useEffect(() => {
-    const ref = db.ref("mockExamFolders");
+    const ref = aRef("mockExamFolders");
     ref.on("value", snap => {
       const data = snap.val();
       setMockFolders(data ? Object.values(data).sort((a,b) => a.createdAt - b.createdAt) : []);
@@ -1460,7 +1460,7 @@ function AssessmentsTab({ students = [] }) {
   }, []);
 
   React.useEffect(() => {
-    const ref = db.ref("assessmentFolders");
+    const ref = aRef("assessmentFolders");
     ref.on("value", snap => {
       const data = snap.val();
       setAssessmentFolders(data ? Object.values(data).sort((a,b) => a.createdAt - b.createdAt) : []);
@@ -1554,24 +1554,24 @@ function AssessmentsTab({ students = [] }) {
   const addFolder = async () => {
     if (!folderForm.trim()) return;
     const id = Date.now().toString();
-    await db.ref(`mockExamFolders/${id}`).set({ id, name: folderForm.trim(), createdAt: id });
+    await aRef(`mockExamFolders/${id}`).set({ id, name: folderForm.trim(), createdAt: id });
     setFolderForm("");
   };
   const saveEditFolder = async () => {
     if (!editingFolderName.trim()) return;
-    await db.ref(`mockExamFolders/${editingFolderId}`).update({ name: editingFolderName.trim() });
+    await aRef(`mockExamFolders/${editingFolderId}`).update({ name: editingFolderName.trim() });
     setEditingFolderId(null);
   };
   const deleteFolder = async (id) => {
     if (!confirm("폴더를 삭제하면 안에 있는 시험도 모두 삭제됩니다. 계속하시겠습니까?")) return;
-    for (const e of mockExams.filter(e => e.folderId === id)) await db.ref(`mockExams/${e.id}`).remove();
-    await db.ref(`mockExamFolders/${id}`).remove();
+    for (const e of mockExams.filter(e => e.folderId === id)) await aRef(`mockExams/${e.id}`).remove();
+    await aRef(`mockExamFolders/${id}`).remove();
   };
   const openFolder = (folder) => { setActiveFolderId(folder.id); setStep("folder_view"); };
 
   const dropAssessment = async (targetFolderId) => {
     if (!draggingAssessmentId) return;
-    await db.ref(`assessments/${draggingAssessmentId}/folderId`).set(targetFolderId || null);
+    await aRef(`assessments/${draggingAssessmentId}/folderId`).set(targetFolderId || null);
     setDraggingAssessmentId(null);
     setDragOverAssessmentFolder(null);
   };
@@ -1579,18 +1579,18 @@ function AssessmentsTab({ students = [] }) {
   const addAssessmentFolder = async () => {
     if (!assessmentFolderForm.trim()) return;
     const id = Date.now().toString();
-    await db.ref(`assessmentFolders/${id}`).set({ id, name: assessmentFolderForm.trim(), createdAt: Number(id) });
+    await aRef(`assessmentFolders/${id}`).set({ id, name: assessmentFolderForm.trim(), createdAt: Number(id) });
     setAssessmentFolderForm("");
   };
   const saveEditAssessmentFolder = async () => {
     if (!editingAssessmentFolderName.trim()) return;
-    await db.ref(`assessmentFolders/${editingAssessmentFolderId}`).update({ name: editingAssessmentFolderName.trim() });
+    await aRef(`assessmentFolders/${editingAssessmentFolderId}`).update({ name: editingAssessmentFolderName.trim() });
     setEditingAssessmentFolderId(null);
   };
   const deleteAssessmentFolder = async (id) => {
     if (!confirm("폴더를 삭제하면 안에 있는 평가도 모두 삭제됩니다. 계속하시겠습니까?")) return;
-    for (const a of assessments.filter(a => a.folderId === id)) await db.ref(`assessments/${a.id}`).remove();
-    await db.ref(`assessmentFolders/${id}`).remove();
+    for (const a of assessments.filter(a => a.folderId === id)) await aRef(`assessments/${a.id}`).remove();
+    await aRef(`assessmentFolders/${id}`).remove();
   };
   const openAssessmentFolder = (folder) => { setActiveAssessmentFolderId(folder.id); setStep("assessment_folder_view"); };
 
@@ -1612,8 +1612,8 @@ function AssessmentsTab({ students = [] }) {
       data.totalScore = Math.round(Object.values(scoring).reduce((a,b)=>a+b, 0) * 100) / 100;
     }
     try {
-      if (dbEditId) { await db.ref(`mockExams/${dbEditId}`).update(data); }
-      else { const id = Date.now().toString(); await db.ref(`mockExams/${id}`).set({ id, ...data }); }
+      if (dbEditId) { await aRef(`mockExams/${dbEditId}`).update(data); }
+      else { const id = Date.now().toString(); await aRef(`mockExams/${id}`).set({ id, ...data }); }
       setStep(activeFolderId ? "folder_view" : "select");
     } catch(e) { alert("저장 실패: " + e.message); }
     setSaving(false);
@@ -1623,7 +1623,7 @@ function AssessmentsTab({ students = [] }) {
     setMockResultExam(exam);
     if (exam.folderId) setActiveFolderId(exam.folderId);
     setStep("mock_results");
-    const ref = db.ref(`mockExamResults/${exam.id}`);
+    const ref = aRef(`mockExamResults/${exam.id}`);
     ref.once("value", snap => {
       const data = snap.val() || {};
       setMockResults(data);
@@ -1636,7 +1636,7 @@ function AssessmentsTab({ students = [] }) {
   const saveMockScore = async (sid) => {
     const score = scoreInputs[sid];
     if (score === "" || score === undefined) return;
-    await db.ref(`mockExamResults/${mockResultExam.id}/${sid}/score`).set(Number(score));
+    await aRef(`mockExamResults/${mockResultExam.id}/${sid}/score`).set(Number(score));
     setMockResults(r => ({...r, [sid]: {...(r[sid]||{}), score: Number(score)}}));
   };
 
@@ -1663,7 +1663,7 @@ function AssessmentsTab({ students = [] }) {
       submittedAt: existing.submittedAt || new Date().toISOString().slice(0,10),
     };
     if (score !== null) updates.score = score;
-    await db.ref(`mockExamResults/${exam.id}/${sid}`).set(updates);
+    await aRef(`mockExamResults/${exam.id}/${sid}`).set(updates);
     setMockResults(r => ({...r, [sid]: updates}));
     if (score !== null) setScoreInputs(p => ({...p, [sid]: score}));
   };
@@ -1674,8 +1674,8 @@ function AssessmentsTab({ students = [] }) {
     const data = { type: "일일테스트", name: testName.trim(), createdAt: todayString(), tree };
     if (!dbEditId && activeAssessmentFolderId) data.folderId = activeAssessmentFolderId;
     try {
-      if (dbEditId) { await db.ref(`assessments/${dbEditId}`).update(data); }
-      else { const id = Date.now().toString(); await db.ref(`assessments/${id}`).set({ id, ...data }); }
+      if (dbEditId) { await aRef(`assessments/${dbEditId}`).update(data); }
+      else { const id = Date.now().toString(); await aRef(`assessments/${id}`).set({ id, ...data }); }
       setStep(activeAssessmentFolderId && !dbEditId ? "assessment_folder_view" : "select");
     } catch(e) { alert("저장 실패: " + e.message); }
     setSaving(false);
@@ -1688,8 +1688,8 @@ function AssessmentsTab({ students = [] }) {
     const data = { type: "누적테스트", name: generalName.trim(), subject: generalSubject, totalProblems: Number(generalTotal), createdAt: todayString() };
     if (!dbEditId && activeAssessmentFolderId) data.folderId = activeAssessmentFolderId;
     try {
-      if (dbEditId) { await db.ref(`assessments/${dbEditId}`).update(data); }
-      else { const id = Date.now().toString(); await db.ref(`assessments/${id}`).set({ id, ...data }); }
+      if (dbEditId) { await aRef(`assessments/${dbEditId}`).update(data); }
+      else { const id = Date.now().toString(); await aRef(`assessments/${id}`).set({ id, ...data }); }
       setStep(activeAssessmentFolderId && !dbEditId ? "assessment_folder_view" : "select");
     } catch(e) { alert("저장 실패: " + e.message); }
     setSaving(false);
@@ -2039,7 +2039,7 @@ function AssessmentsTab({ students = [] }) {
                       </div>
                     </div>
                     <Btn variant="outline" size="sm" onClick={()=>startEditAssessment(a)}>수정</Btn>
-                    <Btn variant="outline" size="sm" onClick={async()=>{ if(!confirm("삭제?")) return; await db.ref(`assessments/${a.id}`).remove(); }}>삭제</Btn>
+                    <Btn variant="outline" size="sm" onClick={async()=>{ if(!confirm("삭제?")) return; await aRef(`assessments/${a.id}`).remove(); }}>삭제</Btn>
                   </div>
                 ))}
               </div>
@@ -2083,7 +2083,7 @@ function AssessmentsTab({ students = [] }) {
                     </div>
                     <Btn variant="outline" size="sm" onClick={()=>openMockResults(e)}>결과</Btn>
                     <Btn variant="outline" size="sm" onClick={()=>startEditMock(e)}>수정</Btn>
-                    <Btn variant="outline" size="sm" onClick={async()=>{ if(!confirm("삭제?")) return; await db.ref(`mockExams/${e.id}`).remove(); }}>삭제</Btn>
+                    <Btn variant="outline" size="sm" onClick={async()=>{ if(!confirm("삭제?")) return; await aRef(`mockExams/${e.id}`).remove(); }}>삭제</Btn>
                   </div>
                 ))}
               </div>
@@ -2175,7 +2175,7 @@ function AssessmentsTab({ students = [] }) {
                           </div>
                         </div>
                         <Btn variant="outline" size="sm" onClick={()=>startEditAssessment(a)}>수정</Btn>
-                        <Btn variant="outline" size="sm" onClick={async()=>{ if(!confirm("삭제?")) return; await db.ref(`assessments/${a.id}`).remove(); }}>삭제</Btn>
+                        <Btn variant="outline" size="sm" onClick={async()=>{ if(!confirm("삭제?")) return; await aRef(`assessments/${a.id}`).remove(); }}>삭제</Btn>
                       </div>
                     ))}
                   </div>
@@ -2232,7 +2232,7 @@ function CurriculumManager({ students, materials }) {
   const [dragOverBoardId, setDragOverBoardId] = React.useState(null);
 
   React.useEffect(() => {
-    const ref = db.ref("assessments");
+    const ref = aRef("assessments");
     ref.on("value", snap => {
       const data = snap.val();
       setEditorAssessments(data ? Object.values(data) : []);
@@ -2241,7 +2241,7 @@ function CurriculumManager({ students, materials }) {
   }, []);
 
   React.useEffect(() => {
-    const ref = db.ref("curriculumBoards");
+    const ref = aRef("curriculumBoards");
     ref.on("value", snap => {
       const data = snap.val();
       const list = data ? Object.values(data).sort((a,b) => (a.order ?? Number(a.createdAt)) - (b.order ?? Number(b.createdAt))) : [];
@@ -2253,20 +2253,20 @@ function CurriculumManager({ students, materials }) {
 
   const addBoard = async () => {
     const id = Date.now().toString();
-    await db.ref(`curriculumBoards/${id}`).set({ id, name: `캔버스 ${boards.length + 1}`, createdAt: id });
+    await aRef(`curriculumBoards/${id}`).set({ id, name: `캔버스 ${boards.length + 1}`, createdAt: id });
     setActiveBoardId(id);
   };
 
   const renameBoard = async (id, name) => {
     if (!name.trim()) return;
-    await db.ref(`curriculumBoards/${id}`).update({ name: name.trim() });
+    await aRef(`curriculumBoards/${id}`).update({ name: name.trim() });
     setEditingBoardId(null);
   };
 
   const deleteBoard = async (id) => {
     if (!confirm("이 캔버스와 모든 노드를 삭제할까요?")) return;
-    await db.ref(`curriculumBoards/${id}`).remove();
-    await db.ref(`curriculumNodes/${id}`).remove();
+    await aRef(`curriculumBoards/${id}`).remove();
+    await aRef(`curriculumNodes/${id}`).remove();
     const remaining = boards.filter(b => b.id !== id);
     setActiveBoardId(remaining[0]?.id || null);
   };
@@ -2289,7 +2289,7 @@ function CurriculumManager({ students, materials }) {
     const [dragged] = reordered.splice(dragIdx, 1);
     reordered.splice(targetIdx, 0, dragged);
     for (let i = 0; i < reordered.length; i++)
-      await db.ref(`curriculumBoards/${reordered[i].id}`).update({ order: i });
+      await aRef(`curriculumBoards/${reordered[i].id}`).update({ order: i });
     setDragBoardId(null); setDragOverBoardId(null);
   };
   const handleBoardDragEnd = () => { setDragBoardId(null); setDragOverBoardId(null); };
@@ -2378,7 +2378,7 @@ function StudentCurriculumView({ studentId, materials = [] }) {
   const [allStatuses, setAllStatuses] = React.useState({});
 
   React.useEffect(() => {
-    const ref = db.ref("curriculumNodes");
+    const ref = aRef("curriculumNodes");
     ref.on("value", snap => {
       const data = snap.val() || {};
       const merged = {};
@@ -2390,7 +2390,7 @@ function StudentCurriculumView({ studentId, materials = [] }) {
 
   React.useEffect(() => {
     if (!studentId) return;
-    const ref = db.ref(`problemStatus/${studentId}`);
+    const ref = aRef(`problemStatus/${studentId}`);
     ref.on("value", snap => setAllStatuses(snap.val() || {}));
     return () => ref.off();
   }, [studentId]);

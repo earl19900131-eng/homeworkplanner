@@ -15,6 +15,15 @@ if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const storage = firebase.storage();
 
+// ── 멀티테넌시 (B2B) ─────────────────────────────────────────────────────────
+const ACADEMY_ID = "academy-1";
+// 모든 DB 경로는 aRef()를 통해 academyId로 네임스페이스됨
+const aRef = (path) => path
+  ? db.ref(`academies/${ACADEMY_ID}/${path}`)
+  : db.ref(`academies/${ACADEMY_ID}`);
+// Storage 경로 헬퍼
+const sRef = (path) => storage.ref(`academies/${ACADEMY_ID}/${path}`);
+
 // ── 익명 인증 (DB 규칙 auth != null 적용을 위해) ──────────────────────────────
 firebase.auth().onAuthStateChanged(user => {
   if (!user) firebase.auth().signInAnonymously().catch(e => console.warn("익명 인증 실패:", e));

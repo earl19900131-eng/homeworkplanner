@@ -5,7 +5,7 @@ function CompletionModal({ startProblem, endProblem, studentId, materialId, onCl
 
   React.useEffect(() => {
     if (!studentId || !materialId) { setLoading(false); return; }
-    db.ref(`problemStatus/${studentId}/${materialId}`).once("value", snap => {
+    aRef(`problemStatus/${studentId}/${materialId}`).once("value", snap => {
       setStatuses(snap.val() || {});
       setLoading(false);
     });
@@ -33,7 +33,7 @@ function CompletionModal({ startProblem, endProblem, studentId, materialId, onCl
       if (s) updates[`problemStatus/${studentId}/${materialId}/${p}`] = s;
       else updates[`problemStatus/${studentId}/${materialId}/${p}`] = null;
     }
-    await db.ref().update(updates);
+    await aRef().update(updates);
     onConfirm();
   };
 
@@ -136,13 +136,13 @@ function App() {
     if (!authReady) return;
     let loaded = { s: false, h: false };
     const check = () => { if (loaded.s && loaded.h) setLoading(false); };
-    const sRef = db.ref("students");
+    const sRef = aRef("students");
     sRef.on("value", snap => {
       const data = snap.val();
       setStudents(data ? Object.values(data).sort((a,b)=>a.className.localeCompare(b.className)||a.name.localeCompare(b.name)) : []);
       loaded.s = true; check();
     });
-    const hRef = db.ref("homeworks");
+    const hRef = aRef("homeworks");
     hRef.on("value", snap => {
       const data = snap.val();
       if (data) {
@@ -152,7 +152,7 @@ function App() {
       } else setHomeworks([]);
       loaded.h = true; check();
     });
-    const mRef = db.ref("materials");
+    const mRef = aRef("materials");
     mRef.on("value", snap => {
       const data = snap.val();
       setMaterials(data ? Object.values(data) : []);
@@ -185,7 +185,7 @@ function App() {
 
   useEffect(() => {
     if (!currentStudent) { setConfirmedHw(null); return; }
-    const ref = db.ref(`studentProfiles/${currentStudent.id}/confirmedHw`);
+    const ref = aRef(`studentProfiles/${currentStudent.id}/confirmedHw`);
     ref.on("value", snap => setConfirmedHw(snap.val() || null));
     return () => ref.off();
   }, [currentStudent?.id]);
@@ -245,7 +245,7 @@ function App() {
     const id = Date.now();
     setSaving(true);
     try {
-      await db.ref(`homeworks/${id}`).set({ id, title:form.title.trim(), subject:form.subject||"수학", hwType:form.hwType||"현행", studentId:currentStudent.id, studentName:currentStudent.name, totalAmount:Number(form.totalAmount), startDate:form.startDate, dueDate:form.dueDate, includeWeekend:form.includeWeekend, dailyMax:form.dailyMax?Number(form.dailyMax):null, createdAt:today, chunks, ...autoExtra });
+      await aRef(`homeworks/${id}`).set({ id, title:form.title.trim(), subject:form.subject||"수학", hwType:form.hwType||"현행", studentId:currentStudent.id, studentName:currentStudent.name, totalAmount:Number(form.totalAmount), startDate:form.startDate, dueDate:form.dueDate, includeWeekend:form.includeWeekend, dailyMax:form.dailyMax?Number(form.dailyMax):null, createdAt:today, chunks, ...autoExtra });
       localStorage.setItem('lastSubject_' + currentStudent.id, form.subject);
       const savedSubject = form.subject;
       setAutoHwData(null);
@@ -263,20 +263,20 @@ function App() {
     const isYellow = !chunk.done && (chunk.completedAmount||0) > 0;
     if (isYellow) {
       // 노란색 → 안함
-      try { await db.ref(`homeworks/${hwKey}/chunks/${idx}`).update({done:false, completedAmount:0, submittedAt:null}); }
+      try { await aRef(`homeworks/${hwKey}/chunks/${idx}`).update({done:false, completedAmount:0, submittedAt:null}); }
       catch(e) { alert("저장 실패: "+e.message); }
     } else if (!chunk.done) {
       // 안함 → 완료
       const now = new Date();
       const submittedAt = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-      try { await db.ref(`homeworks/${hwKey}/chunks/${idx}`).update({done:true, completedAmount:chunk.plannedAmount, submittedAt}); }
+      try { await aRef(`homeworks/${hwKey}/chunks/${idx}`).update({done:true, completedAmount:chunk.plannedAmount, submittedAt}); }
       catch(e) { alert("저장 실패: "+e.message); }
       // isAuto 숙제: 완료된 청크의 endProblem 기준으로 진행 현황 기록
       if (hw.isAuto && hw.materialNodeId) {
         const allChunks = hw.chunks.map((c,i) => i===idx ? {...c, done:true} : c);
         const maxEnd = allChunks.filter(c=>c.done).reduce((m,c)=>Math.max(m, c.endProblem||0), chunk.endProblem);
         try {
-          await db.ref(`studentProfiles/${hw.studentId}/materialProgress/${hw.materialNodeId}`).set({
+          await aRef(`studentProfiles/${hw.studentId}/materialProgress/${hw.materialNodeId}`).set({
             currentProblem: maxEnd + 1,
             completedAt: submittedAt,
           });
@@ -284,7 +284,7 @@ function App() {
       }
     } else {
       // 완료 → 노란색 (DB에 partial 상태로 저장, 입력 없이)
-      try { await db.ref(`homeworks/${hwKey}/chunks/${idx}`).update({done:false, completedAmount:chunk.completedAmount||chunk.plannedAmount, submittedAt:null}); }
+      try { await aRef(`homeworks/${hwKey}/chunks/${idx}`).update({done:false, completedAmount:chunk.completedAmount||chunk.plannedAmount, submittedAt:null}); }
       catch(e) { alert("저장 실패: "+e.message); }
     }
   };
@@ -295,7 +295,7 @@ function App() {
     const hw = homeworks.find(h=>h._key===hwKey); if(!hw) return;
     const amount = parseInt(val);
     if (!isNaN(amount) && amount >= 0) {
-      try { await db.ref(`homeworks/${hwKey}/chunks/${idx}`).update({done:false, completedAmount:amount, submittedAt:null}); }
+      try { await aRef(`homeworks/${hwKey}/chunks/${idx}`).update({done:false, completedAmount:amount, submittedAt:null}); }
       catch(e) { alert("저장 실패: "+e.message); }
     }
     setChunkInput(null);
@@ -307,7 +307,7 @@ function App() {
     (hw.chunks||[]).forEach(c => { if (!c.done && c.completedAmount > 0) solvedMap[c.date] = c.completedAmount; });
     const updated=redistributeHomework(hw,today,solvedMap);
     setSaving(true);
-    try { await db.ref(`homeworks/${hwKey}/chunks`).set(updated.chunks); }
+    try { await aRef(`homeworks/${hwKey}/chunks`).set(updated.chunks); }
     catch(e) { alert("저장 실패: "+e.message); }
     setSaving(false);
     setRedistState(null);
@@ -326,7 +326,7 @@ function App() {
     const mergedChunks = newChunks.map(c => doneMap[c.date] ? {...c, done: true, completedAmount: doneMap[c.date].completedAmount, submittedAt: doneMap[c.date].submittedAt} : c);
     setSaving(true);
     try {
-      await db.ref(`homeworks/${key}`).update({ title: ef.title.trim(), subject: ef.subject, totalAmount: Number(ef.totalAmount), startDate: ef.startDate, dueDate: ef.dueDate, includeWeekend: ef.includeWeekend, dailyMax: ef.dailyMax ? Number(ef.dailyMax) : null, chunks: mergedChunks });
+      await aRef(`homeworks/${key}`).update({ title: ef.title.trim(), subject: ef.subject, totalAmount: Number(ef.totalAmount), startDate: ef.startDate, dueDate: ef.dueDate, includeWeekend: ef.includeWeekend, dailyMax: ef.dailyMax ? Number(ef.dailyMax) : null, chunks: mergedChunks });
       setEditingHW(null);
     } catch(e) { alert("저장 실패: " + e.message); }
     setSaving(false);
@@ -334,7 +334,7 @@ function App() {
 
   const handleDeleteHW = async (hwKey) => {
     setSaving(true);
-    try { await db.ref(`homeworks/${hwKey}`).remove(); setDeleteConfirmHW(null); }
+    try { await aRef(`homeworks/${hwKey}`).remove(); setDeleteConfirmHW(null); }
     catch(e) { alert("삭제 실패: " + e.message); }
     setSaving(false);
   };

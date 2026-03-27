@@ -8,8 +8,8 @@ function TagCalendarModal({ students, onClose }) {
   const [tagModalOriginal, setTagModalOriginal] = useState([]);
 
   useEffect(() => {
-    const r1 = db.ref("lessons");
-    const r2 = db.ref("lessonAttendance");
+    const r1 = aRef("lessons");
+    const r2 = aRef("lessonAttendance");
     r1.on("value", s => { const d = s.val(); setLessons(d ? Object.entries(d).map(([key, val]) => ({ ...val, _key: key })) : []); });
     r2.on("value", s => setAttendance(s.val() || {}));
     return () => { r1.off(); r2.off(); };
@@ -29,14 +29,14 @@ function TagCalendarModal({ students, onClose }) {
   // 태그 저장 (lessonAttendance + studentProfiles + log)
   const saveTags = async (lessonKey, studentId, tags) => {
     const { xp: newXp, cp: newCp } = calcPoints(tags);
-    const oldSnap = await db.ref(`lessonAttendance/${lessonKey}/${studentId}`).get();
+    const oldSnap = await aRef(`lessonAttendance/${lessonKey}/${studentId}`).get();
     const old = oldSnap.val() || {};
     const xpDelta = newXp - (old.xp || 0);
     const cpDelta = newCp - (old.cp || 0);
     const tagsChanged = JSON.stringify(tags) !== JSON.stringify(old.tags || []);
-    await db.ref(`lessonAttendance/${lessonKey}/${studentId}`).update({ tags, xp: newXp, cp: newCp });
+    await aRef(`lessonAttendance/${lessonKey}/${studentId}`).update({ tags, xp: newXp, cp: newCp });
     if (tagsChanged && (xpDelta !== 0 || cpDelta !== 0)) {
-      const profileSnap = await db.ref(`studentProfiles/${studentId}`).get();
+      const profileSnap = await aRef(`studentProfiles/${studentId}`).get();
       const profile = profileSnap.val() || {};
       const newTotalXp = Number(profile.season3Xp || 0) + xpDelta;
       const newTotalCp = Math.max(0, Number(profile.unpaidCp || 0) + cpDelta);
@@ -49,7 +49,7 @@ function TagCalendarModal({ students, onClose }) {
         id: logId, type: "tags", date: lesson?.date || selectedDate,
         tags, xpDelta, cpDelta, totalXp: newTotalXp, totalCp: newTotalCp, createdAt: Date.now(),
       };
-      await db.ref().update(updates);
+      await aRef().update(updates);
     }
     setTagModal(null);
   };
@@ -264,13 +264,13 @@ function StudentManager({ students, homeworks }) {
   const composingRef = React.useRef(false);
 
   useEffect(() => {
-    const ref = db.ref("studentProfiles");
+    const ref = aRef("studentProfiles");
     ref.on("value", snap => setProfiles(snap.val() || {}));
     return () => ref.off();
   }, []);
 
   useEffect(() => {
-    const ref = db.ref("assessments");
+    const ref = aRef("assessments");
     ref.on("value", snap => {
       const data = snap.val();
       setAssessments(data ? Object.values(data).sort((a,b) => (a.name||"").localeCompare(b.name||"")) : []);
@@ -290,8 +290,8 @@ function StudentManager({ students, homeworks }) {
     setSaving(true);
     const id = "student-" + genId();
     try {
-      await db.ref(`students/${id}`).set({ id, name: newName.trim(), className, pin: newPin.trim(), role: "student", createdAt: todayString() });
-      await db.ref(`studentProfiles/${id}`).set({ school: newSchool.trim(), birthYear: newBirthYear, grades: {}, locked: false });
+      await aRef(`students/${id}`).set({ id, name: newName.trim(), className, pin: newPin.trim(), role: "student", createdAt: todayString() });
+      await aRef(`studentProfiles/${id}`).set({ school: newSchool.trim(), birthYear: newBirthYear, grades: {}, locked: false });
       setNewName(""); setNewBirthYear(""); setNewSchool(""); setNewPin(""); setErr("");
     } catch(e) { setErr("저장 실패: " + e.message); }
     setSaving(false);
@@ -324,8 +324,8 @@ function StudentManager({ students, homeworks }) {
       if (students.some(s => s.name===row.name && s.className===row.className)) { skipped++; continue; }
       const id = "student-" + genId();
       try {
-        await db.ref(`students/${id}`).set({ id, name:row.name, className:row.className, pin:row.pin, role:"student", createdAt:todayString() });
-        await db.ref(`studentProfiles/${id}`).set({ school:row.school, birthYear:row.birthYear, grades:{}, locked:false });
+        await aRef(`students/${id}`).set({ id, name:row.name, className:row.className, pin:row.pin, role:"student", createdAt:todayString() });
+        await aRef(`studentProfiles/${id}`).set({ school:row.school, birthYear:row.birthYear, grades:{}, locked:false });
         added++;
       } catch(e) {}
     }
@@ -337,10 +337,10 @@ function StudentManager({ students, homeworks }) {
   const deleteStudent = async (studentId) => {
     setSaving(true);
     try {
-      await db.ref(`students/${studentId}`).remove();
-      await db.ref(`studentProfiles/${studentId}`).remove();
+      await aRef(`students/${studentId}`).remove();
+      await aRef(`studentProfiles/${studentId}`).remove();
       const toDelete = homeworks.filter(hw => hw.studentId === studentId);
-      await Promise.all(toDelete.map(hw => db.ref(`homeworks/${hw._key}`).remove()));
+      await Promise.all(toDelete.map(hw => aRef(`homeworks/${hw._key}`).remove()));
       setDeleteConfirm(null);
     } catch(e) { alert("삭제 실패: " + e.message); }
     setSaving(false);
@@ -356,43 +356,43 @@ function StudentManager({ students, homeworks }) {
     try {
       if (field === "name") {
         if (!val.trim()) return;
-        await db.ref(`students/${studentId}/name`).set(val.trim());
+        await aRef(`students/${studentId}/name`).set(val.trim());
       } else if (field === "className") {
-        await db.ref(`students/${studentId}/className`).set(val.trim() || "미정");
+        await aRef(`students/${studentId}/className`).set(val.trim() || "미정");
       } else if (field === "school") {
-        await db.ref(`studentProfiles/${studentId}/school`).set(val.trim());
+        await aRef(`studentProfiles/${studentId}/school`).set(val.trim());
       } else if (field === "birthYear") {
-        await db.ref(`studentProfiles/${studentId}/birthYear`).set(val);
-        await db.ref(`students/${studentId}/className`).set(gradeFromBirthYear(val) || "미정");
+        await aRef(`studentProfiles/${studentId}/birthYear`).set(val);
+        await aRef(`students/${studentId}/className`).set(gradeFromBirthYear(val) || "미정");
       } else if (field === "pin") {
         if (!val || val.length < 4) { alert("PIN은 4자리 이상이어야 합니다."); return; }
-        await db.ref(`students/${studentId}/pin`).set(val);
+        await aRef(`students/${studentId}/pin`).set(val);
       } else if (field === "problemCoeff" || field === "lectureCoeff") {
         const num = parseFloat(val);
         if (isNaN(num)) { alert("숫자를 입력해 주세요."); return; }
-        await db.ref(`studentProfiles/${studentId}/${field}`).set(num);
+        await aRef(`studentProfiles/${studentId}/${field}`).set(num);
       }
     } catch(e) { alert("저장 실패: " + e.message); }
   };
 
   const saveXpField = async (studentId, field, val) => {
     setEditingCell(null);
-    try { await db.ref(`studentProfiles/${studentId}/${field}`).set(val === "" ? null : isNaN(Number(val)) ? val : Number(val)); }
+    try { await aRef(`studentProfiles/${studentId}/${field}`).set(val === "" ? null : isNaN(Number(val)) ? val : Number(val)); }
     catch(e) { alert("저장 실패: " + e.message); }
   };
 
   const toggleProfileLock = async (studentId, currentLocked) => {
-    try { await db.ref(`studentProfiles/${studentId}/locked`).set(!currentLocked); }
+    try { await aRef(`studentProfiles/${studentId}/locked`).set(!currentLocked); }
     catch(e) { alert("저장 실패: " + e.message); }
   };
 
   const updateCurrentAssessment = async (studentId, assessmentId) => {
-    try { await db.ref(`studentProfiles/${studentId}/currentAssessment`).set(assessmentId || null); }
+    try { await aRef(`studentProfiles/${studentId}/currentAssessment`).set(assessmentId || null); }
     catch(e) { alert("저장 실패: " + e.message); }
   };
 
   const updateAdvanceAssessment = async (studentId, assessmentId) => {
-    try { await db.ref(`studentProfiles/${studentId}/advanceAssessment`).set(assessmentId || null); }
+    try { await aRef(`studentProfiles/${studentId}/advanceAssessment`).set(assessmentId || null); }
     catch(e) { alert("저장 실패: " + e.message); }
   };
 
@@ -484,7 +484,7 @@ function StudentManager({ students, homeworks }) {
             </button>
             <button onClick={async () => {
               if (!confirm(`모든 학생의 시즌3 XP, 미지급 CP, 이전시즌 XP를 0으로 초기화합니다. 계속할까요?`)) return;
-              const snap = await db.ref("studentProfiles").get();
+              const snap = await aRef("studentProfiles").get();
               const data = snap.val() || {};
               const updates = {};
               Object.keys(data).forEach(sid => {
@@ -492,7 +492,7 @@ function StudentManager({ students, homeworks }) {
                 updates[`studentProfiles/${sid}/unpaidCp`] = null;
                 updates[`studentProfiles/${sid}/prevSeasonXp`] = null;
               });
-              await db.ref().update(updates);
+              await aRef().update(updates);
               alert("초기화 완료!");
             }}
               className="text-xs text-white bg-slate-500 hover:bg-slate-600 px-3 py-1.5 rounded-lg font-medium transition">
@@ -500,7 +500,7 @@ function StudentManager({ students, homeworks }) {
             </button>
             <button onClick={async () => {
               if (!confirm(`수업일지 전체 데이터를 읽어 XP/CP를 재계산합니다. 기존 수동 입력값은 덮어씁니다. 계속할까요?`)) return;
-              const snap = await db.ref("lessonAttendance").get();
+              const snap = await aRef("lessonAttendance").get();
               const allAttendance = snap.val() || {};
               const totals = {};
               Object.values(allAttendance).forEach(lesson => {
@@ -515,7 +515,7 @@ function StudentManager({ students, homeworks }) {
                 updates[`studentProfiles/${sid}/season3Xp`] = t.xp;
                 updates[`studentProfiles/${sid}/unpaidCp`] = Math.max(0, t.cp);
               });
-              await db.ref().update(updates);
+              await aRef().update(updates);
               alert("동기화 완료!");
             }}
               className="text-xs text-white bg-indigo-500 hover:bg-indigo-600 px-3 py-1.5 rounded-lg font-medium transition">
@@ -525,7 +525,7 @@ function StudentManager({ students, homeworks }) {
               if (!confirm(`미지급 CP를 전체 초기화할까요? (${sortedStudents.length}명)`)) return;
               const updates = {};
               sortedStudents.forEach(st => { updates[`studentProfiles/${st.id}/unpaidCp`] = null; });
-              await db.ref().update(updates);
+              await aRef().update(updates);
             }}
               className="text-xs text-white bg-red-400 hover:bg-red-500 px-3 py-1.5 rounded-lg font-medium transition">
               🗑 미지급 CP 초기화
@@ -703,7 +703,7 @@ function StudentManager({ students, homeworks }) {
               if (!confirm(`필터된 ${sortedStudents.length}명을 전체 확정할까요?`)) return;
               const updates = {};
               sortedStudents.forEach(st => { updates[`studentProfiles/${st.id}/locked`] = true; });
-              await db.ref().update(updates);
+              await aRef().update(updates);
             }} className="text-xs text-white bg-emerald-500 hover:bg-emerald-600 px-3 py-1.5 rounded-lg font-medium transition">
               🔒 전체 확정
             </button>
@@ -711,7 +711,7 @@ function StudentManager({ students, homeworks }) {
               if (!confirm(`필터된 ${sortedStudents.length}명을 전체 미확정으로 변경할까요?`)) return;
               const updates = {};
               sortedStudents.forEach(st => { updates[`studentProfiles/${st.id}/locked`] = false; });
-              await db.ref().update(updates);
+              await aRef().update(updates);
             }} className="text-xs text-slate-600 bg-white hover:bg-slate-50 px-3 py-1.5 rounded-lg font-medium border border-slate-200 transition">
               🔓 전체 미확정
             </button>
