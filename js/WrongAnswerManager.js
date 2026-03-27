@@ -3,7 +3,7 @@ const STATUS_CYCLE = [null, "correct", "wrong", "unknown"];
 const STATUS_STYLE = {
   correct: { bg: "#22c55e", text: "#fff", label: "맞음" },
   wrong:   { bg: "#ef4444", text: "#fff", label: "틀림" },
-  unknown: { bg: "#f97316", text: "#fff", label: "모름" },
+  unknown: { bg: "#8b5cf6", text: "#fff", label: "모름" },
   null:    { bg: "#f1f5f9", text: "#94a3b8", label: "미체크" },
 };
 const COLS = 20;
@@ -264,7 +264,7 @@ function WrongAnswerManager({ students = [], materials = [] }) {
     const studentName = student.name || "";
     const studentClass = student.className || "";
     const statusLabel = (s) => s === "wrong" ? "틀림" : s === "unknown" ? "모름" : s === "correct" ? "맞음" : "";
-    const statusColor = (s) => s === "wrong" ? "#ef4444" : s === "unknown" ? "#f97316" : "#22c55e";
+    const statusColor = (s) => s === "wrong" ? "#ef4444" : s === "unknown" ? "#8b5cf6" : "#22c55e";
 
     const problemBox = (p) => p ? `
       <div class="problem">
@@ -361,7 +361,7 @@ function WrongAnswerManager({ students = [], materials = [] }) {
                       <div className="bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 border-b border-slate-200">
                         {p.matName} {p.num}번
                         {p.status && (
-                          <span className="ml-2 text-[10px]" style={{ color: p.status === "wrong" ? "#ef4444" : p.status === "unknown" ? "#f97316" : "#22c55e" }}>
+                          <span className="ml-2 text-[10px]" style={{ color: p.status === "wrong" ? "#ef4444" : p.status === "unknown" ? "#8b5cf6" : "#22c55e" }}>
                             {p.status === "wrong" ? "틀림" : p.status === "unknown" ? "모름" : "맞음"}
                           </span>
                         )}
@@ -376,7 +376,7 @@ function WrongAnswerManager({ students = [], materials = [] }) {
                       <div className="bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 border-b border-slate-200">
                         {p.matName} {p.num}번
                         {p.status && (
-                          <span className="ml-2 text-[10px]" style={{ color: p.status === "wrong" ? "#ef4444" : p.status === "unknown" ? "#f97316" : "#22c55e" }}>
+                          <span className="ml-2 text-[10px]" style={{ color: p.status === "wrong" ? "#ef4444" : p.status === "unknown" ? "#8b5cf6" : "#22c55e" }}>
                             {p.status === "wrong" ? "틀림" : p.status === "unknown" ? "모름" : "맞음"}
                           </span>
                         )}

@@ -15,7 +15,7 @@ function CompletionModal({ startProblem, endProblem, studentId, materialId, onCl
   const STYLE = {
     correct: { bg:"#22c55e", text:"#fff", label:"맞음" },
     wrong:   { bg:"#ef4444", text:"#fff", label:"틀림" },
-    unknown: { bg:"#f97316", text:"#fff", label:"모름" },
+    unknown: { bg:"#8b5cf6", text:"#fff", label:"모름" },
     null:    { bg:"#f1f5f9", text:"#94a3b8", label:"미체크" },
   };
 
@@ -54,7 +54,7 @@ function CompletionModal({ startProblem, endProblem, studentId, materialId, onCl
         </div>
         <p className="text-xs text-slate-500">각 문제를 눌러 상태를 입력하세요. 미입력은 미체크로 저장됩니다.</p>
         <div className="flex gap-3 flex-wrap">
-          {[["correct","맞음","#22c55e"],["wrong","틀림","#ef4444"],["unknown","모름","#f97316"],["null","미체크","#f1f5f9"]].map(([k,label,bg])=>(
+          {[["correct","맞음","#22c55e"],["wrong","틀림","#ef4444"],["unknown","모름","#8b5cf6"],["null","미체크","#f1f5f9"]].map(([k,label,bg])=>(
             <div key={k} className="flex items-center gap-1 text-xs text-slate-500">
               <div className="w-3.5 h-3.5 rounded" style={{background:bg,border:"1px solid #e2e8f0"}}/>
               {label}
