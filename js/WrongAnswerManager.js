@@ -168,10 +168,20 @@ function MaterialStatusCard({ mat, allStatuses, studentId, picked, togglePick, b
 
 function WrongAnswerManager({ students = [], materials = [] }) {
   const [selectedStudentId, setSelectedStudentId] = React.useState("");
+  const [gradeFilter, setGradeFilter] = React.useState("전체");
   const [studentMaterials, setStudentMaterials] = React.useState([]);
   const [allStatuses, setAllStatuses] = React.useState({});
   const [picked, setPicked] = React.useState({});
   const [showPrint, setShowPrint] = React.useState(false);
+
+  const grades = React.useMemo(() => {
+    const set = new Set(students.map(s => s.className).filter(Boolean));
+    return ["전체", ...Array.from(set).sort()];
+  }, [students]);
+
+  const filteredStudents = React.useMemo(() =>
+    gradeFilter === "전체" ? students : students.filter(s => s.className === gradeFilter)
+  , [students, gradeFilter]);
 
   React.useEffect(() => {
     if (!selectedStudentId) { setStudentMaterials([]); return; }
@@ -319,12 +329,20 @@ function WrongAnswerManager({ students = [], materials = [] }) {
 
   return (
     <div className="space-y-4">
-      <Card className="p-4">
+      <Card className="p-4 space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {grades.map(g => (
+            <button key={g} onClick={() => { setGradeFilter(g); setSelectedStudentId(""); }}
+              className={`px-3 py-1 rounded-lg text-xs font-medium transition ${gradeFilter === g ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+              {g}
+            </button>
+          ))}
+        </div>
         <div className="flex flex-wrap gap-3 items-center justify-between">
-          <select value={selectedStudentId} onChange={e => { setSelectedStudentId(e.target.value); }}
+          <select value={selectedStudentId} onChange={e => setSelectedStudentId(e.target.value)}
             className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 min-w-[140px]">
             <option value="">학생 선택</option>
-            {students.map(s => <option key={s.id} value={s.id}>{s.name} ({s.className})</option>)}
+            {filteredStudents.map(s => <option key={s.id} value={s.id}>{s.name} ({s.className})</option>)}
           </select>
           {selectedStudentId && (
             <button onClick={() => setShowPrint(true)} disabled={pickedCount === 0}
