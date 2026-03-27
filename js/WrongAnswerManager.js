@@ -100,7 +100,7 @@ function WrongAnswerManager({ students = [], materials = [] }) {
           (n.nextNodes || []).forEach(id => queue.push(id));
         }
       }
-      setStudentMaterials(mats.sort((a, b) => (a.x ?? 0) - (b.x ?? 0)));
+      setStudentMaterials(mats);
     });
   }, [selectedStudentId]);
 

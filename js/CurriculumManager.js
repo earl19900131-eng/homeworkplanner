@@ -2314,16 +2314,17 @@ function StudentCurriculumView({ studentId }) {
     if (!allNodes[startNodeId]) return [];
     const visited = new Set();
     const result = [];
-    const dfs = (nodeId) => {
-      if (visited.has(nodeId)) return;
+    const queue = [startNodeId];
+    while (queue.length) {
+      const nodeId = queue.shift();
+      if (visited.has(nodeId)) continue;
       visited.add(nodeId);
       const node = allNodes[nodeId];
-      if (!node) return;
+      if (!node) continue;
       if (node.type === "material") result.push(node);
-      for (const nid of (node.nextNodes || [])) dfs(nid);
-    };
-    dfs(startNodeId);
-    return result.sort((a, b) => (a.x ?? 0) - (b.x ?? 0));
+      for (const nid of (node.nextNodes || [])) queue.push(nid);
+    }
+    return result;
   };
 
   const path = getPath();
