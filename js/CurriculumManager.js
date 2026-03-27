@@ -1295,6 +1295,11 @@ function AssessmentsTab({ students = [] }) {
   const [folderForm, setFolderForm] = React.useState("");
   const [editingFolderId, setEditingFolderId] = React.useState(null);
   const [editingFolderName, setEditingFolderName] = React.useState("");
+  const [assessmentFolders, setAssessmentFolders] = React.useState([]);
+  const [assessmentFolderForm, setAssessmentFolderForm] = React.useState("");
+  const [activeAssessmentFolderId, setActiveAssessmentFolderId] = React.useState(null);
+  const [editingAssessmentFolderId, setEditingAssessmentFolderId] = React.useState(null);
+  const [editingAssessmentFolderName, setEditingAssessmentFolderName] = React.useState("");
 
   React.useEffect(() => {
     const ref = db.ref("assessments");
@@ -1319,6 +1324,15 @@ function AssessmentsTab({ students = [] }) {
     ref.on("value", snap => {
       const data = snap.val();
       setMockFolders(data ? Object.values(data).sort((a,b) => a.createdAt - b.createdAt) : []);
+    });
+    return () => ref.off();
+  }, []);
+
+  React.useEffect(() => {
+    const ref = db.ref("assessmentFolders");
+    ref.on("value", snap => {
+      const data = snap.val();
+      setAssessmentFolders(data ? Object.values(data).sort((a,b) => a.createdAt - b.createdAt) : []);
     });
     return () => ref.off();
   }, []);
@@ -1424,6 +1438,24 @@ function AssessmentsTab({ students = [] }) {
   };
   const openFolder = (folder) => { setActiveFolderId(folder.id); setStep("folder_view"); };
 
+  const addAssessmentFolder = async () => {
+    if (!assessmentFolderForm.trim()) return;
+    const id = Date.now().toString();
+    await db.ref(`assessmentFolders/${id}`).set({ id, name: assessmentFolderForm.trim(), createdAt: Number(id) });
+    setAssessmentFolderForm("");
+  };
+  const saveEditAssessmentFolder = async () => {
+    if (!editingAssessmentFolderName.trim()) return;
+    await db.ref(`assessmentFolders/${editingAssessmentFolderId}`).update({ name: editingAssessmentFolderName.trim() });
+    setEditingAssessmentFolderId(null);
+  };
+  const deleteAssessmentFolder = async (id) => {
+    if (!confirm("폴더를 삭제하면 안에 있는 평가도 모두 삭제됩니다. 계속하시겠습니까?")) return;
+    for (const a of assessments.filter(a => a.folderId === id)) await db.ref(`assessments/${a.id}`).remove();
+    await db.ref(`assessmentFolders/${id}`).remove();
+  };
+  const openAssessmentFolder = (folder) => { setActiveAssessmentFolderId(folder.id); setStep("assessment_folder_view"); };
+
   const startCreateMock = () => {
     setStep("mock_exam"); setDbEditId(null); setMockName(""); setMockRound(1); setMockQCount(20); setMockTotalScore(100); setMockStudentIds([]); setMockScoringType("auto"); setMockScoring({});
   };
@@ -1502,10 +1534,11 @@ function AssessmentsTab({ students = [] }) {
     if (!testName.trim()) { alert("테스트 제목을 입력해 주세요."); return; }
     setSaving(true);
     const data = { type: "일일테스트", name: testName.trim(), createdAt: todayString(), tree };
+    if (!dbEditId && activeAssessmentFolderId) data.folderId = activeAssessmentFolderId;
     try {
       if (dbEditId) { await db.ref(`assessments/${dbEditId}`).update(data); }
       else { const id = Date.now().toString(); await db.ref(`assessments/${id}`).set({ id, ...data }); }
-      setStep("select");
+      setStep(activeAssessmentFolderId && !dbEditId ? "assessment_folder_view" : "select");
     } catch(e) { alert("저장 실패: " + e.message); }
     setSaving(false);
   };
@@ -1515,10 +1548,11 @@ function AssessmentsTab({ students = [] }) {
     if (!generalTotal || isNaN(Number(generalTotal)) || Number(generalTotal) <= 0) { alert("전체 문제 수를 입력해 주세요."); return; }
     setSaving(true);
     const data = { type: "누적테스트", name: generalName.trim(), subject: generalSubject, totalProblems: Number(generalTotal), createdAt: todayString() };
+    if (!dbEditId && activeAssessmentFolderId) data.folderId = activeAssessmentFolderId;
     try {
       if (dbEditId) { await db.ref(`assessments/${dbEditId}`).update(data); }
       else { const id = Date.now().toString(); await db.ref(`assessments/${id}`).set({ id, ...data }); }
-      setStep("select");
+      setStep(activeAssessmentFolderId && !dbEditId ? "assessment_folder_view" : "select");
     } catch(e) { alert("저장 실패: " + e.message); }
     setSaving(false);
   };
@@ -1527,7 +1561,7 @@ function AssessmentsTab({ students = [] }) {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3">
-          <button type="button" onClick={()=>setStep("select")} className="text-sm text-slate-500 hover:text-slate-800">← 뒤로</button>
+          <button type="button" onClick={()=>setStep(activeAssessmentFolderId ? "assessment_folder_view" : "select")} className="text-sm text-slate-500 hover:text-slate-800">← 뒤로</button>
           <h2 className="text-lg font-bold">누적테스트 만들기</h2>
         </div>
         <Card className="p-5 space-y-4">
@@ -1549,7 +1583,7 @@ function AssessmentsTab({ students = [] }) {
             </div>
           </div>
           <div className="flex gap-2 justify-end">
-            <Btn variant="outline" onClick={()=>setStep("select")}>취소</Btn>
+            <Btn variant="outline" onClick={()=>setStep(activeAssessmentFolderId ? "assessment_folder_view" : "select")}>취소</Btn>
             <Btn onClick={handleSaveGeneral} disabled={saving}>{saving?"저장 중...":(dbEditId?"수정 완료":"저장")}</Btn>
           </div>
         </Card>
@@ -1562,7 +1596,7 @@ function AssessmentsTab({ students = [] }) {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3">
-          <button type="button" onClick={()=>setStep("select")} className="text-sm text-slate-500 hover:text-slate-800">← 뒤로</button>
+          <button type="button" onClick={()=>setStep(activeAssessmentFolderId ? "assessment_folder_view" : "select")} className="text-sm text-slate-500 hover:text-slate-800">← 뒤로</button>
           <h2 className="text-lg font-bold">일일테스트 만들기</h2>
         </div>
         <Card className="p-5 space-y-4">
@@ -1650,7 +1684,7 @@ function AssessmentsTab({ students = [] }) {
           </div>
 
           <div className="flex gap-2 justify-end">
-            <Btn variant="outline" onClick={()=>setStep("select")}>취소</Btn>
+            <Btn variant="outline" onClick={()=>setStep(activeAssessmentFolderId ? "assessment_folder_view" : "select")}>취소</Btn>
             <Btn onClick={handleSave} disabled={saving}>{saving?"저장 중...":(dbEditId?"수정 완료":"저장")}</Btn>
           </div>
         </Card>
@@ -1824,6 +1858,55 @@ function AssessmentsTab({ students = [] }) {
     );
   }
 
+  if (step === "assessment_folder_view") {
+    const folder = assessmentFolders.find(f => f.id === activeAssessmentFolderId);
+    const folderAssessments = assessments.filter(a => a.folderId === activeAssessmentFolderId)
+      .sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||""));
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={()=>setStep("select")} className="text-sm text-slate-500 hover:text-slate-800">← 뒤로</button>
+          {editingAssessmentFolderId === activeAssessmentFolderId
+            ? <input autoFocus value={editingAssessmentFolderName} onChange={e=>setEditingAssessmentFolderName(e.target.value)}
+                onBlur={saveEditAssessmentFolder} onKeyDown={e=>e.key==="Enter"&&saveEditAssessmentFolder()}
+                className="text-lg font-bold border-b border-slate-400 outline-none bg-transparent"/>
+            : <h2 className="text-lg font-bold cursor-pointer hover:text-slate-600" onClick={()=>{ setEditingAssessmentFolderId(activeAssessmentFolderId); setEditingAssessmentFolderName(folder?.name||""); }}>
+                📁 {folder?.name}
+              </h2>
+          }
+          <div className="ml-auto flex gap-2">
+            <Btn onClick={()=>{ setActiveAssessmentFolderId(activeAssessmentFolderId); startCreate(); }}>+ 일일테스트</Btn>
+            <Btn onClick={()=>{ setActiveAssessmentFolderId(activeAssessmentFolderId); startCreateGeneral(); }}>+ 누적테스트</Btn>
+          </div>
+        </div>
+        <Card className="p-5 space-y-3">
+          {folderAssessments.length === 0
+            ? <div className="rounded-2xl border border-dashed p-8 text-sm text-slate-400 text-center">평가를 추가해 주세요.</div>
+            : <div className="space-y-2">
+                {folderAssessments.map(a => (
+                  <div key={a.id} className="flex items-center gap-3 rounded-2xl border px-4 py-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium">{a.name}</span>
+                        <Badge variant="secondary">{a.type}</Badge>
+                      </div>
+                      <div className="text-xs text-slate-500 mt-0.5">
+                        {a.createdAt}
+                        {a.type === "누적테스트" ? (a.subject ? " · " + a.subject : "") + (a.totalProblems ? " · " + a.totalProblems + "문제" : "") : ""}
+                        {a.type === "일일테스트" && a.tree ? " · " + a.tree.length + "개 대단원" : ""}
+                      </div>
+                    </div>
+                    <Btn variant="outline" size="sm" onClick={()=>startEditAssessment(a)}>수정</Btn>
+                    <Btn variant="outline" size="sm" onClick={async()=>{ if(!confirm("삭제?")) return; await db.ref(`assessments/${a.id}`).remove(); }}>삭제</Btn>
+                  </div>
+                ))}
+              </div>
+          }
+        </Card>
+      </div>
+    );
+  }
+
   if (step === "folder_view") {
     const folder = mockFolders.find(f => f.id === activeFolderId);
     const folderExams = mockExams.filter(e => e.folderId === activeFolderId).sort((a,b) => a.round - b.round);
@@ -1873,13 +1956,13 @@ function AssessmentsTab({ students = [] }) {
       <Card className="p-5 space-y-4">
         <h2 className="text-lg font-bold">평가 추가 — 종류 선택</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <button type="button" onClick={startCreate}
+          <button type="button" onClick={()=>{ setActiveAssessmentFolderId(null); startCreate(); }}
             className="rounded-2xl border-2 border-dashed border-slate-200 p-6 text-center hover:border-blue-400 hover:bg-blue-50 transition space-y-2 group">
             <div className="text-2xl">📋</div>
             <div className="font-semibold text-sm group-hover:text-blue-700">일일테스트</div>
             <div className="text-xs text-slate-400">소단원별 테스트 구성</div>
           </button>
-          <button type="button" onClick={startCreateGeneral}
+          <button type="button" onClick={()=>{ setActiveAssessmentFolderId(null); startCreateGeneral(); }}
             className="rounded-2xl border-2 border-dashed border-slate-200 p-6 text-center hover:border-green-400 hover:bg-green-50 transition space-y-2 group">
             <div className="text-2xl">📝</div>
             <div className="font-semibold text-sm group-hover:text-green-700">누적테스트</div>
@@ -1887,30 +1970,74 @@ function AssessmentsTab({ students = [] }) {
           </button>
         </div>
       </Card>
-      <Card className="p-5 space-y-3">
+      <Card className="p-5 space-y-4">
         <h2 className="text-lg font-bold">등록된 평가 ({assessments.length})</h2>
-        {assessments.length === 0
-          ? <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-400 text-center">아직 등록된 평가가 없습니다.</div>
-          : <div className="space-y-2">
-              {assessments.map(a => (
-                <div key={a.id} className="flex items-center gap-3 rounded-2xl border px-4 py-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium">{a.name}</span>
-                      <Badge variant="secondary">{a.type}</Badge>
-                    </div>
-                    <div className="text-xs text-slate-500 mt-0.5">
-                      {a.createdAt}
-                      {a.type === "누적테스트" ? (a.subject ? " · " + a.subject : "") + (a.totalProblems ? " · " + a.totalProblems + "문제" : "") : ""}
-                      {a.type === "일일테스트" && a.tree ? " · " + a.tree.length + "개 대단원" : ""}
-                    </div>
+
+        {/* 폴더 */}
+        <div>
+          <div className="flex gap-2 mb-3">
+            <input value={assessmentFolderForm} onChange={e=>setAssessmentFolderForm(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&addAssessmentFolder()}
+              placeholder="새 폴더명 입력"
+              className="flex-1 rounded-xl border border-input px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"/>
+            <Btn onClick={addAssessmentFolder}>+ 폴더 추가</Btn>
+          </div>
+          {assessmentFolders.length > 0 && (
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 mb-4">
+              {assessmentFolders.map(folder => {
+                const count = assessments.filter(a => a.folderId === folder.id).length;
+                return (
+                  <div key={folder.id} className="group relative">
+                    <button type="button" onClick={() => openAssessmentFolder(folder)}
+                      className="w-full aspect-square rounded-2xl border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 transition flex flex-col items-center justify-center gap-2 p-3">
+                      <span className="text-4xl leading-none">📁</span>
+                      <span className="text-xs font-semibold text-blue-900 text-center leading-tight line-clamp-2">{folder.name}</span>
+                      <span className="text-[10px] text-blue-600">{count}개</span>
+                    </button>
+                    <button type="button"
+                      onClick={e=>{e.stopPropagation(); deleteAssessmentFolder(folder.id);}}
+                      className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-300 text-xs leading-none opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                      ×
+                    </button>
                   </div>
-                  <Btn variant="outline" size="sm" onClick={()=>startEditAssessment(a)}>수정</Btn>
-                  <Btn variant="outline" size="sm" onClick={async()=>{ if(!confirm("삭제?")) return; await db.ref(`assessments/${a.id}`).remove(); }}>삭제</Btn>
-                </div>
-              ))}
+                );
+              })}
             </div>
-        }
+          )}
+        </div>
+
+        {/* 미분류 평가 */}
+        {(() => {
+          const unclassified = assessments.filter(a => !a.folderId);
+          if (unclassified.length === 0 && assessmentFolders.length > 0) return null;
+          return (
+            <div>
+              {assessmentFolders.length > 0 && <div className="text-xs font-semibold text-slate-400 mb-2">미분류</div>}
+              {unclassified.length === 0
+                ? <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-400 text-center">아직 등록된 평가가 없습니다.</div>
+                : <div className="space-y-2">
+                    {unclassified.map(a => (
+                      <div key={a.id} className="flex items-center gap-3 rounded-2xl border px-4 py-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium">{a.name}</span>
+                            <Badge variant="secondary">{a.type}</Badge>
+                          </div>
+                          <div className="text-xs text-slate-500 mt-0.5">
+                            {a.createdAt}
+                            {a.type === "누적테스트" ? (a.subject ? " · " + a.subject : "") + (a.totalProblems ? " · " + a.totalProblems + "문제" : "") : ""}
+                            {a.type === "일일테스트" && a.tree ? " · " + a.tree.length + "개 대단원" : ""}
+                          </div>
+                        </div>
+                        <Btn variant="outline" size="sm" onClick={()=>startEditAssessment(a)}>수정</Btn>
+                        <Btn variant="outline" size="sm" onClick={async()=>{ if(!confirm("삭제?")) return; await db.ref(`assessments/${a.id}`).remove(); }}>삭제</Btn>
+                      </div>
+                    ))}
+                  </div>
+              }
+            </div>
+          );
+        })()}
       </Card>
       <Card className="p-5 space-y-4">
         <h2 className="text-lg font-bold">내신모의평가 폴더</h2>
