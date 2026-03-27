@@ -1967,23 +1967,6 @@ function AssessmentsTab({ students = [] }) {
   return (
     <div className="space-y-5">
       <Card className="p-5 space-y-4">
-        <h2 className="text-lg font-bold">평가 추가 — 종류 선택</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <button type="button" onClick={()=>{ setActiveAssessmentFolderId(null); startCreate(); }}
-            className="rounded-2xl border-2 border-dashed border-slate-200 p-6 text-center hover:border-blue-400 hover:bg-blue-50 transition space-y-2 group">
-            <div className="text-2xl">📋</div>
-            <div className="font-semibold text-sm group-hover:text-blue-700">일일테스트</div>
-            <div className="text-xs text-slate-400">소단원별 테스트 구성</div>
-          </button>
-          <button type="button" onClick={()=>{ setActiveAssessmentFolderId(null); startCreateGeneral(); }}
-            className="rounded-2xl border-2 border-dashed border-slate-200 p-6 text-center hover:border-green-400 hover:bg-green-50 transition space-y-2 group">
-            <div className="text-2xl">📝</div>
-            <div className="font-semibold text-sm group-hover:text-green-700">누적테스트</div>
-            <div className="text-xs text-slate-400">전체 문제수 기반 추적</div>
-          </button>
-        </div>
-      </Card>
-      <Card className="p-5 space-y-4">
         <h2 className="text-lg font-bold">등록된 평가 ({assessments.length})</h2>
 
         {/* 폴더 */}
