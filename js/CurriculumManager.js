@@ -579,9 +579,17 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
     const visited = new Set();
     const queue = [endNodeId];
     while (queue.length) { const id = queue.shift(); if (visited.has(id)) continue; visited.add(id); (prev[id] || []).forEach(pid => queue.push(pid)); }
-    let totalProblems = 0;
-    visited.forEach(id => { const n = nodes[id]; if (n?.type === "material") totalProblems += Number(n.totalProblems) || 0; });
-    return totalProblems;
+    let totalProblems = 0, estimatedMins = 0;
+    visited.forEach(id => {
+      const n = nodes[id];
+      if (n?.type !== "material") return;
+      const cnt = Number(n.totalProblems) || 0;
+      totalProblems += cnt;
+      const mat = materials.find(m => m.id === n.materialId);
+      const mpp = Number(mat?.minutesPerProblem) || 3;
+      estimatedMins += cnt * mpp;
+    });
+    return { totalProblems, estimatedMins };
   };
 
   // 캔버스 좌표 계산
@@ -1166,9 +1174,8 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
                     {/* 바디 */}
                     <div style={{ flex: 1, padding: "3px 6px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
                       {node.type === "end" ? (() => {
-                        const total = computeEndNodeStats(node.id);
-                        const mins = total * 3;
-                        const h = Math.floor(mins / 60), m = mins % 60;
+                        const { totalProblems: total, estimatedMins: mins } = computeEndNodeStats(node.id);
+                        const h = Math.floor(mins / 60), m = Math.round(mins % 60);
                         const timeStr = h > 0 ? (m > 0 ? `${h}시간 ${m}분` : `${h}시간`) : `${m}분`;
                         return (
                           <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:2 }}>
