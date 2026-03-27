@@ -750,7 +750,7 @@ function StudentManager({ students, homeworks }) {
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-indigo-500">문제계수</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-indigo-500">강의계수</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">현행평가</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">선행평가</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">추가평가</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">상태</th>
                     <th className="px-4 py-2.5 w-16"></th>
                   </tr>

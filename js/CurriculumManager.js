@@ -208,7 +208,7 @@ function MaterialsTab({ materials }) {
           <div className="flex gap-2">
             <input value={folderForm} onChange={e=>setFolderForm(e.target.value)}
               onKeyDown={e=>e.key==="Enter"&&addFolder()}
-              placeholder="새 폴더명 입력 (예: 공통수학1, 중2 선행)"
+              placeholder="새 폴더명 입력 (예: 공통수학1, 중2 추가)"
               className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"/>
             <Btn onClick={addFolder}>+ 폴더 추가</Btn>
           </div>

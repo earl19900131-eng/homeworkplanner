@@ -165,7 +165,7 @@ function ClassGroupList({ teacherStats, teacherViewId, setTeacherViewId, homewor
                 <span className="text-sm font-bold shrink-0 text-slate-700">{s.progress}%</span>
               </div>
               <div className="mt-1.5"><ProgressBar value={s.progress}/></div>
-              <div className="mt-1 text-xs text-slate-400">미완료 {s.todayIncomplete} · {s.overdueHyun>0&&s.overdueSum>0?`현 ${s.overdueHyun}/선 ${s.overdueSum} 밀림`:s.overdueHyun>0?`현행 ${s.overdueHyun} 밀림`:s.overdueSum>0?`선행 ${s.overdueSum} 밀림`:"밀림 없음"}</div>
+              <div className="mt-1 text-xs text-slate-400">미완료 {s.todayIncomplete} · {s.overdueHyun>0&&s.overdueSum>0?`현 ${s.overdueHyun}/추 ${s.overdueSum} 밀림`:s.overdueHyun>0?`현행 ${s.overdueHyun} 밀림`:s.overdueSum>0?`추가 ${s.overdueSum} 밀림`:"밀림 없음"}</div>
             </button>
           ))
         }
@@ -278,8 +278,8 @@ function TeacherHWCard({ hw, done, pct, today }) {
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-semibold">{hw.title}</span>
                   <Badge variant="secondary">{hw.studentName}</Badge>
-                  {hw.hwType==="선행"
-                    ? <span className="text-xs font-bold text-violet-600 bg-violet-50 border border-violet-200 rounded-lg px-2 py-0.5">선행</span>
+                  {hw.hwType==="추가"
+                    ? <span className="text-xs font-bold text-violet-600 bg-violet-50 border border-violet-200 rounded-lg px-2 py-0.5">추가</span>
                     : <span className="text-xs font-bold text-sky-600 bg-sky-50 border border-sky-200 rounded-lg px-2 py-0.5">현행</span>}
                   <Badge variant="outline">{hw.subject}</Badge>
                   {verified==="이행"&&<span className="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-0.5">✓ 이행</span>}
@@ -352,7 +352,7 @@ function TeacherHWCard({ hw, done, pct, today }) {
               <div className="space-y-1 sm:col-span-2">
                 <Lbl>종류</Lbl>
                 <div className="flex gap-2">
-                  {["현행","선행"].map(t=>(
+                  {["현행","추가"].map(t=>(
                     <button key={t} type="button" onClick={()=>setEF(p=>({...p,hwType:t}))}
                       className={`flex-1 py-1.5 rounded-xl text-xs font-medium border transition ${ef.hwType===t?"bg-slate-900 text-white border-slate-900":"bg-white text-slate-500 border-slate-200 hover:bg-slate-50"}`}>
                       {t}
