@@ -12,6 +12,15 @@ function MaterialStatusCard({ mat, allStatuses, studentId, picked, togglePick })
   const [editMode, setEditMode] = React.useState(false);
   const [local, setLocal] = React.useState({});
   const [saving, setSaving] = React.useState(false);
+  const [previewNum, setPreviewNum] = React.useState(null);
+  const [previewImgUrl, setPreviewImgUrl] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!previewNum) { setPreviewImgUrl(null); return; }
+    db.ref(`problemImages/${mat.id}/${previewNum}`).once("value", snap => {
+      setPreviewImgUrl(snap.val() || null);
+    });
+  }, [previewNum, mat.id]);
 
   const totalProblems = Number(mat.totalProblems) || 0;
   const startNum = Number(mat.problemStart) || 1;
@@ -61,6 +70,7 @@ function MaterialStatusCard({ mat, allStatuses, studentId, picked, togglePick })
         return copy;
       });
     } else {
+      setPreviewNum(num);
       togglePick(`${mat.id}:${num}`);
     }
   };
@@ -93,28 +103,54 @@ function MaterialStatusCard({ mat, allStatuses, studentId, picked, togglePick })
         ? <div className="text-xs text-indigo-600 bg-indigo-50 rounded-lg px-3 py-1.5">수정 중 — 클릭: 미체크 → 맞음 → 틀림 → 모름 → 미체크</div>
         : <div className="text-xs text-slate-400 bg-slate-50 rounded-lg px-3 py-1.5">클릭해서 문제 선택 — 선택한 문제를 위의 뽑기 버튼으로 인쇄</div>
       }
-      <div className="space-y-1 overflow-x-auto">
-        {rows.map((row, ri) => (
-          <div key={ri} className="flex gap-1">
-            <div className="w-10 text-right text-[10px] text-slate-400 shrink-0 self-center pr-1">{row[0]}~</div>
-            {row.map(num => {
-              const st = statuses[num] || null;
+      <div className="flex gap-3">
+        <div className="space-y-1 overflow-x-auto flex-1">
+          {rows.map((row, ri) => (
+            <div key={ri} className="flex gap-1">
+              <div className="w-10 text-right text-[10px] text-slate-400 shrink-0 self-center pr-1">{row[0]}~</div>
+              {row.map(num => {
+                const st = statuses[num] || null;
+                const sty = STATUS_STYLE[st];
+                const isPicked = !editMode && !!picked[`${mat.id}:${num}`];
+                const isPreview = !editMode && previewNum === num;
+                const bg = isPicked ? "#1e293b" : sty.bg;
+                const col = isPicked ? "#fff" : sty.text;
+                return (
+                  <button key={num}
+                    onClick={() => handleClick(num)}
+                    title={`${num}번 — ${sty.label}${isPicked ? " (선택됨)" : ""}`}
+                    style={{ background: bg, color: col, cursor: "pointer", outline: isPreview ? "2px solid #6366f1" : "none", outlineOffset: "1px" }}
+                    className="w-7 h-7 rounded text-[9px] font-bold shrink-0 border border-white/30 transition hover:opacity-80">
+                    {num}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+        {/* 미리보기 패널 */}
+        {!editMode && (
+          <div className="w-44 shrink-0 rounded-xl border border-slate-100 overflow-hidden flex flex-col bg-slate-50">
+            {previewNum ? (() => {
+              const st = (allStatuses[mat.id] || {})[previewNum] || null;
               const sty = STATUS_STYLE[st];
-              const isPicked = !editMode && !!picked[`${mat.id}:${num}`];
-              const bg = isPicked ? "#1e293b" : sty.bg;
-              const col = isPicked ? "#fff" : sty.text;
               return (
-                <button key={num}
-                  onClick={() => handleClick(num)}
-                  title={`${num}번 — ${sty.label}${isPicked ? " (선택됨)" : ""}`}
-                  style={{ background: bg, color: col, cursor: "pointer" }}
-                  className="w-7 h-7 rounded text-[9px] font-bold shrink-0 border border-white/30 transition hover:opacity-80">
-                  {num}
-                </button>
+                <>
+                  <div className="px-3 py-2 text-[11px] font-bold text-slate-700 border-b border-slate-100 bg-white flex items-center justify-between">
+                    <span>{previewNum}번</span>
+                    <span style={{ color: sty.text, background: sty.bg }} className="px-1.5 py-0.5 rounded text-[10px]">{sty.label}</span>
+                  </div>
+                  {previewImgUrl
+                    ? <img src={previewImgUrl} alt={`${previewNum}번`} className="w-full object-contain flex-1" />
+                    : <div className="flex-1 flex items-center justify-center text-xs text-slate-300">이미지 없음</div>
+                  }
+                </>
               );
-            })}
+            })()
+            : <div className="flex-1 flex items-center justify-center text-xs text-slate-300 p-3 text-center">문제를 클릭하면 미리보기</div>
+            }
           </div>
-        ))}
+        )}
       </div>
     </Card>
   );
