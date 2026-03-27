@@ -609,9 +609,13 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
 
   // 자동 숙제 계산 모달 열기
   const openAutoHwModal = async (studentId, studentName) => {
-    // 모든 커리큘럼 보드에서 이 학생의 start 노드를 찾고 연결된 교재 정보 수집
-    const snap = await db.ref("curriculumNodes").once("value");
-    const allBoards = snap.val() || {};
+    // 커리큘럼 + 학생 프로필(계수) 병렬 로드
+    const [nodesSnap, profileSnap] = await Promise.all([
+      db.ref("curriculumNodes").once("value"),
+      db.ref(`studentProfiles/${studentId}`).once("value"),
+    ]);
+    const allBoards = nodesSnap.val() || {};
+    const profile = profileSnap.val() || {};
     const mats = [];
     for (const boardId of Object.keys(allBoards)) {
       const board = allBoards[boardId];
@@ -624,7 +628,17 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
         mats.push({ nodeId: toId, materialName: matNode.materialName, totalProblems: matNode.totalProblems || 0, startNum });
       }
     }
-    setAutoHwModal({ studentId, studentName, materials: mats, selectedIdx: 0, days: "4", minPerProb: "3", coeff: "1" });
+    setAutoHwModal({
+      studentId, studentName, materials: mats, selectedIdx: 0,
+      days: "4", minPerProb: "3",
+      coeff: profile.hwCoeff != null ? String(profile.hwCoeff) : "1",
+    });
+  };
+
+  const saveCoeff = async (studentId, val) => {
+    const num = parseFloat(val);
+    if (!isNaN(num) && num > 0)
+      await db.ref(`studentProfiles/${studentId}/hwCoeff`).set(num);
   };
 
   // 자동 계산 결과 생성
@@ -825,7 +839,7 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
                 </div>
                 <div>
                   <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>계수</div>
-                  <input type="number" min="0.1" step="0.1" value={m.coeff} onChange={e=>set({coeff:e.target.value})} className={inputCls} style={{ textAlign:"center" }}/>
+                  <input type="number" min="0.1" step="0.1" value={m.coeff} onChange={e=>set({coeff:e.target.value})} onBlur={e=>saveCoeff(m.studentId, e.target.value)} className={inputCls} style={{ textAlign:"center" }}/>
                 </div>
               </div>
               <div style={{ fontSize:11, color:"#64748b" }}>하루 2시간 × {m.days}일 = {(parseInt(m.days)||0)*120}분 ÷ ({m.minPerProb}분 × {m.coeff}) = <b>{result?.numProblems || 0}문제</b></div>
