@@ -658,8 +658,14 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
         for (let p = edgeStartNum; p <= totalProblems; p++) {
           if (!matStatus[p]) { startNum = p; break; }
         }
-        const checkedCount = Object.keys(matStatus).filter(k => Number(k) >= edgeStartNum).length;
-        const lastDone = checkedCount > 0 ? `${checkedCount}문제 체크됨` : null;
+        const checked = Object.entries(matStatus).filter(([k]) => Number(k) >= edgeStartNum);
+        const correct = checked.filter(([,v]) => v === "correct").length;
+        const wrong   = checked.filter(([,v]) => v === "wrong").length;
+        const unknown = checked.filter(([,v]) => v === "unknown").length;
+        const checkedCount = checked.length;
+        const lastDone = checkedCount > 0
+          ? [correct && `맞음 ${correct}`, wrong && `틀림 ${wrong}`, unknown && `모름 ${unknown}`].filter(Boolean).join(" / ")
+          : null;
         const matSubject = materials.find(m => m.id === matNode.materialId)?.subject || "공통수학1";
         mats.push({
           nodeId: toId,
