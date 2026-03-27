@@ -2286,7 +2286,7 @@ function CurriculumManager({ students, materials }) {
 }
 
 // ── 학생용 커리큘럼 뷰 ───────────────────────────────────────────────────────
-function StudentCurriculumView({ studentId }) {
+function StudentCurriculumView({ studentId, materials = [] }) {
   const [allNodes, setAllNodes] = React.useState({});
   const [allStatuses, setAllStatuses] = React.useState({});
 
@@ -2314,19 +2314,15 @@ function StudentCurriculumView({ studentId }) {
     if (!allNodes[startNodeId]) return [];
     const visited = new Set();
     const result = [];
-    const queue = [{ nodeId: startNodeId, parentId: null }];
+    const queue = [startNodeId];
     while (queue.length) {
-      const { nodeId, parentId } = queue.shift();
+      const nodeId = queue.shift();
       if (visited.has(nodeId)) continue;
       visited.add(nodeId);
       const node = allNodes[nodeId];
       if (!node) continue;
-      if (node.type === "material") {
-        const parent = parentId ? allNodes[parentId] : null;
-        const startNum = parent?.edgeMeta?.[nodeId]?.startNum || 1;
-        result.push({ ...node, startNum });
-      }
-      for (const nid of (node.nextNodes || [])) queue.push({ nodeId: nid, parentId: nodeId });
+      if (node.type === "material") result.push(node);
+      for (const nid of (node.nextNodes || [])) queue.push(nid);
     }
     return result;
   };
@@ -2348,14 +2344,17 @@ function StudentCurriculumView({ studentId }) {
   return (
     <div className="space-y-3">
       <div className="text-sm font-medium text-slate-600">총 {path.length}개 교재</div>
-      {path.map((node) => (
-        <MaterialStatusCard
-          key={node.id}
-          mat={{ id: node.materialId, name: node.materialName, totalProblems: node.totalProblems }}
-          allStatuses={allStatuses}
-          studentId={studentId}
-        />
-      ))}
+      {path.map((node) => {
+        const fullMat = materials.find(m => m.id === node.materialId) || {};
+        return (
+          <MaterialStatusCard
+            key={node.id}
+            mat={{ ...fullMat, id: node.materialId, name: node.materialName, totalProblems: node.totalProblems }}
+            allStatuses={allStatuses}
+            studentId={studentId}
+          />
+        );
+      })}
     </div>
   );
 }

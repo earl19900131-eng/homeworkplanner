@@ -845,7 +845,7 @@ function App() {
               )}
 
               {activeTab==="curriculum" && (
-                <StudentCurriculumView studentId={currentStudent.id}/>
+                <StudentCurriculumView studentId={currentStudent.id} materials={materials}/>
               )}
 
               {activeTab==="exam" && (

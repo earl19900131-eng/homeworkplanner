@@ -11,8 +11,8 @@ const COLS = 20;
 function MaterialStatusCard({ mat, allStatuses, studentId }) {
   const statuses = allStatuses[mat.id] || {};
   const totalProblems = Number(mat.totalProblems) || 0;
-  const startNum = Number(mat.startNum) || 1;
-  const endNum = startNum + totalProblems - 1;
+  const startNum = Number(mat.problemStart) || 1;
+  const endNum = mat.problemEnd ? Number(mat.problemEnd) : startNum + totalProblems - 1;
 
   const counts = { correct: 0, wrong: 0, unknown: 0, null: 0 };
   for (let i = startNum; i <= endNum; i++) counts[statuses[i] || "null"]++;
@@ -86,25 +86,22 @@ function WrongAnswerManager({ students = [], materials = [] }) {
       const mats = [];
       for (const boardId of Object.keys(allBoards)) {
         const board = allBoards[boardId];
-        const startId = `start_${selectedStudentId}`;
-        const startNode = board[startId];
+        const startNode = board[`start_${selectedStudentId}`];
         if (!startNode) continue;
         const visited = new Set();
-        const queue = (startNode.nextNodes || []).map(nid => ({ nid, parentId: startId }));
+        const queue = [...(startNode.nextNodes || [])];
         while (queue.length) {
-          const { nid, parentId } = queue.shift();
+          const nid = queue.shift();
           if (visited.has(nid)) continue;
           visited.add(nid);
           const n = board[nid];
           if (!n) continue;
           if (n.type === "material") {
-            const parent = board[parentId];
-            const startNum = parent?.edgeMeta?.[nid]?.startNum || 1;
             const mat = materials.find(m => m.id === n.materialId);
             if (mat && !mats.find(m => m.id === mat.id))
-              mats.push({ ...mat, totalProblems: n.totalProblems || mat.totalProblems, startNum });
+              mats.push({ ...mat, totalProblems: n.totalProblems || mat.totalProblems });
           }
-          (n.nextNodes || []).forEach(id => queue.push({ nid: id, parentId: nid }));
+          (n.nextNodes || []).forEach(id => queue.push(id));
         }
       }
       setStudentMaterials(mats);
