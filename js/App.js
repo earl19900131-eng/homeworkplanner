@@ -1,3 +1,94 @@
+// ── 완료 체크 오답 입력 모달 ────────────────────────────────────────────────
+function CompletionModal({ startProblem, endProblem, studentId, materialId, onClose, onConfirm }) {
+  const [statuses, setStatuses] = React.useState({});
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    if (!studentId || !materialId) { setLoading(false); return; }
+    db.ref(`problemStatus/${studentId}/${materialId}`).once("value", snap => {
+      setStatuses(snap.val() || {});
+      setLoading(false);
+    });
+  }, [studentId, materialId]);
+
+  const CYCLE = [null, "correct", "wrong", "unknown"];
+  const STYLE = {
+    correct: { bg:"#22c55e", text:"#fff", label:"맞음" },
+    wrong:   { bg:"#ef4444", text:"#fff", label:"틀림" },
+    unknown: { bg:"#f97316", text:"#fff", label:"모름" },
+    null:    { bg:"#f1f5f9", text:"#94a3b8", label:"미체크" },
+  };
+
+  const toggle = (num) => {
+    const cur = statuses[num] || null;
+    const next = CYCLE[(CYCLE.indexOf(cur) + 1) % CYCLE.length];
+    setStatuses(s => next === null ? (({ [num]: _, ...rest }) => rest)(s) : { ...s, [num]: next });
+  };
+
+  const handleConfirm = async () => {
+    // problemStatus 저장
+    const updates = {};
+    for (let p = startProblem; p <= endProblem; p++) {
+      const s = statuses[p] || null;
+      if (s) updates[`problemStatus/${studentId}/${materialId}/${p}`] = s;
+      else updates[`problemStatus/${studentId}/${materialId}/${p}`] = null;
+    }
+    await db.ref().update(updates);
+    onConfirm();
+  };
+
+  const problems = [];
+  for (let p = startProblem; p <= endProblem; p++) problems.push(p);
+  const COLS = 10;
+  const rows = [];
+  for (let r = 0; r < Math.ceil(problems.length / COLS); r++) {
+    rows.push(problems.slice(r * COLS, r * COLS + COLS));
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-5 space-y-4" onClick={e=>e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="font-bold text-base">오답 입력 ({startProblem}~{endProblem}번)</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
+        </div>
+        <p className="text-xs text-slate-500">각 문제를 눌러 상태를 입력하세요. 미입력은 미체크로 저장됩니다.</p>
+        <div className="flex gap-3 flex-wrap">
+          {[["correct","맞음","#22c55e"],["wrong","틀림","#ef4444"],["unknown","모름","#f97316"],["null","미체크","#f1f5f9"]].map(([k,label,bg])=>(
+            <div key={k} className="flex items-center gap-1 text-xs text-slate-500">
+              <div className="w-3.5 h-3.5 rounded" style={{background:bg,border:"1px solid #e2e8f0"}}/>
+              {label}
+            </div>
+          ))}
+        </div>
+        {loading ? <div className="text-sm text-slate-400 text-center py-4">불러오는 중...</div> : (
+          <div className="space-y-1.5 overflow-x-auto">
+            {rows.map((row, ri) => (
+              <div key={ri} className="flex gap-1.5">
+                {row.map(num => {
+                  const st = statuses[num] || null;
+                  const sty = STYLE[st];
+                  return (
+                    <button key={num} onClick={() => toggle(num)}
+                      style={{ background:sty.bg, color:sty.text }}
+                      className="w-9 h-9 rounded-lg text-[11px] font-bold transition hover:opacity-80 shrink-0 border border-white/20">
+                      {num}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-2 pt-1">
+          <button onClick={handleConfirm} className="flex-1 py-2.5 rounded-xl bg-slate-900 text-white font-bold text-sm hover:bg-slate-700">완료 확인</button>
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-medium text-sm hover:bg-slate-50">취소</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── 메인 앱 ──────────────────────────────────────────────────────────────────
 function App() {
   const [students, setStudents] = useState([]);
@@ -29,6 +120,8 @@ function App() {
   const [today, setToday] = useState(todayString);
   const [confirmedHw, setConfirmedHw] = useState(null);
   const [copyToast, setCopyToast] = useState(false);
+  const [autoHwData, setAutoHwData] = useState(null); // { startProblem, materialNodeId, materialId }
+  const [completionModal, setCompletionModal] = useState(null); // { hwKey, chunkIdx, startProblem, endProblem, studentId, materialId }
 
   useEffect(() => { const id = setInterval(()=>setToday(todayString()),60000); return ()=>clearInterval(id); }, []);
 
@@ -126,7 +219,7 @@ function App() {
     return hws;
   }, [selectedTeacherStudent, homeworks, gradeFilter, subjectFilter, hwByStudent, students]);
   const studentHW = currentStudent?(hwByStudent[currentStudent.id]??[]).filter(hw=>!hw.teacherVerified):[];
-  const todayTasks = studentHW.flatMap(hw=>(hw.chunks||[]).filter(c=>c.date===today).map(c=>({...c,hwKey:hw._key,title:hw.title,subject:hw.subject})));
+  const todayTasks = studentHW.flatMap(hw=>(hw.chunks||[]).filter(c=>c.date===today).map(c=>({...c,hwKey:hw._key,title:hw.title,subject:hw.subject,isAuto:hw.isAuto,materialId:hw.materialId})));
   const overdueTasks = studentHW.flatMap(hw=>(hw.chunks||[]).filter(c=>c.date<today&&!c.done).map(c=>({...c,hwKey:hw._key,title:hw.title,subject:hw.subject})));
 
   const streak = useMemo(()=>{
@@ -143,14 +236,19 @@ function App() {
     if (!currentStudent) return;
     if (!form.title.trim()) { setFormError("숙제명을 입력해 주세요."); return; }
     if (!form.totalAmount||!form.startDate||!form.dueDate) { setFormError("총 문제 수, 시작일, 마감일을 모두 입력해 주세요."); return; }
-    const chunks = splitHomework({...form, customDates: form.selectedDates});
-    if (!chunks.length) { setFormError("기간이나 최대 문제 수를 조정해 주세요."); return; }
+    const rawChunks = splitHomework({...form, customDates: form.selectedDates});
+    if (!rawChunks.length) { setFormError("기간이나 최대 문제 수를 조정해 주세요."); return; }
+    // 자동 숙제인 경우 문제 번호 오프셋 적용
+    const offset = autoHwData && autoHwData.startProblem > 1 ? autoHwData.startProblem - 1 : 0;
+    const chunks = offset > 0 ? rawChunks.map(c => ({ ...c, startProblem: c.startProblem + offset, endProblem: c.endProblem + offset })) : rawChunks;
+    const autoExtra = autoHwData?.materialNodeId ? { isAuto: true, materialNodeId: autoHwData.materialNodeId, materialId: autoHwData.materialId } : {};
     const id = Date.now();
     setSaving(true);
     try {
-      await db.ref(`homeworks/${id}`).set({ id, title:form.title.trim(), subject:form.subject||"수학", hwType:form.hwType||"현행", studentId:currentStudent.id, studentName:currentStudent.name, totalAmount:Number(form.totalAmount), startDate:form.startDate, dueDate:form.dueDate, includeWeekend:form.includeWeekend, dailyMax:form.dailyMax?Number(form.dailyMax):null, createdAt:today, chunks });
+      await db.ref(`homeworks/${id}`).set({ id, title:form.title.trim(), subject:form.subject||"수학", hwType:form.hwType||"현행", studentId:currentStudent.id, studentName:currentStudent.name, totalAmount:Number(form.totalAmount), startDate:form.startDate, dueDate:form.dueDate, includeWeekend:form.includeWeekend, dailyMax:form.dailyMax?Number(form.dailyMax):null, createdAt:today, chunks, ...autoExtra });
       localStorage.setItem('lastSubject_' + currentStudent.id, form.subject);
       const savedSubject = form.subject;
+      setAutoHwData(null);
       setForm({...defaultForm(), subject: savedSubject}); setFormError(""); setActiveTab("today");
     } catch(e) { setFormError("저장 실패: "+e.message); }
     setSaving(false);
@@ -507,7 +605,11 @@ function App() {
                               </div>
                               <p className="mt-1 text-sm text-slate-600">오늘은 {task.startProblem}번 ~ {task.endProblem}번 ({task.plannedAmount}문제)</p>
                             </div>
-                            <Btn variant={task.done?"outline":"default"} onClick={()=>toggleDone(task.hwKey,task.date)}>
+                            <Btn variant={task.done?"outline":"default"} onClick={()=>{
+                              if (!task.done && task.isAuto && task.materialId) {
+                                setCompletionModal({hwKey:task.hwKey,date:task.date,startProblem:task.startProblem,endProblem:task.endProblem,studentId:currentStudent.id,materialId:task.materialId});
+                              } else { toggleDone(task.hwKey,task.date); }
+                            }}>
                               {task.done?"완료 취소":"완료 체크"}
                             </Btn>
                           </div>
@@ -533,8 +635,10 @@ function App() {
                           <span className="text-sm"><span className="text-[11px] font-bold text-sky-600 mr-1.5">(현)</span>{confirmedHw.현행.text}</span>
                           <div className="flex items-center gap-2 shrink-0">
                             <span className="text-[11px] text-slate-400">{confirmedHw.현행.date && (() => { const d=new Date(confirmedHw.현행.date); return `${confirmedHw.현행.date} (${["일","월","화","수","목","금","토"][d.getDay()]})`; })()}</span>
-                            <button type="button" title="복사" onClick={() => { navigator.clipboard?.writeText(confirmedHw.현행.text); setCopyToast(true); setTimeout(()=>setCopyToast(false),2000); }}
-                              className="text-slate-400 hover:text-slate-600 text-base">⧉</button>
+                            {confirmedHw.현행.isAuto
+                              ? <button type="button" onClick={() => { setForm(f=>({...f,title:confirmedHw.현행.text,hwType:confirmedHw.현행.autoHwType||"현행",subject:confirmedHw.현행.autoSubject||f.subject,totalAmount:String(confirmedHw.현행.autoTotalAmount||"")})); setAutoHwData({startProblem:confirmedHw.현행.autoStartProblem||1,materialNodeId:confirmedHw.현행.autoMaterialNodeId,materialId:confirmedHw.현행.autoMaterialId}); }} className="text-xs px-2 py-0.5 rounded-lg bg-indigo-100 text-indigo-700 font-bold hover:bg-indigo-200 shrink-0">(자동)</button>
+                              : <button type="button" title="복사" onClick={() => { navigator.clipboard?.writeText(confirmedHw.현행.text); setCopyToast(true); setTimeout(()=>setCopyToast(false),2000); }} className="text-slate-400 hover:text-slate-600 text-base">⧉</button>
+                            }
                           </div>
                         </div>
                       )}
@@ -543,8 +647,10 @@ function App() {
                           <span className="text-sm"><span className="text-[11px] font-bold text-violet-600 mr-1.5">(추1)</span>{confirmedHw.추가1.text}</span>
                           <div className="flex items-center gap-2 shrink-0">
                             <span className="text-[11px] text-slate-400">{confirmedHw.추가1.date && (() => { const d=new Date(confirmedHw.추가1.date); return `${confirmedHw.추가1.date} (${["일","월","화","수","목","금","토"][d.getDay()]})`; })()}</span>
-                            <button type="button" title="복사" onClick={() => { navigator.clipboard?.writeText(confirmedHw.추가1.text); setCopyToast(true); setTimeout(()=>setCopyToast(false),2000); }}
-                              className="text-slate-400 hover:text-slate-600 text-base">⧉</button>
+                            {confirmedHw.추가1.isAuto
+                              ? <button type="button" onClick={() => { setForm(f=>({...f,title:confirmedHw.추가1.text,hwType:confirmedHw.추가1.autoHwType||"추가1",subject:confirmedHw.추가1.autoSubject||f.subject,totalAmount:String(confirmedHw.추가1.autoTotalAmount||"")})); setAutoHwData({startProblem:confirmedHw.추가1.autoStartProblem||1,materialNodeId:confirmedHw.추가1.autoMaterialNodeId,materialId:confirmedHw.추가1.autoMaterialId}); }} className="text-xs px-2 py-0.5 rounded-lg bg-indigo-100 text-indigo-700 font-bold hover:bg-indigo-200 shrink-0">(자동)</button>
+                              : <button type="button" title="복사" onClick={() => { navigator.clipboard?.writeText(confirmedHw.추가1.text); setCopyToast(true); setTimeout(()=>setCopyToast(false),2000); }} className="text-slate-400 hover:text-slate-600 text-base">⧉</button>
+                            }
                           </div>
                         </div>
                       )}
@@ -553,8 +659,10 @@ function App() {
                           <span className="text-sm"><span className="text-[11px] font-bold text-rose-600 mr-1.5">(추2)</span>{confirmedHw.추가2.text}</span>
                           <div className="flex items-center gap-2 shrink-0">
                             <span className="text-[11px] text-slate-400">{confirmedHw.추가2.date && (() => { const d=new Date(confirmedHw.추가2.date); return `${confirmedHw.추가2.date} (${["일","월","화","수","목","금","토"][d.getDay()]})`; })()}</span>
-                            <button type="button" title="복사" onClick={() => { navigator.clipboard?.writeText(confirmedHw.추가2.text); setCopyToast(true); setTimeout(()=>setCopyToast(false),2000); }}
-                              className="text-slate-400 hover:text-slate-600 text-base">⧉</button>
+                            {confirmedHw.추가2.isAuto
+                              ? <button type="button" onClick={() => { setForm(f=>({...f,title:confirmedHw.추가2.text,hwType:confirmedHw.추가2.autoHwType||"추가2",subject:confirmedHw.추가2.autoSubject||f.subject,totalAmount:String(confirmedHw.추가2.autoTotalAmount||"")})); setAutoHwData({startProblem:confirmedHw.추가2.autoStartProblem||1,materialNodeId:confirmedHw.추가2.autoMaterialNodeId,materialId:confirmedHw.추가2.autoMaterialId}); }} className="text-xs px-2 py-0.5 rounded-lg bg-indigo-100 text-indigo-700 font-bold hover:bg-indigo-200 shrink-0">(자동)</button>
+                              : <button type="button" title="복사" onClick={() => { navigator.clipboard?.writeText(confirmedHw.추가2.text); setCopyToast(true); setTimeout(()=>setCopyToast(false),2000); }} className="text-slate-400 hover:text-slate-600 text-base">⧉</button>
+                            }
                           </div>
                         </div>
                       )}
@@ -751,6 +859,19 @@ function App() {
           </div>
         )}
       </div>
+      {completionModal && (
+        <CompletionModal
+          startProblem={completionModal.startProblem}
+          endProblem={completionModal.endProblem}
+          studentId={completionModal.studentId}
+          materialId={completionModal.materialId}
+          onClose={() => setCompletionModal(null)}
+          onConfirm={async () => {
+            await toggleDone(completionModal.hwKey, completionModal.date);
+            setCompletionModal(null);
+          }}
+        />
+      )}
       <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-800 text-white text-sm px-4 py-2 rounded-xl shadow-lg pointer-events-none transition-opacity duration-500 ${copyToast ? "opacity-100" : "opacity-0"}`}>
         클립보드에 복사되었습니다
       </div>

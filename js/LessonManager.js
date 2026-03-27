@@ -901,34 +901,20 @@ function LessonDetailView({ lesson, lessons = [], students, attendance, allAtten
             {result && (
               <button onClick={async () => {
                 const mat = m.materials[m.selectedIdx];
+                const hwType = mat.hwType || "현행";
                 // 1. 수업일지 텍스트 저장
                 await saveHW(m.studentId, result.text);
-                // 2. 구조화된 숙제 생성 (isAuto:true)
-                const id = Date.now();
-                const startDate = lesson.date || todayString();
-                const days = Math.max(1, parseInt(m.days) || 1);
-                const endDateObj = new Date(startDate);
-                endDateObj.setDate(endDateObj.getDate() + days - 1);
-                const dueDate = endDateObj.toISOString().slice(0,10);
-                const rawChunks = splitHomework({ totalAmount: result.numProblems, startDate, dueDate, includeWeekend: false, dailyMax: null, customDates: [] });
-                const offset = result.start - 1;
-                const chunks = rawChunks.map(c => ({ ...c, startProblem: c.startProblem + offset, endProblem: c.endProblem + offset }));
-                const student = (lesson.studentIds || []).includes(m.studentId)
-                  ? { id: m.studentId, name: m.studentName } : { id: m.studentId, name: m.studentName };
-                await db.ref(`homeworks/${id}`).set({
-                  id, title: result.text,
-                  subject: m.subject || "수학",
-                  hwType: mat.hwType || "현행",
-                  studentId: m.studentId,
-                  studentName: m.studentName,
-                  totalAmount: result.numProblems,
-                  startDate, dueDate,
-                  includeWeekend: false,
-                  dailyMax: null,
-                  createdAt: startDate,
+                // 2. confirmedHw에 자동 숙제 데이터 저장 (학생이 직접 등록)
+                await db.ref(`studentProfiles/${m.studentId}/confirmedHw/${hwType}`).set({
+                  text: result.text,
+                  date: lesson.date || todayString(),
                   isAuto: true,
-                  materialNodeId: mat.nodeId,
-                  chunks,
+                  autoSubject: m.subject || "수학",
+                  autoHwType: hwType,
+                  autoTotalAmount: result.numProblems,
+                  autoStartProblem: result.start,
+                  autoMaterialNodeId: mat.nodeId,
+                  autoMaterialId: mat.materialNodeId,
                 });
                 setAutoHwModal(null);
               }}
