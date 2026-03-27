@@ -14,7 +14,8 @@ function App() {
   const [activeTab, setActiveTab] = useState("today");
   const [editingHW, setEditingHW] = useState(null); // { key, form }
   const [deleteConfirmHW, setDeleteConfirmHW] = useState(null);
-  const [redistState, setRedistState] = useState(null); // { hwKey, solvedMap: {date: number} }
+  const [redistState, setRedistState] = useState(null); // { hwKey }
+  const [chunkInput, setChunkInput] = useState(null); // { hwKey, idx, val }
   const [teacherTab, setTeacherTab] = useState("dashboard");
   const [showOverdueModal, setShowOverdueModal] = useState(false);
   const [overdueGradeFilter, setOverdueGradeFilter] = useState("all");
@@ -158,17 +159,37 @@ function App() {
   const toggleDone = async (hwKey, date) => {
     const hw=homeworks.find(h=>h._key===hwKey); if(!hw) return;
     const idx=(hw.chunks||[]).findIndex(c=>c.date===date); if(idx===-1) return;
-    const chunk=hw.chunks[idx]; const done=!chunk.done;
-    const now = new Date();
-    const submittedAt = done
-      ? `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`
-      : null;
-    try { await db.ref(`homeworks/${hwKey}/chunks/${idx}`).update({done, completedAmount:done?chunk.plannedAmount:0, submittedAt}); }
-    catch(e) { alert("저장 실패: "+e.message); }
+    const chunk=hw.chunks[idx];
+    if (chunkInput?.hwKey===hwKey && chunkInput?.idx===idx) return;
+    if (!chunk.done) {
+      // 안함 → 완료
+      const now = new Date();
+      const submittedAt = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+      try { await db.ref(`homeworks/${hwKey}/chunks/${idx}`).update({done:true, completedAmount:chunk.plannedAmount, submittedAt}); }
+      catch(e) { alert("저장 실패: "+e.message); }
+    } else {
+      // 완료 → 숫자입력 모드
+      setChunkInput({ hwKey, idx, val: String(chunk.completedAmount ?? chunk.plannedAmount) });
+    }
   };
 
-  const redistribute = async (hwKey, solvedMap = {}) => {
+  const confirmChunkInput = async () => {
+    if (!chunkInput) return;
+    const { hwKey, idx, val } = chunkInput;
+    const hw = homeworks.find(h=>h._key===hwKey); if(!hw) return;
+    const chunk = hw.chunks[idx];
+    const amount = parseInt(val);
+    if (!isNaN(amount) && amount >= 0) {
+      try { await db.ref(`homeworks/${hwKey}/chunks/${idx}`).update({done:false, completedAmount:amount, submittedAt:null}); }
+      catch(e) { alert("저장 실패: "+e.message); }
+    }
+    setChunkInput(null);
+  };
+
+  const redistribute = async (hwKey) => {
     const hw=homeworks.find(h=>h._key===hwKey); if(!hw) return;
+    const solvedMap = {};
+    (hw.chunks||[]).forEach(c => { if (!c.done && c.completedAmount > 0) solvedMap[c.date] = c.completedAmount; });
     const updated=redistributeHomework(hw,today,solvedMap);
     setSaving(true);
     try { await db.ref(`homeworks/${hwKey}/chunks`).set(updated.chunks); }
@@ -595,7 +616,7 @@ function App() {
                               <div className="text-xs text-slate-400 mt-1">{doneCount}/{hw.chunks?.length||0}일 완료 ({pct}%)</div>
                             </div>
                             <div className="flex gap-1.5 flex-wrap shrink-0">
-                              {hasOverdue&&<Btn variant="outline" size="sm" onClick={()=>setRedistState(s=>s?.hwKey===hw._key?null:{hwKey:hw._key,solvedMap:{}})} disabled={saving}>{redistState?.hwKey===hw._key?"취소":"재분배"}</Btn>}
+                              {hasOverdue&&<Btn variant="outline" size="sm" onClick={()=>setRedistState(s=>s?.hwKey===hw._key?null:{hwKey:hw._key})} disabled={saving}>{redistState?.hwKey===hw._key?"취소":"재분배"}</Btn>}
                               {!isDeleting && !isEditing && <Btn variant="outline" size="sm" onClick={()=>setEditingHW({key:hw._key, form:{title:hw.title,subject:hw.subject,totalAmount:hw.totalAmount,startDate:hw.startDate,dueDate:hw.dueDate,includeWeekend:hw.includeWeekend||false,dailyMax:hw.dailyMax||"",selectedDates:null}})}>수정</Btn>}
                               {!isDeleting && !isEditing && <Btn variant="danger" size="sm" onClick={()=>setDeleteConfirmHW(hw._key)}>삭제</Btn>}
                               {isDeleting && <>
@@ -610,27 +631,11 @@ function App() {
                             </div>
                           </div>
                           {redistState?.hwKey === hw._key && (
-                            <div className="border-t pt-3 space-y-3">
-                              <div className="text-sm font-medium text-slate-700">미완료 회차별 이미 푼 문제 수 입력 <span className="text-xs font-normal text-slate-400">(0이면 비워두세요)</span></div>
-                              <div className="space-y-1.5">
-                                {(hw.chunks||[]).filter(c=>!c.done).map(c=>(
-                                  <div key={c.date} className="flex items-center gap-3">
-                                    <span className="text-xs text-slate-500 w-20 shrink-0">{c.date}</span>
-                                    <span className="text-xs text-slate-400 flex-1">{c.startProblem}~{c.endProblem}번 ({c.plannedAmount}문제)</span>
-                                    <div className="flex items-center gap-1.5 shrink-0">
-                                      <input type="number" min="0" max={c.plannedAmount}
-                                        value={redistState.solvedMap[c.date]||""}
-                                        onChange={e=>setRedistState(s=>({...s,solvedMap:{...s.solvedMap,[c.date]:e.target.value}}))}
-                                        placeholder="0"
-                                        className="w-14 text-center text-sm rounded-lg border border-slate-200 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-300"/>
-                                      <span className="text-xs text-slate-400">문제 품</span>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
+                            <div className="border-t pt-3 space-y-2">
+                              <div className="text-xs text-slate-500">각 날짜를 클릭해 완료/부분완료를 표시한 뒤 재분배를 실행하세요.</div>
                               <div className="flex gap-2 justify-end">
                                 <Btn variant="outline" size="sm" onClick={()=>setRedistState(null)}>취소</Btn>
-                                <Btn size="sm" onClick={()=>redistribute(hw._key, redistState.solvedMap)} disabled={saving}>{saving?"처리 중...":"재분배 실행"}</Btn>
+                                <Btn size="sm" onClick={()=>redistribute(hw._key)} disabled={saving}>{saving?"처리 중...":"재분배 실행"}</Btn>
                               </div>
                             </div>
                           )}
@@ -656,15 +661,38 @@ function App() {
                             </div>
                           )}
                           {!isEditing && <div className="space-y-1">
-                            {(hw.chunks||[]).map(chunk=>{
+                            {(hw.chunks||[]).map((chunk, cidx)=>{
                               const isOverdue=!chunk.done&&chunk.date<today;
                               const isToday=chunk.date===today;
+                              const isInputMode = chunkInput?.hwKey===hw._key && chunkInput?.idx===cidx;
                               return(
-                                <button key={chunk.date} type="button" onClick={()=>toggleDone(hw._key,chunk.date)}
-                                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition text-left ${chunk.done?"bg-emerald-50 text-emerald-700":isOverdue?"bg-red-50 text-red-700":isToday?"bg-blue-50 text-blue-700":"bg-slate-50 text-slate-600"}`}>
+                                <div key={chunk.date}
+                                  onClick={()=>!isInputMode&&toggleDone(hw._key,chunk.date)}
+                                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition cursor-pointer
+                                    ${isInputMode?"bg-amber-50 text-amber-700":chunk.done?"bg-emerald-50 text-emerald-700":isOverdue?"bg-red-50 text-red-700":isToday?"bg-blue-50 text-blue-700":"bg-slate-50 text-slate-600"}`}>
                                   <span>{chunk.date}{isToday?" · 오늘":""}</span>
-                                  <span className="font-medium">{chunk.startProblem}~{chunk.endProblem}번 ({chunk.plannedAmount}문제) {chunk.done?"✓":isOverdue?"⚠":""}</span>
-                                </button>
+                                  <span className="font-medium flex items-center gap-1">
+                                    {isInputMode ? (
+                                      <>
+                                        <input type="number" min="0" max={chunk.plannedAmount}
+                                          value={chunkInput.val}
+                                          onChange={e=>setChunkInput(s=>({...s,val:e.target.value}))}
+                                          onKeyDown={e=>{e.stopPropagation();if(e.key==="Enter")confirmChunkInput();if(e.key==="Escape")setChunkInput(null);}}
+                                          onClick={e=>e.stopPropagation()}
+                                          autoFocus
+                                          className="w-14 border border-amber-300 rounded px-1 py-0.5 text-xs text-center bg-white"/>
+                                        <span className="text-xs">문제</span>
+                                        <button onClick={e=>{e.stopPropagation();confirmChunkInput();}} className="text-amber-700 hover:text-amber-900 font-bold">✓</button>
+                                        <button onClick={e=>{e.stopPropagation();setChunkInput(null);}} className="text-slate-400 hover:text-slate-600">✕</button>
+                                      </>
+                                    ) : (
+                                      <>
+                                        {chunk.startProblem}~{chunk.endProblem}번 ({chunk.plannedAmount}문제)
+                                        {chunk.done ? " ✓" : chunk.completedAmount>0 ? ` (${chunk.completedAmount}문제 완료)` : isOverdue?" ⚠":""}
+                                      </>
+                                    )}
+                                  </span>
+                                </div>
                               );
                             })}
                           </div>}
