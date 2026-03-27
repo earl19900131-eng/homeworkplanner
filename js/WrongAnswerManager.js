@@ -130,7 +130,7 @@ function MaterialStatusCard({ mat, allStatuses, studentId, picked, togglePick })
         </div>
         {/* 미리보기 패널 */}
         {!editMode && (
-          <div className="w-44 shrink-0 rounded-xl border border-slate-100 overflow-hidden flex flex-col bg-slate-50">
+          <div className="shrink-0 rounded-xl border border-slate-100 overflow-hidden flex flex-col bg-slate-50" style={{width:"352px"}}>
             {previewNum ? (() => {
               const st = (allStatuses[mat.id] || {})[previewNum] || null;
               const sty = STATUS_STYLE[st];
@@ -141,8 +141,8 @@ function MaterialStatusCard({ mat, allStatuses, studentId, picked, togglePick })
                     <span style={{ color: sty.text, background: sty.bg }} className="px-1.5 py-0.5 rounded text-[10px]">{sty.label}</span>
                   </div>
                   {previewImgUrl
-                    ? <img src={previewImgUrl} alt={`${previewNum}번`} className="w-full object-contain flex-1" />
-                    : <div className="flex-1 flex items-center justify-center text-xs text-slate-300">이미지 없음</div>
+                    ? <img src={previewImgUrl} alt={`${previewNum}번`} style={{width:"100%",height:"auto",display:"block"}} />
+                    : <div className="flex items-center justify-center text-xs text-slate-300" style={{height:"200px"}}>이미지 없음</div>
                   }
                 </>
               );
