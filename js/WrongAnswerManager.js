@@ -8,7 +8,7 @@ const STATUS_STYLE = {
 };
 const COLS = 20;
 
-function MaterialStatusCard({ mat, allStatuses, studentId }) {
+function MaterialStatusCard({ mat, allStatuses, studentId, picked, togglePick }) {
   const [editMode, setEditMode] = React.useState(false);
   const [local, setLocal] = React.useState({});
   const [saving, setSaving] = React.useState(false);
@@ -51,15 +51,18 @@ function MaterialStatusCard({ mat, allStatuses, studentId }) {
     setEditMode(false);
   };
 
-  const toggle = (num) => {
-    if (!editMode) return;
-    const cur = local[num] || null;
-    const next = STATUS_CYCLE[(STATUS_CYCLE.indexOf(cur) + 1) % STATUS_CYCLE.length];
-    setLocal(s => {
-      const copy = { ...s };
-      if (next === null) delete copy[num]; else copy[num] = next;
-      return copy;
-    });
+  const handleClick = (num) => {
+    if (editMode) {
+      const cur = local[num] || null;
+      const next = STATUS_CYCLE[(STATUS_CYCLE.indexOf(cur) + 1) % STATUS_CYCLE.length];
+      setLocal(s => {
+        const copy = { ...s };
+        if (next === null) delete copy[num]; else copy[num] = next;
+        return copy;
+      });
+    } else {
+      togglePick(`${mat.id}:${num}`);
+    }
   };
 
   if (totalProblems === 0) return null;
@@ -86,7 +89,10 @@ function MaterialStatusCard({ mat, allStatuses, studentId }) {
           }
         </div>
       </div>
-      {editMode && <div className="text-xs text-indigo-600 bg-indigo-50 rounded-lg px-3 py-1.5">수정 중 — 클릭: 미체크 → 맞음 → 틀림 → 모름 → 미체크</div>}
+      {editMode
+        ? <div className="text-xs text-indigo-600 bg-indigo-50 rounded-lg px-3 py-1.5">수정 중 — 클릭: 미체크 → 맞음 → 틀림 → 모름 → 미체크</div>
+        : <div className="text-xs text-slate-400 bg-slate-50 rounded-lg px-3 py-1.5">클릭해서 문제 선택 — 선택한 문제를 위의 뽑기 버튼으로 인쇄</div>
+      }
       <div className="space-y-1 overflow-x-auto">
         {rows.map((row, ri) => (
           <div key={ri} className="flex gap-1">
@@ -94,13 +100,15 @@ function MaterialStatusCard({ mat, allStatuses, studentId }) {
             {row.map(num => {
               const st = statuses[num] || null;
               const sty = STATUS_STYLE[st];
+              const isPicked = !editMode && !!picked[`${mat.id}:${num}`];
+              const bg = isPicked ? "#1e293b" : sty.bg;
+              const col = isPicked ? "#fff" : sty.text;
               return (
                 <button key={num}
-                  onClick={() => toggle(num)}
-                  disabled={!editMode}
-                  title={`${num}번 — ${sty.label}`}
-                  style={{ background: sty.bg, color: sty.text, cursor: editMode ? "pointer" : "default" }}
-                  className="w-7 h-7 rounded text-[9px] font-bold shrink-0 border border-white/30 transition hover:opacity-80 disabled:hover:opacity-100">
+                  onClick={() => handleClick(num)}
+                  title={`${num}번 — ${sty.label}${isPicked ? " (선택됨)" : ""}`}
+                  style={{ background: bg, color: col, cursor: "pointer" }}
+                  className="w-7 h-7 rounded text-[9px] font-bold shrink-0 border border-white/30 transition hover:opacity-80">
                   {num}
                 </button>
               );
@@ -116,7 +124,7 @@ function WrongAnswerManager({ students = [], materials = [] }) {
   const [selectedStudentId, setSelectedStudentId] = React.useState("");
   const [studentMaterials, setStudentMaterials] = React.useState([]);
   const [allStatuses, setAllStatuses] = React.useState({});
-  const [picked, setPicked] = React.useState({}); // { "matId:num": true }
+  const [picked, setPicked] = React.useState({});
   const [showPrint, setShowPrint] = React.useState(false);
 
   React.useEffect(() => {
@@ -156,24 +164,13 @@ function WrongAnswerManager({ students = [], materials = [] }) {
     return () => ref.off();
   }, [selectedStudentId]);
 
-  // 틀림/모름 문제 목록
-  const wrongList = React.useMemo(() => {
-    const result = [];
-    for (const mat of studentMaterials) {
-      const matStatuses = allStatuses[mat.id] || {};
-      Object.entries(matStatuses).forEach(([num, status]) => {
-        if (status === "wrong" || status === "unknown")
-          result.push({ key: `${mat.id}:${num}`, matId: mat.id, matName: mat.name, num: Number(num), status });
-      });
-    }
-    return result;
-  }, [studentMaterials, allStatuses]);
-
   const togglePick = (key) => setPicked(prev => {
     const copy = { ...prev };
     if (copy[key]) delete copy[key]; else copy[key] = true;
     return copy;
   });
+
+  const pickedCount = Object.keys(picked).length;
 
   const pickedList = React.useMemo(() => {
     const result = [];
@@ -193,19 +190,24 @@ function WrongAnswerManager({ students = [], materials = [] }) {
     return result;
   }, [picked, studentMaterials, allStatuses]);
 
-  // 2단, 단당 2문제 → 4개씩 그룹
   const printGroups = [];
   for (let i = 0; i < pickedList.length; i += 4) printGroups.push(pickedList.slice(i, i + 4));
 
   return (
     <div className="space-y-4">
       <Card className="p-4">
-        <div className="flex flex-wrap gap-3 items-center">
+        <div className="flex flex-wrap gap-3 items-center justify-between">
           <select value={selectedStudentId} onChange={e => { setSelectedStudentId(e.target.value); }}
             className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 min-w-[140px]">
             <option value="">학생 선택</option>
             {students.map(s => <option key={s.id} value={s.id}>{s.name} ({s.className})</option>)}
           </select>
+          {selectedStudentId && (
+            <button onClick={() => setShowPrint(true)} disabled={pickedCount === 0}
+              className="text-xs px-3 py-1.5 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">
+              선택 문제 보기 ({pickedCount})
+            </button>
+          )}
         </div>
       </Card>
 
@@ -213,55 +215,8 @@ function WrongAnswerManager({ students = [], materials = [] }) {
       {selectedStudentId && studentMaterials.length === 0 && <Card className="p-8 text-center text-sm text-slate-400">커리큘럼에 연결된 교재가 없습니다.</Card>}
 
       {studentMaterials.map(mat => (
-        <MaterialStatusCard key={mat.id} mat={mat} allStatuses={allStatuses} studentId={selectedStudentId} />
+        <MaterialStatusCard key={mat.id} mat={mat} allStatuses={allStatuses} studentId={selectedStudentId} picked={picked} togglePick={togglePick} />
       ))}
-
-      {/* 문제 뽑기 */}
-      {selectedStudentId && studentMaterials.length > 0 && (
-        <Card className="p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-sm">📋 문제 뽑기</h3>
-            <button onClick={() => setShowPrint(true)} disabled={pickedList.length === 0}
-              className="text-xs px-3 py-1.5 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">
-              선택 문제 보기 ({Object.keys(picked).length})
-            </button>
-          </div>
-          <div className="text-xs text-slate-400">문제를 클릭해 선택 — 틀림 <span style={{color:"#b91c1c"}}>●</span> 모름 <span style={{color:"#c2410c"}}>●</span> 미체크 ●</div>
-          {studentMaterials.map(mat => {
-            const totalProblems = Number(mat.totalProblems) || 0;
-            if (totalProblems === 0) return null;
-            const startNum = Number(mat.problemStart) || 1;
-            const endNum = mat.problemEnd ? Number(mat.problemEnd) : startNum + totalProblems - 1;
-            const matStatuses = allStatuses[mat.id] || {};
-            const allNums = Array.from({ length: endNum - startNum + 1 }, (_, i) => startNum + i);
-            return (
-              <div key={mat.id} className="space-y-1.5">
-                <div className="text-xs font-semibold text-slate-500">{mat.name}</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {allNums.map(num => {
-                    const key = `${mat.id}:${num}`;
-                    const status = matStatuses[num] || null;
-                    const sel = !!picked[key];
-                    let bg, col;
-                    if (sel) { bg = "#1e293b"; col = "#fff"; }
-                    else if (status === "wrong")   { bg = "#fee2e2"; col = "#b91c1c"; }
-                    else if (status === "unknown") { bg = "#ffedd5"; col = "#c2410c"; }
-                    else if (status === "correct") { bg = "#dcfce7"; col = "#15803d"; }
-                    else                           { bg = "#f1f5f9"; col = "#94a3b8"; }
-                    return (
-                      <button key={key} onClick={() => togglePick(key)}
-                        style={{ background: bg, color: col }}
-                        className="w-9 h-9 rounded-lg text-[11px] font-bold border border-white/20 transition hover:opacity-80">
-                        {num}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </Card>
-      )}
 
       {/* 뽑기 미리보기 모달 */}
       {showPrint && (
@@ -273,7 +228,6 @@ function WrongAnswerManager({ students = [], materials = [] }) {
             </div>
             {printGroups.map((group, gi) => (
               <div key={gi} className="grid grid-cols-2 gap-3">
-                {/* 왼쪽 단: 0,1 */}
                 <div className="space-y-3">
                   {[group[0], group[1]].filter(Boolean).map(p => (
                     <div key={p.key} className="border border-slate-200 rounded-xl overflow-hidden">
@@ -289,7 +243,6 @@ function WrongAnswerManager({ students = [], materials = [] }) {
                     </div>
                   ))}
                 </div>
-                {/* 오른쪽 단: 2,3 */}
                 <div className="space-y-3">
                   {[group[2], group[3]].filter(Boolean).map(p => (
                     <div key={p.key} className="border border-slate-200 rounded-xl overflow-hidden">
