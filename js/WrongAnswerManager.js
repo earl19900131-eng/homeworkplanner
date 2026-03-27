@@ -116,7 +116,7 @@ function WrongAnswerManager({ students = [], materials = [] }) {
   const [selectedStudentId, setSelectedStudentId] = React.useState("");
   const [studentMaterials, setStudentMaterials] = React.useState([]);
   const [allStatuses, setAllStatuses] = React.useState({});
-  const [picked, setPicked] = React.useState(new Set()); // "matId:num"
+  const [picked, setPicked] = React.useState({}); // { "matId:num": true }
   const [showPrint, setShowPrint] = React.useState(false);
 
   React.useEffect(() => {
@@ -145,7 +145,7 @@ function WrongAnswerManager({ students = [], materials = [] }) {
         }
       }
       setStudentMaterials(mats);
-      setPicked(new Set());
+      setPicked({});
     });
   }, [selectedStudentId]);
 
@@ -170,9 +170,9 @@ function WrongAnswerManager({ students = [], materials = [] }) {
   }, [studentMaterials, allStatuses]);
 
   const togglePick = (key) => setPicked(prev => {
-    const s = new Set(prev);
-    if (s.has(key)) s.delete(key); else s.add(key);
-    return s;
+    const copy = { ...prev };
+    if (copy[key]) delete copy[key]; else copy[key] = true;
+    return copy;
   });
 
   const pickedList = React.useMemo(() => {
@@ -185,7 +185,7 @@ function WrongAnswerManager({ students = [], materials = [] }) {
       const matStatuses = allStatuses[mat.id] || {};
       for (let num = startNum; num <= endNum; num++) {
         const key = `${mat.id}:${num}`;
-        if (picked.has(key)) {
+        if (picked[key]) {
           result.push({ key, matId: mat.id, matName: mat.name, num, status: matStatuses[num] || null });
         }
       }
@@ -223,7 +223,7 @@ function WrongAnswerManager({ students = [], materials = [] }) {
             <h3 className="font-semibold text-sm">📋 문제 뽑기</h3>
             <button onClick={() => setShowPrint(true)} disabled={pickedList.length === 0}
               className="text-xs px-3 py-1.5 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">
-              선택 문제 보기 ({pickedList.length})
+              선택 문제 보기 ({Object.keys(picked).length})
             </button>
           </div>
           <div className="text-xs text-slate-400">문제를 클릭해 선택 — 틀림 <span style={{color:"#b91c1c"}}>●</span> 모름 <span style={{color:"#c2410c"}}>●</span> 미체크 ●</div>
@@ -241,7 +241,7 @@ function WrongAnswerManager({ students = [], materials = [] }) {
                   {allNums.map(num => {
                     const key = `${mat.id}:${num}`;
                     const status = matStatuses[num] || null;
-                    const sel = picked.has(key);
+                    const sel = !!picked[key];
                     let bg, col;
                     if (sel) { bg = "#1e293b"; col = "#fff"; }
                     else if (status === "wrong")   { bg = "#fee2e2"; col = "#b91c1c"; }
