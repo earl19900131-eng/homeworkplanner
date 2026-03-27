@@ -2288,9 +2288,9 @@ function CurriculumManager({ students, materials }) {
 // ── 학생용 커리큘럼 뷰 ───────────────────────────────────────────────────────
 function StudentCurriculumView({ studentId }) {
   const [allNodes, setAllNodes] = React.useState({});
+  const [allStatuses, setAllStatuses] = React.useState({});
 
   React.useEffect(() => {
-    // 모든 캔버스의 노드를 하나로 합쳐서 경로 탐색
     const ref = db.ref("curriculumNodes");
     ref.on("value", snap => {
       const data = snap.val() || {};
@@ -2300,6 +2300,13 @@ function StudentCurriculumView({ studentId }) {
     });
     return () => ref.off();
   }, []);
+
+  React.useEffect(() => {
+    if (!studentId) return;
+    const ref = db.ref(`problemStatus/${studentId}`);
+    ref.on("value", snap => setAllStatuses(snap.val() || {}));
+    return () => ref.off();
+  }, [studentId]);
 
   const startNodeId = `start_${studentId}`;
 
@@ -2334,23 +2341,15 @@ function StudentCurriculumView({ studentId }) {
   );
 
   return (
-    <div className="space-y-2">
-      <div className="text-sm font-medium text-slate-600 mb-3">총 {path.length}개 교재</div>
-      {path.map((node, idx) => (
-        <div key={node.id}>
-          <div className="rounded-2xl border px-4 py-3 bg-white flex items-center gap-3">
-            <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-sm font-bold shrink-0">
-              {idx + 1}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-medium text-sm">{node.materialName}</div>
-              <div className="text-xs text-slate-500">{node.totalProblems}문제</div>
-            </div>
-          </div>
-          {idx < path.length - 1 && (
-            <div className="flex justify-center py-0.5 text-slate-200 text-lg select-none">↓</div>
-          )}
-        </div>
+    <div className="space-y-3">
+      <div className="text-sm font-medium text-slate-600">총 {path.length}개 교재</div>
+      {path.map((node) => (
+        <MaterialStatusCard
+          key={node.id}
+          mat={{ id: node.materialId, name: node.materialName, totalProblems: node.totalProblems }}
+          allStatuses={allStatuses}
+          studentId={studentId}
+        />
       ))}
     </div>
   );
