@@ -660,6 +660,7 @@ function LessonDetailView({ lesson, lessons = [], students, attendance, allAtten
         }
         const checkedCount = Object.keys(matStatus).filter(k => Number(k) >= edgeStartNum).length;
         const lastDone = checkedCount > 0 ? `${checkedCount}문제 체크됨` : null;
+        const matSubject = materials.find(m => m.id === matNode.materialId)?.subject || "공통수학1";
         mats.push({
           nodeId: toId,
           materialNodeId: matNode.materialId,
@@ -668,15 +669,14 @@ function LessonDetailView({ lesson, lessons = [], students, attendance, allAtten
           startNum,
           lastDone,
           hwType: startNode.hwType || "현행",
+          subject: matSubject,
         });
       }
     }
-    const SUBJ_LIST = ["중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"];
-    const guessSubject = (name) => SUBJ_LIST.find(s => name && name.includes(s)) || "공통수학1";
     setAutoHwModal({
       studentId, studentName, materials: mats, selectedIdx: 0,
       days: "4", minPerProb: "3",
-      subject: guessSubject(mats[0]?.materialName),
+      subject: mats[0]?.subject || "공통수학1",
       coeff: profile.problemCoeff != null ? String(profile.problemCoeff) : "1",
     });
   };
@@ -862,7 +862,7 @@ function LessonDetailView({ lesson, lessons = [], students, attendance, allAtten
               {m.materials.length > 1 && (
                 <div>
                   <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>교재 선택</div>
-                  <select value={m.selectedIdx} onChange={e=>{ const idx=Number(e.target.value); const SUBJ_LIST=["중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"]; const name=m.materials[idx]?.materialName||""; set({selectedIdx:idx,subject:SUBJ_LIST.find(s=>name.includes(s))||m.subject}); }} className={inputCls}>
+                  <select value={m.selectedIdx} onChange={e=>{ const idx=Number(e.target.value); set({selectedIdx:idx, subject:m.materials[idx]?.subject||m.subject}); }} className={inputCls}>
                     {m.materials.map((mat,i) => (
                       <option key={i} value={i}>{mat.materialName} ({mat.startNum}번~{mat.lastDone ? " ✓"+mat.lastDone : ""}, 총{mat.totalProblems}문제)</option>
                     ))}
@@ -1538,7 +1538,7 @@ function LessonCalendar({ lessons, today, focusDateOverride, focusTrigger, onDay
 }
 
 // ── 수업일지 메인 ─────────────────────────────────────────────────────────
-function LessonManager({ students, isViewer = false }) {
+function LessonManager({ students, materials = [], isViewer = false }) {
   const today = todayString();
   const [lessons, setLessons] = React.useState([]);
   const [attendance, setAttendance] = React.useState({});
