@@ -1,10 +1,13 @@
 // ── 문제 이미지 관리 ──────────────────────────────────────────────────────────
 function ProblemImageManager({ materialId }) {
-  const [images, setImages] = React.useState({});   // { num: url }
-  const [numInput, setNumInput] = React.useState("");
-  const [uploading, setUploading] = React.useState(false);
+  const [images, setImages] = React.useState({});
+  const [startNum, setStartNum] = React.useState("");
+  const [progress, setProgress] = React.useState(null); // { current, total, num }
   const [uploadError, setUploadError] = React.useState("");
   const fileRef = React.useRef();
+  // 단건 교체용
+  const [replaceNum, setReplaceNum] = React.useState(null);
+  const replaceRef = React.useRef();
 
   React.useEffect(() => {
     const ref = db.ref(`problemImages/${materialId}`);
@@ -12,26 +15,37 @@ function ProblemImageManager({ materialId }) {
     return () => ref.off();
   }, [materialId]);
 
-  const handleUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const num = numInput.trim();
-    if (!num) { setUploadError("문제 번호를 먼저 입력하세요."); return; }
+  const uploadFile = async (file, num) => {
+    const ext = file.name.split(".").pop();
+    const ref = storage.ref(`problemImages/${materialId}/${num}.${ext}`);
+    await ref.put(file);
+    const url = await ref.getDownloadURL();
+    await db.ref(`problemImages/${materialId}/${num}`).set(url);
+  };
+
+  const handleBulkUpload = async (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    const start = parseInt(startNum);
+    if (!start || isNaN(start)) { setUploadError("시작 번호를 먼저 입력하세요."); return; }
     setUploadError("");
-    setUploading(true);
-    try {
-      const ext = file.name.split(".").pop();
-      const path = `problemImages/${materialId}/${num}.${ext}`;
-      const ref = storage.ref(path);
-      await ref.put(file);
-      const url = await ref.getDownloadURL();
-      await db.ref(`problemImages/${materialId}/${num}`).set(url);
-      setNumInput("");
-      if (fileRef.current) fileRef.current.value = "";
-    } catch(err) {
-      setUploadError("업로드 실패: " + err.message);
+    for (let i = 0; i < files.length; i++) {
+      const num = start + i;
+      setProgress({ current: i + 1, total: files.length, num });
+      try { await uploadFile(files[i], num); }
+      catch(err) { setUploadError(`${num}번 업로드 실패: ${err.message}`); break; }
     }
-    setUploading(false);
+    setProgress(null);
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
+  const handleReplace = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !replaceNum) return;
+    try { await uploadFile(file, replaceNum); }
+    catch(err) { setUploadError(`${replaceNum}번 교체 실패: ${err.message}`); }
+    setReplaceNum(null);
+    if (replaceRef.current) replaceRef.current.value = "";
   };
 
   const handleDelete = async (num) => {
@@ -44,20 +58,29 @@ function ProblemImageManager({ materialId }) {
   return (
     <Card className="p-5 space-y-4">
       <h2 className="text-base font-bold">문제 이미지 관리</h2>
-      <div className="flex gap-2 items-end flex-wrap">
+      <div className="flex gap-3 items-end flex-wrap">
         <div className="space-y-1.5">
-          <Lbl>문제 번호</Lbl>
-          <input type="number" value={numInput} onChange={e => setNumInput(e.target.value)}
-            placeholder="예: 42"
+          <Lbl>시작 번호</Lbl>
+          <input type="number" value={startNum} onChange={e => setStartNum(e.target.value)}
+            placeholder="예: 35"
             className="w-28 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"/>
         </div>
         <div className="space-y-1.5">
-          <Lbl>이미지 파일</Lbl>
-          <input ref={fileRef} type="file" accept="image/*" onChange={handleUpload} disabled={uploading}
+          <Lbl>이미지 파일 (여러 장 선택 가능)</Lbl>
+          <input ref={fileRef} type="file" accept="image/*" multiple onChange={handleBulkUpload} disabled={!!progress}
             className="text-sm text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200 cursor-pointer"/>
         </div>
-        {uploading && <span className="text-xs text-slate-400 pb-2">업로드 중...</span>}
       </div>
+      {/* 숨겨진 교체용 파일 input */}
+      <input ref={replaceRef} type="file" accept="image/*" onChange={handleReplace} className="hidden"/>
+      {progress && (
+        <div className="text-sm text-indigo-600 bg-indigo-50 rounded-xl px-4 py-2">
+          업로드 중... {progress.current}/{progress.total} ({progress.num}번)
+          <div className="mt-1 h-1.5 bg-indigo-100 rounded-full overflow-hidden">
+            <div className="h-full bg-indigo-500 rounded-full transition-all" style={{width:`${progress.current/progress.total*100}%`}}/>
+          </div>
+        </div>
+      )}
       {uploadError && <div className="text-xs text-red-500 bg-red-50 rounded-xl px-3 py-2">{uploadError}</div>}
       {sortedNums.length === 0
         ? <div className="rounded-xl border border-dashed p-4 text-sm text-slate-400 text-center">등록된 이미지가 없습니다.</div>
@@ -68,7 +91,7 @@ function ProblemImageManager({ materialId }) {
                 <div className="flex items-center justify-between px-2 py-1.5 bg-white border-t border-slate-100">
                   <span className="text-xs font-bold text-slate-700">{num}번</span>
                   <div className="flex gap-1">
-                    <button onClick={() => { setNumInput(num); if(fileRef.current) fileRef.current.click(); }}
+                    <button onClick={() => { setReplaceNum(Number(num)); if(replaceRef.current) replaceRef.current.click(); }}
                       className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 hover:bg-slate-200">교체</button>
                     <button onClick={() => handleDelete(num)}
                       className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-500 hover:bg-red-100">삭제</button>
