@@ -415,7 +415,7 @@ function RemainingPickerModal({ studentName, assessmentName, totalProblems, curr
   );
 }
 
-function LessonDetailView({ lesson, lessons = [], students, attendance, allAttendance, isViewer = false, onBack, onEdit }) {
+function LessonDetailView({ lesson, lessons = [], students, materials = [], attendance, allAttendance, isViewer = false, onBack, onEdit }) {
   const [editingHW, setEditingHW] = React.useState(null);
   const [hwValue, setHwValue] = React.useState("");
   const [unitModal, setUnitModal] = React.useState(null); // studentId
@@ -1596,6 +1596,7 @@ function LessonManager({ students, materials = [], isViewer = false }) {
           lesson={currentLesson}
           lessons={lessons}
           students={students}
+          materials={materials}
           attendance={attendance}
           allAttendance={attendance}
           isViewer={isViewer}
