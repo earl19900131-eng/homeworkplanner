@@ -430,6 +430,8 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
   const [undoStack, setUndoStack] = React.useState([]);        // [{ studentId, field, value }]
   const [confirmDone, setConfirmDone] = React.useState(false);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const [autoHwModal, setAutoHwModal] = React.useState(null);
+  // { studentId, studentName, materials:[{nodeId,materialName,totalProblems,startNum}], selectedIdx, days, minPerProb, coeff }
   const fullscreenRef = React.useRef(null);
   const containerRef = React.useRef(null);
 
@@ -605,6 +607,41 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
     refocusContainer();
   };
 
+  // 자동 숙제 계산 모달 열기
+  const openAutoHwModal = async (studentId, studentName) => {
+    // 모든 커리큘럼 보드에서 이 학생의 start 노드를 찾고 연결된 교재 정보 수집
+    const snap = await db.ref("curriculumNodes").once("value");
+    const allBoards = snap.val() || {};
+    const mats = [];
+    for (const boardId of Object.keys(allBoards)) {
+      const board = allBoards[boardId];
+      const startNode = board[`start_${studentId}`];
+      if (!startNode) continue;
+      for (const toId of (startNode.nextNodes || [])) {
+        const matNode = board[toId];
+        if (!matNode || matNode.type !== "material") continue;
+        const startNum = startNode.edgeMeta?.[toId]?.startNum || 1;
+        mats.push({ nodeId: toId, materialName: matNode.materialName, totalProblems: matNode.totalProblems || 0, startNum });
+      }
+    }
+    setAutoHwModal({ studentId, studentName, materials: mats, selectedIdx: 0, days: "4", minPerProb: "3", coeff: "1" });
+  };
+
+  // 자동 계산 결과 생성
+  const calcAutoHw = (modal) => {
+    if (!modal || modal.materials.length === 0) return null;
+    const mat = modal.materials[modal.selectedIdx];
+    const days = parseInt(modal.days) || 1;
+    const minPerProb = parseFloat(modal.minPerProb) || 1;
+    const coeff = parseFloat(modal.coeff) || 1;
+    const totalMin = days * 120;
+    const timePerProb = minPerProb * coeff;
+    const numProblems = Math.max(1, Math.floor(totalMin / timePerProb));
+    const start = mat.startNum;
+    const end = start + numProblems - 1;
+    return { text: `${mat.materialName} ${start}~${end}번 (${numProblems}문제)`, numProblems, start, end };
+  };
+
   // 현행/추가 저장
   const saveLessonType = async (studentId, val) => {
     await db.ref(`lessonAttendance/${lesson._key}/${studentId}/lessonType`).set(val);
@@ -745,8 +782,80 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
 
   const tagModalStudent = tagModal ? students.find(s => s.id === tagModal) : null;
 
+  // 자동 숙제 모달 렌더
+  const renderAutoHwModal = () => {
+    if (!autoHwModal) return null;
+    const m = autoHwModal;
+    const result = calcAutoHw(m);
+    const set = (patch) => setAutoHwModal(prev => ({ ...prev, ...patch }));
+    const inputCls = "w-full border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-300";
+    return (
+      <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.45)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:9999 }}
+        onClick={() => setAutoHwModal(null)}>
+        <div style={{ background:"white", borderRadius:14, padding:"20px 24px", minWidth:320, maxWidth:400, boxShadow:"0 8px 32px rgba(0,0,0,0.18)" }}
+          onClick={e => e.stopPropagation()}>
+          <div style={{ fontWeight:700, fontSize:15, marginBottom:14, color:"#1e293b" }}>📐 자동 숙제 계산 — {m.studentName}</div>
+          {m.materials.length === 0 ? (
+            <div style={{ fontSize:13, color:"#94a3b8", marginBottom:16 }}>커리큘럼에 연결된 교재가 없습니다.<br/>커리큘럼 편집에서 학생 노드와 교재 노드를 연결하세요.</div>
+          ) : (
+            <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:16 }}>
+              {m.materials.length > 1 && (
+                <div>
+                  <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>교재 선택</div>
+                  <select value={m.selectedIdx} onChange={e=>set({selectedIdx:Number(e.target.value)})} className={inputCls}>
+                    {m.materials.map((mat,i) => (
+                      <option key={i} value={i}>{mat.materialName} ({mat.startNum}번~, 총{mat.totalProblems}문제)</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {m.materials.length === 1 && (
+                <div style={{ fontSize:12, color:"#475569", background:"#f1f5f9", borderRadius:8, padding:"6px 10px" }}>
+                  📚 {m.materials[0].materialName} · <b>{m.materials[0].startNum}번</b>부터 시작 · 총 {m.materials[0].totalProblems}문제
+                </div>
+              )}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
+                <div>
+                  <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>몇 일치</div>
+                  <input type="number" min="1" value={m.days} onChange={e=>set({days:e.target.value})} className={inputCls} style={{ textAlign:"center" }}/>
+                </div>
+                <div>
+                  <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>분/문제</div>
+                  <input type="number" min="0.1" step="0.1" value={m.minPerProb} onChange={e=>set({minPerProb:e.target.value})} className={inputCls} style={{ textAlign:"center" }}/>
+                </div>
+                <div>
+                  <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>계수</div>
+                  <input type="number" min="0.1" step="0.1" value={m.coeff} onChange={e=>set({coeff:e.target.value})} className={inputCls} style={{ textAlign:"center" }}/>
+                </div>
+              </div>
+              <div style={{ fontSize:11, color:"#64748b" }}>하루 2시간 × {m.days}일 = {(parseInt(m.days)||0)*120}분 ÷ ({m.minPerProb}분 × {m.coeff}) = <b>{result?.numProblems || 0}문제</b></div>
+              {result && (
+                <div style={{ background:"#eef2ff", borderRadius:8, padding:"8px 12px", fontSize:13, fontWeight:600, color:"#3730a3" }}>
+                  📝 {result.text}
+                </div>
+              )}
+            </div>
+          )}
+          <div style={{ display:"flex", gap:8 }}>
+            {result && (
+              <button onClick={() => { saveHW(m.studentId, result.text); setAutoHwModal(null); }}
+                style={{ flex:1, padding:"8px 0", borderRadius:8, border:"none", background:"#1e293b", color:"white", fontWeight:700, fontSize:13, cursor:"pointer" }}>
+                적용
+              </button>
+            )}
+            <button onClick={() => setAutoHwModal(null)}
+              style={{ flex:1, padding:"8px 0", borderRadius:8, border:"1.5px solid #e2e8f0", background:"white", color:"#64748b", fontWeight:600, fontSize:13, cursor:"pointer" }}>
+              취소
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div ref={fullscreenRef} className={isFullscreen ? "bg-white p-4 min-h-screen overflow-auto flex flex-col" : "space-y-4"}>
+      {renderAutoHwModal()}
       {/* 헤더 */}
       <Card className="p-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -905,13 +1014,21 @@ function LessonDetailView({ lesson, students, attendance, allAttendance, isViewe
                             onBlur={() => saveHW(s.id, hwValue)}
                             onKeyDown={e => { if (e.key === "Enter") { e.stopPropagation(); saveHW(s.id, hwValue); const next = si + 1; if (next < lessonStudents.length) setFocusedCell({ row: next, col: 0 }); } if (e.key === "Escape") { e.stopPropagation(); setEditingHW(null); setFocusedCell(null); refocusContainer(); } }}
                             className="flex-1 text-xs border-b border-slate-400 outline-none bg-transparent py-0.5" />
+                          <button onMouseDown={e=>e.preventDefault()} onClick={e=>{e.stopPropagation();openAutoHwModal(s.id,s.name);}}
+                            className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200 shrink-0 font-bold">자동</button>
+                          <button onMouseDown={e=>e.preventDefault()} onClick={e=>{e.stopPropagation();}}
+                            className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 shrink-0 font-bold">수동</button>
                         </div>
                       ) : (
                         <div className="flex items-center gap-1.5">
                           <span className={`text-[10px] font-bold shrink-0 ${sRec.lessonType === "추가1" ? "text-violet-500" : sRec.lessonType === "추가2" ? "text-rose-500" : "text-sky-500"}`}>
                             {sRec.lessonType === "추가1" ? "(추1)" : sRec.lessonType === "추가2" ? "(추2)" : "(현)"}
                           </span>
-                          <span className="text-xs text-slate-600">{sRec.현행숙제 || <span className="text-slate-300">입력</span>}</span>
+                          <span className="text-xs text-slate-600 flex-1">{sRec.현행숙제 || <span className="text-slate-300">입력</span>}</span>
+                          <button onMouseDown={e=>e.preventDefault()} onClick={e=>{e.stopPropagation();openAutoHwModal(s.id,s.name);}}
+                            className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200 shrink-0 font-bold opacity-60 hover:opacity-100">자동</button>
+                          <button onMouseDown={e=>e.preventDefault()} onClick={e=>{e.stopPropagation();selectCell(si,0);setEditingHW(s.id);setHwValue(sRec.현행숙제||"");}}
+                            className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 shrink-0 font-bold opacity-60 hover:opacity-100">수동</button>
                         </div>
                       )}
                     </td>
