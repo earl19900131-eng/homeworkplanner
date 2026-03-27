@@ -8,7 +8,7 @@ const STATUS_STYLE = {
 };
 const COLS = 20;
 
-function MaterialStatusCard({ mat, allStatuses, studentId, picked, togglePick }) {
+function MaterialStatusCard({ mat, allStatuses, studentId, picked, togglePick, bulkSelect }) {
   const [editMode, setEditMode] = React.useState(false);
   const [local, setLocal] = React.useState({});
   const [saving, setSaving] = React.useState(false);
@@ -80,14 +80,24 @@ function MaterialStatusCard({ mat, allStatuses, studentId, picked, togglePick })
   return (
     <Card className="p-4 space-y-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h3 className="font-semibold text-sm">{mat.name}</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-sm">{mat.name}</h3>
+          {!editMode && (
+            <button onClick={() => bulkSelect(mat.id, "all", startNum, endNum)}
+              className="text-xs text-slate-400 hover:text-slate-700 underline underline-offset-2">
+              전체 {totalProblems}개
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex gap-3">
             {[["correct","맞음"],["wrong","틀림"],["unknown","모름"],["null","미체크"]].map(([k,label]) => (
-              <div key={k} className="flex items-center gap-1 text-xs text-slate-500">
+              <button key={k} onClick={() => !editMode && bulkSelect(mat.id, k === "null" ? null : k, startNum, endNum)}
+                className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800 disabled:pointer-events-none"
+                disabled={editMode}>
                 <div className="w-3.5 h-3.5 rounded" style={{ background: STATUS_STYLE[k].bg }}/>
                 {label} {counts[k]}
-              </div>
+              </button>
             ))}
           </div>
           {!editMode
@@ -206,6 +216,18 @@ function WrongAnswerManager({ students = [], materials = [] }) {
     return copy;
   });
 
+  const bulkSelect = (matId, status, startNum, endNum) => {
+    const matStatuses = allStatuses[matId] || {};
+    setPicked(prev => {
+      const copy = { ...prev };
+      for (let num = startNum; num <= endNum; num++) {
+        const s = matStatuses[num] || null;
+        if (status === "all" || s === status) copy[`${matId}:${num}`] = true;
+      }
+      return copy;
+    });
+  };
+
   const pickedCount = Object.keys(picked).length;
 
   const pickedList = React.useMemo(() => {
@@ -309,7 +331,7 @@ function WrongAnswerManager({ students = [], materials = [] }) {
       {selectedStudentId && studentMaterials.length === 0 && <Card className="p-8 text-center text-sm text-slate-400">커리큘럼에 연결된 교재가 없습니다.</Card>}
 
       {studentMaterials.map(mat => (
-        <MaterialStatusCard key={mat.id} mat={mat} allStatuses={allStatuses} studentId={selectedStudentId} picked={picked} togglePick={togglePick} />
+        <MaterialStatusCard key={mat.id} mat={mat} allStatuses={allStatuses} studentId={selectedStudentId} picked={picked} togglePick={togglePick} bulkSelect={bulkSelect} />
       ))}
 
       {/* 뽑기 미리보기 모달 */}
