@@ -160,7 +160,13 @@ function App() {
     const hw=homeworks.find(h=>h._key===hwKey); if(!hw) return;
     const idx=(hw.chunks||[]).findIndex(c=>c.date===date); if(idx===-1) return;
     const chunk=hw.chunks[idx];
-    if (chunkInput?.hwKey===hwKey && chunkInput?.idx===idx) return;
+    if (chunkInput?.hwKey===hwKey && chunkInput?.idx===idx) {
+      // 노란색(숫자입력) → 안함
+      try { await db.ref(`homeworks/${hwKey}/chunks/${idx}`).update({done:false, completedAmount:0, submittedAt:null}); }
+      catch(e) { alert("저장 실패: "+e.message); }
+      setChunkInput(null);
+      return;
+    }
     if (!chunk.done) {
       // 안함 → 완료
       const now = new Date();
@@ -667,7 +673,7 @@ function App() {
                               const isInputMode = chunkInput?.hwKey===hw._key && chunkInput?.idx===cidx;
                               return(
                                 <div key={chunk.date}
-                                  onClick={()=>!isInputMode&&toggleDone(hw._key,chunk.date)}
+                                  onClick={()=>toggleDone(hw._key,chunk.date)}
                                   className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition cursor-pointer
                                     ${isInputMode?"bg-amber-50 text-amber-700":chunk.done?"bg-emerald-50 text-emerald-700":isOverdue?"bg-red-50 text-red-700":isToday?"bg-blue-50 text-blue-700":"bg-slate-50 text-slate-600"}`}>
                                   <span>{chunk.date}{isToday?" · 오늘":""}</span>

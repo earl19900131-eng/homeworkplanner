@@ -233,7 +233,13 @@ function TeacherHWCard({ hw, done, pct, today }) {
   };
 
   const toggleChunkDone = async (chunk, idx) => {
-    if (chunkInputIdx === idx) return;
+    if (chunkInputIdx === idx) {
+      // 노란색(숫자입력) → 안함
+      try { await db.ref(`homeworks/${hw._key}/chunks/${idx}`).update({done:false, completedAmount:0, submittedAt:null}); }
+      catch(err) { alert("저장 실패: "+err.message); }
+      setChunkInputIdx(null); setChunkInputVal("");
+      return;
+    }
     if (!chunk.done) {
       // 안함 → 완료
       const now = new Date();
@@ -381,7 +387,7 @@ function TeacherHWCard({ hw, done, pct, today }) {
             const isInputMode = chunkInputIdx === idx;
             return (
               <div key={chunk.date}
-                onClick={() => !isInputMode && toggleChunkDone(chunk, idx)}
+                onClick={() => toggleChunkDone(chunk, idx)}
                 className={"flex items-center justify-between rounded-xl px-3 py-2 text-xs transition " +
                   (isInputMode ? "bg-amber-50 text-amber-700 cursor-default" :
                    chunk.done ? "bg-emerald-50 text-emerald-700 cursor-pointer hover:opacity-80" :
