@@ -414,8 +414,9 @@ function MaterialsTab({ materials }) {
 const NODE_W = 105;
 const NODE_H = 50;
 const NODE_H_START = 72;
+const NODE_H_END = 72;
 const PORT_SIZE = 14;
-const getNodeH = (node) => (node?.type === "start" ? NODE_H_START : NODE_H);
+const getNodeH = (node) => node?.type === "start" ? NODE_H_START : node?.type === "end" ? NODE_H_END : NODE_H;
 const PATH_COLORS = ["#ef4444","#f97316","#eab308","#22c55e","#06b6d4","#3b82f6","#8b5cf6","#ec4899","#14b8a6","#f59e0b"];
 
 // 노드 스타일
@@ -423,7 +424,8 @@ function getNodeStyle(node) {
   if (node.type === "material")   return { border: "#cbd5e1", bg: "#fff",     headerBg: "#f1f5f9", headerText: "#475569", title: "📚 교재" };
   if (node.type === "assessment") return { border: "#c4b5fd", bg: "#faf5ff", headerBg: "#ede9fe", headerText: "#5b21b6", title: "📝 평가" };
   if (node.type === "start")      return { border: "#f9a8d4", bg: "#fdf2f8", headerBg: "#fbcfe8", headerText: "#9d174d", title: "▶ START" };
-  /* end */                       return { border: "#86efac", bg: "#f0fdf4", headerBg: "#bbf7d0", headerText: "#166534", title: "■ END" };
+  if (node.type === "end")        return { border: "#86efac", bg: "#f0fdf4", headerBg: "#bbf7d0", headerText: "#166534", title: "■ END" };
+  return { border: "#cbd5e1", bg: "#fff", headerBg: "#f1f5f9", headerText: "#475569", title: "?" };
 }
 
 function CurriculumVisualEditor({ boardId, students, materials, assessments = [] }) {
@@ -562,6 +564,26 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
     }
     setShowAddStudent(false);
     setSelectedStudentIds([]);
+  };
+
+  const addEndNode = async () => {
+    const id = `end_${Date.now()}`;
+    const endCount = nodeList.filter(n => n.type === "end").length;
+    await db.ref(`${nodesRef}/${id}`).set({
+      id, type: "end", nextNodes: [], x: 400, y: 60 + endCount * 80, createdAt: new Date().toISOString(),
+    });
+  };
+
+  // 경로 역추적으로 end 노드 통계 계산
+  const computeEndNodeStats = (endNodeId) => {
+    const prev = {};
+    nodeList.forEach(n => { (n.nextNodes || []).forEach(toId => { if (!prev[toId]) prev[toId] = []; prev[toId].push(n.id); }); });
+    const visited = new Set();
+    const queue = [endNodeId];
+    while (queue.length) { const id = queue.shift(); if (visited.has(id)) continue; visited.add(id); (prev[id] || []).forEach(pid => queue.push(pid)); }
+    let totalProblems = 0;
+    visited.forEach(id => { const n = nodes[id]; if (n?.type === "material") totalProblems += Number(n.totalProblems) || 0; });
+    return totalProblems;
   };
 
   // 캔버스 좌표 계산
@@ -821,6 +843,7 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
         <Btn onClick={() => { setShowAddMaterial(s=>!s); setShowAddStudent(false); }} disabled={materials.length === 0}>+ 교재 노드</Btn>
         <Btn variant="outline" onClick={addAssessmentNode} disabled={assessments.length === 0}>+ 평가 노드</Btn>
         <Btn variant="outline" onClick={() => { setShowAddStudent(s=>!s); setShowAddMaterial(false); }}>+ 학생 노드</Btn>
+        <Btn variant="outline" onClick={addEndNode}>+ 끝 노드</Btn>
         <div className="h-4 w-px bg-slate-200 shrink-0"/>
         {connectingFrom ? (
           <>
@@ -837,7 +860,8 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
             <span className="text-sm font-semibold text-slate-600 shrink-0">
               {selectedNode.type === "material" ? "교재 노드"
                 : selectedNode.type === "assessment" ? "평가 노드"
-                : selectedNode.type === "start" || selectedNode.type === "end" ? `${selectedNode.studentName} · ${selectedNode.type === "end" ? "끝(구)" : "시작"}`
+                : selectedNode.type === "end" ? "끝 노드"
+                : selectedNode.type === "start" ? `${selectedNode.studentName} · 시작`
                 : selectedNode.studentName}
             </span>
             {selectedNode.type === "material" && (
@@ -1144,7 +1168,18 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
                     </div>
                     {/* 바디 */}
                     <div style={{ flex: 1, padding: "3px 6px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                      {node.type === "material" ? (
+                      {node.type === "end" ? (() => {
+                        const total = computeEndNodeStats(node.id);
+                        const mins = total * 3;
+                        const h = Math.floor(mins / 60), m = mins % 60;
+                        const timeStr = h > 0 ? (m > 0 ? `${h}시간 ${m}분` : `${h}시간`) : `${m}분`;
+                        return (
+                          <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:2 }}>
+                            <div style={{ fontSize:9, fontWeight:700, color:"#166534" }}>{total > 0 ? `${total}문제` : "—"}</div>
+                            <div style={{ fontSize:8, color:"#15803d" }}>{total > 0 ? `약 ${timeStr}` : "연결 없음"}</div>
+                          </div>
+                        );
+                      })() : node.type === "material" ? (
                         <>
                           <div style={{ fontSize: 9, fontWeight: 600, lineHeight: 1.2, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
                             {node.materialName}
@@ -1188,10 +1223,13 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
                     </div>
                   </div>
 
-                  {/* 오른쪽 포트 */}
-                  <button data-port="right"
-                    onMouseDown={e => { e.stopPropagation(); e.preventDefault(); handlePortClick(e, node.id); }}
-                    style={portStyle(isConnSrc)}>⊕</button>
+                  {/* 오른쪽 포트 (end 노드는 숨김) */}
+                  {node.type !== "end"
+                    ? <button data-port="right"
+                        onMouseDown={e => { e.stopPropagation(); e.preventDefault(); handlePortClick(e, node.id); }}
+                        style={portStyle(isConnSrc)}>⊕</button>
+                    : <div style={{width: PORT_SIZE}}/>
+                  }
                 </div>
               );
             })}
