@@ -469,17 +469,23 @@ function LessonDetailView({ lesson, lessons = [], students, attendance, allAtten
   }, [allAttendance]);
 
   // 학생별 이전 수업 숙제: 현재 수업 날짜 이전에서 가장 최근 수업의 현행숙제
+  // 학생별 이전 수업 숙제: 타입(현행/추가1/추가2)별로 가장 최근 숙제를 각각 찾음
   const prevHwMap = React.useMemo(() => {
     const map = {};
     const sortedLessons = [...lessons]
       .filter(l => l._key !== lesson._key && l.date < lesson.date)
       .sort((a, b) => b.date.localeCompare(a.date));
     lessonStudents.forEach(s => {
+      const found = {}; // { 현행: {text,date}, 추가1: {text,date}, 추가2: {text,date} }
       for (const l of sortedLessons) {
         if (!(l.studentIds || []).includes(s.id)) continue;
-        const hw = (allAttendance[l._key] || {})[s.id]?.현행숙제;
-        if (hw) { map[s.id] = { text: hw, date: l.date }; break; }
+        const r = (allAttendance[l._key] || {})[s.id] || {};
+        const hw = r.현행숙제;
+        const type = r.lessonType || "현행";
+        if (hw && !found[type]) found[type] = { text: hw, date: l.date };
+        if (Object.keys(found).length === 3) break; // 세 타입 모두 찾으면 중단
       }
+      if (Object.keys(found).length > 0) map[s.id] = found;
     });
     return map;
   }, [lessons, lesson._key, lesson.date, lessonStudents, allAttendance]);
@@ -1084,9 +1090,20 @@ function LessonDetailView({ lesson, lessons = [], students, attendance, allAtten
                     {/* 지난 숙제 */}
                     <td className="border-b border-r border-slate-100 px-3 py-2.5">
                       {prevHwMap[s.id] ? (
-                        <div>
-                          <div className="text-xs text-slate-500 leading-snug">{prevHwMap[s.id].text}</div>
-                          <div className="text-[10px] text-slate-300 mt-0.5">{prevHwMap[s.id].date}</div>
+                        <div className="space-y-1">
+                          {[["현행","text-sky-600","bg-sky-50 border-sky-200"],["추가1","text-violet-600","bg-violet-50 border-violet-200"],["추가2","text-rose-600","bg-rose-50 border-rose-200"]].map(([type, tc, bc]) => {
+                            const entry = prevHwMap[s.id][type];
+                            if (!entry) return null;
+                            return (
+                              <div key={type} className="flex items-start gap-1">
+                                <span className={`text-[9px] font-bold px-1 py-0.5 rounded border shrink-0 mt-0.5 ${bc} ${tc}`}>{type}</span>
+                                <div>
+                                  <div className="text-xs text-slate-600 leading-snug">{entry.text}</div>
+                                  <div className="text-[10px] text-slate-300">{entry.date}</div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       ) : (
                         <span className="text-[11px] text-slate-200">—</span>
