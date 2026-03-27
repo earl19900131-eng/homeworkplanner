@@ -2439,6 +2439,9 @@ function StudentCurriculumView({ studentId, materials = [] }) {
             mat={{ ...fullMat, id: node.materialId, name: node.materialName, totalProblems: node.totalProblems }}
             allStatuses={allStatuses}
             studentId={studentId}
+            picked={{}}
+            togglePick={() => {}}
+            bulkSelect={() => {}}
           />
         );
       })}
