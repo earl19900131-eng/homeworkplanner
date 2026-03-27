@@ -194,7 +194,9 @@ function WrongAnswerManager({ students = [], materials = [] }) {
   for (let i = 0; i < pickedList.length; i += 4) printGroups.push(pickedList.slice(i, i + 4));
 
   const handlePrint = () => {
-    const studentName = (students.find(s => s.id === selectedStudentId) || {}).name || "";
+    const student = students.find(s => s.id === selectedStudentId) || {};
+    const studentName = student.name || "";
+    const studentClass = student.className || "";
     const statusLabel = (s) => s === "wrong" ? "틀림" : s === "unknown" ? "모름" : s === "correct" ? "맞음" : "";
     const statusColor = (s) => s === "wrong" ? "#ef4444" : s === "unknown" ? "#f97316" : "#22c55e";
 
@@ -210,7 +212,7 @@ function WrongAnswerManager({ students = [], materials = [] }) {
     const pages = printGroups.map((group, gi) => `
       <div class="page">
         <div class="page-header">
-          <span class="student-name">${studentName}</span>
+          <span class="student-name">${studentClass ? studentClass + " " : ""}${studentName}</span>
           <span class="page-info">오답 문제 (${gi * 4 + 1}–${Math.min(gi * 4 + 4, pickedList.length)}번째)</span>
         </div>
         <div class="cols">
@@ -237,9 +239,9 @@ function WrongAnswerManager({ students = [], materials = [] }) {
   .page-info { font-size: 10px; color: #94a3b8; }
   .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; height: 240mm; }
   .col { display: flex; flex-direction: column; gap: 8mm; }
-  .problem { flex: 1; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; display: flex; flex-direction: column; }
-  .problem.empty { border: 1px dashed #e2e8f0; }
-  .problem-header { background: #f8fafc; padding: 5px 10px; font-size: 11px; font-weight: 700; color: #334155; border-bottom: 1px solid #e2e8f0; flex-shrink: 0; }
+  .problem { flex: 1; display: flex; flex-direction: column; }
+  .problem.empty { }
+  .problem-header { padding: 0 0 4px 0; font-size: 11px; font-weight: 700; color: #334155; border-bottom: 1px solid #cbd5e1; flex-shrink: 0; margin-bottom: 4px; }
   .problem-body { flex: 1; }
 </style></head><body>${pages}</body></html>`;
 
