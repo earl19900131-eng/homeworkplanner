@@ -632,7 +632,7 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
   };
 
   // 자동 숙제 계산 모달 열기
-  const openAutoHwModal = async (studentId, studentName) => {
+  const openAutoHwModal = async (studentId, studentName, lessonType = "현행") => {
     // 커리큘럼 + 학생 프로필(계수+진행현황) + 오답상태 병렬 로드
     const [nodesSnap, profileSnap, statusSnap] = await Promise.all([
       db.ref("curriculumNodes").once("value"),
@@ -680,7 +680,7 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
       }
     }
     setAutoHwModal({
-      studentId, studentName, materials: mats, selectedIdx: 0,
+      studentId, studentName, lessonType, materials: mats, selectedIdx: 0,
       days: "4", minPerProb: "3",
       subject: mats[0]?.subject || "공통수학1",
       coeff: profile.problemCoeff != null ? String(profile.problemCoeff) : "1",
@@ -913,7 +913,7 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
             {result && (
               <button onClick={async () => {
                 const mat = m.materials[m.selectedIdx];
-                const hwType = mat.hwType || "현행";
+                const hwType = m.lessonType || mat.hwType || "현행";
                 // 1. 수업일지 텍스트 저장
                 await saveHW(m.studentId, result.text);
                 // 2. confirmedHw에 자동 숙제 데이터 저장 (학생이 직접 등록)
@@ -1124,7 +1124,7 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
                             onBlur={() => saveHW(s.id, hwValue)}
                             onKeyDown={e => { if (e.key === "Enter") { e.stopPropagation(); saveHW(s.id, hwValue); const next = si + 1; if (next < lessonStudents.length) setFocusedCell({ row: next, col: 0 }); } if (e.key === "Escape") { e.stopPropagation(); setEditingHW(null); setFocusedCell(null); refocusContainer(); } }}
                             className="flex-1 text-xs border-b border-slate-400 outline-none bg-transparent py-0.5" />
-                          <button onMouseDown={e=>e.preventDefault()} onClick={e=>{e.stopPropagation();openAutoHwModal(s.id,s.name);}}
+                          <button onMouseDown={e=>e.preventDefault()} onClick={e=>{e.stopPropagation();openAutoHwModal(s.id,s.name,sRec.lessonType||"현행");}}
                             className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200 shrink-0 font-bold">자동</button>
                           <button onMouseDown={e=>e.preventDefault()} onClick={e=>{e.stopPropagation();}}
                             className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 shrink-0 font-bold">수동</button>
@@ -1135,7 +1135,7 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
                             {sRec.lessonType === "추가1" ? "(추1)" : sRec.lessonType === "추가2" ? "(추2)" : "(현)"}
                           </span>
                           <span className="text-xs text-slate-600 flex-1">{sRec.현행숙제 || <span className="text-slate-300">입력</span>}</span>
-                          <button onMouseDown={e=>e.preventDefault()} onClick={e=>{e.stopPropagation();openAutoHwModal(s.id,s.name);}}
+                          <button onMouseDown={e=>e.preventDefault()} onClick={e=>{e.stopPropagation();openAutoHwModal(s.id,s.name,sRec.lessonType||"현행");}}
                             className="text-[9px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200 shrink-0 font-bold opacity-60 hover:opacity-100">자동</button>
                           <button onMouseDown={e=>e.preventDefault()} onClick={e=>{e.stopPropagation();selectCell(si,0);setEditingHW(s.id);setHwValue(sRec.현행숙제||"");}}
                             className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 shrink-0 font-bold opacity-60 hover:opacity-100">수동</button>
