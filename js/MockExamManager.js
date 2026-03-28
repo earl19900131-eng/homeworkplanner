@@ -1,5 +1,6 @@
 // ── 모의고사DB ────────────────────────────────────────────────────────────────
 
+const MOCK_SOURCES    = ["교육청","평가원","경찰대","사관학교"];
 const MOCK_CURRICULUM = {
   "15개정": ["수학(상)","수학(하)","수학1","수학2","미적분","확률과통계","기하"],
   "22개정": ["공통수학1","공통수학2","대수","미적분1","확률과통계","미적분2"],
@@ -221,9 +222,11 @@ function ProblemEditModal({ tags, initial, examId, onSave, onClose }) {
             </div>
             <div className="space-y-1">
               <Lbl>출제기관</Lbl>
-              <input value={form.source} onChange={e=>f("source",e.target.value)}
-                placeholder="예: 교육청, 수능, 사관학교"
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"/>
+              <select value={form.source} onChange={e=>f("source",e.target.value)}
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300">
+                <option value="">선택</option>
+                {MOCK_SOURCES.map(s=><option key={s}>{s}</option>)}
+              </select>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
@@ -318,7 +321,7 @@ function ProblemListTab({ tags }) {
   const [problems, setProblems] = React.useState({});
   const [modal, setModal]       = React.useState(null); // null | "new" | { id, ...prob }
   // filterCurr: ""|"15개정"|"22개정", filterSubject: ""| 과목명
-  const [filter, setFilter]     = React.useState({ filterCurr:"", filterSubject:"", grade:"", year:"", difficulty:"", tag:"" });
+  const [filter, setFilter]     = React.useState({ filterCurr:"", filterSubject:"", grade:"", year:"", source:"", difficulty:"", tag:"" });
 
   React.useEffect(() => {
     const ref = db.ref("mockProblems");
@@ -340,6 +343,7 @@ function ProblemListTab({ tags }) {
       }
       if (filter.grade     && p.grade     !== filter.grade)     return false;
       if (filter.year      && p.year      !== filter.year)      return false;
+      if (filter.source    && p.source    !== filter.source)    return false;
       if (filter.difficulty && p.difficulty !== filter.difficulty) return false;
       if (filter.tag       && !(p.tags && p.tags[filter.tag]))  return false;
       return true;
@@ -377,8 +381,9 @@ function ProblemListTab({ tags }) {
             </div>
           )}
           {[
-            ["grade",   "학년", ["", ...MOCK_GRADES]],
-            ["difficulty","난이도",["","1","2","3","4","5","6","7","8","9","10"]],
+            ["grade",   "학년",     ["", ...MOCK_GRADES]],
+            ["source",  "출제기관", ["", ...MOCK_SOURCES]],
+            ["difficulty","난이도", ["","1","2","3","4","5","6","7","8","9","10"]],
           ].map(([key,label,opts])=>(
             <div key={key} className="space-y-1">
               <Lbl>{label}</Lbl>
@@ -537,14 +542,19 @@ function ExamListTab({ tags }) {
 
         {addingExam && (
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
-            {[["title","시험 제목 *",""],["source","출제기관",""],].map(([k,l,ph])=>(
-              <div key={k} className="space-y-1">
-                <Lbl>{l}</Lbl>
-                <input value={examForm[k]||""} onChange={e=>setExamForm(f=>({...f,[k]:e.target.value}))}
-                  placeholder={ph}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"/>
-              </div>
-            ))}
+            <div className="space-y-1">
+              <Lbl>시험 제목 *</Lbl>
+              <input value={examForm.title||""} onChange={e=>setExamForm(f=>({...f,title:e.target.value}))}
+                className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"/>
+            </div>
+            <div className="space-y-1">
+              <Lbl>출제기관</Lbl>
+              <select value={examForm.source||""} onChange={e=>setExamForm(f=>({...f,source:e.target.value}))}
+                className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-300">
+                <option value="">선택</option>
+                {MOCK_SOURCES.map(s=><option key={s}>{s}</option>)}
+              </select>
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <Lbl>학년</Lbl>
