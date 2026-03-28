@@ -103,16 +103,46 @@ function TagManager({ tags }) {
 }
 
 // ── 문제 편집 모달 ───────────────────────────────────────────────────────────
+const BLANK_VAR = { question:"", solution:"" };
+
 function ProblemEditModal({ tags, initial, examId, onSave, onClose }) {
   const blankForm = {
     num:"", curriculumMap:{}, grade:"", year:"", month:"", source:"",
-    type:"객관식", difficulty:"5", question:"", solution:"", tags:{}
+    type:"객관식", difficulty:"5", question:"", solution:"", tags:{},
+    variations: { "1": {...BLANK_VAR}, "2": {...BLANK_VAR}, "3": {...BLANK_VAR} }
   };
-  const [form, setForm]   = React.useState(initial || blankForm);
-  const [tab, setTab]     = React.useState("question");
-  const [saving, setSaving] = React.useState(false);
+  const [form, setForm]       = React.useState(() => {
+    const base = initial || blankForm;
+    return {
+      ...base,
+      variations: {
+        "1": { ...BLANK_VAR, ...(base.variations?.["1"] || {}) },
+        "2": { ...BLANK_VAR, ...(base.variations?.["2"] || {}) },
+        "3": { ...BLANK_VAR, ...(base.variations?.["3"] || {}) },
+      }
+    };
+  });
+  const [variant, setVariant] = React.useState("main"); // "main"|"1"|"2"|"3"
+  const [tab, setTab]         = React.useState("question");
+  const [saving, setSaving]   = React.useState(false);
 
   const f = (key, val) => setForm(p => ({...p, [key]: val}));
+
+  // 현재 variant의 콘텐츠 get/set
+  const currentContent = variant === "main"
+    ? { question: form.question, solution: form.solution }
+    : (form.variations[variant] || BLANK_VAR);
+
+  const setContent = (field, val) => {
+    if (variant === "main") {
+      f(field, val);
+    } else {
+      setForm(p => ({
+        ...p,
+        variations: { ...p.variations, [variant]: { ...p.variations[variant], [field]: val } }
+      }));
+    }
+  };
 
   const toggleTag = (id) => setForm(p => {
     const t = {...p.tags};
@@ -123,11 +153,7 @@ function ProblemEditModal({ tags, initial, examId, onSave, onClose }) {
   const save = async () => {
     if (!form.question.trim()) return;
     setSaving(true);
-    const data = {
-      ...form,
-      num: parseInt(form.num) || null,
-      updatedAt: new Date().toISOString()
-    };
+    const data = { ...form, num: parseInt(form.num) || null, updatedAt: new Date().toISOString() };
     let problemId = initial && initial.id;
     if (problemId) {
       await db.ref(`mockProblems/${problemId}`).update(data);
@@ -135,7 +161,6 @@ function ProblemEditModal({ tags, initial, examId, onSave, onClose }) {
       const ref = await db.ref("mockProblems").push({ ...data, createdAt: new Date().toISOString() });
       problemId = ref.key;
     }
-    // 시험과 연결된 경우 problems 맵에 추가
     if (examId && !initial) {
       await db.ref(`mockExams/${examId}/problems/${problemId}`).set(form.num || true);
     }
@@ -143,15 +168,19 @@ function ProblemEditModal({ tags, initial, examId, onSave, onClose }) {
     onSave && onSave(problemId);
   };
 
-  const tagsBySubj = React.useMemo(() => {
-    const g = {};
-    Object.entries(tags).forEach(([id,t]) => {
-      const s = t.subject || "기타";
-      if(!g[s]) g[s] = [];
-      g[s].push({id,...t});
-    });
-    return g;
-  }, [tags]);
+  const tagList = Object.entries(tags).sort(([,a],[,b])=>a.name.localeCompare(b.name));
+
+  const variantTabs = [
+    ["main", "원문제"],
+    ["1", "변형1"],
+    ["2", "변형2"],
+    ["3", "변형3"],
+  ];
+
+  const hasContent = (v) => {
+    if (v === "main") return !!(form.question || form.solution);
+    return !!(form.variations[v]?.question || form.variations[v]?.solution);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
@@ -225,39 +254,42 @@ function ProblemEditModal({ tags, initial, examId, onSave, onClose }) {
                 </select>
               </div>
             </div>
-
-            {/* 태그 선택 */}
             <div className="space-y-2">
               <Lbl>태그</Lbl>
-              {Object.keys(tagsBySubj).length === 0
+              {tagList.length === 0
                 ? <div className="text-xs text-slate-400">태그 관리에서 먼저 등록하세요</div>
-                : Object.entries(tagsBySubj).sort(([a],[b])=>a.localeCompare(b)).map(([subj, list]) => (
-                    <div key={subj}>
-                      <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">{subj}</div>
-                      <div className="flex flex-wrap gap-1">
-                        {list.sort((a,b)=>a.name.localeCompare(b.name)).map(t => (
-                          <button key={t.id} onClick={()=>toggleTag(t.id)}
-                            className={`text-xs px-2 py-1 rounded-lg transition ${form.tags[t.id] ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
-                            {t.name}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))
+                : <div className="flex flex-wrap gap-1">
+                    {tagList.map(([id,t]) => (
+                      <button key={id} onClick={()=>toggleTag(id)}
+                        className={`text-xs px-2 py-1 rounded-lg transition ${form.tags[id] ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+                        {t.name}
+                      </button>
+                    ))}
+                  </div>
               }
             </div>
           </div>
 
-          {/* 우측: HTML 편집 + 미리보기 */}
+          {/* 우측: 변형 탭 + HTML 편집 */}
           <div className="flex-1 flex flex-col min-w-0 p-4 space-y-3">
-            {/* 탭 */}
+
+            {/* 원문제/변형1/2/3 탭 */}
+            <div className="flex gap-1 shrink-0">
+              {variantTabs.map(([key, label]) => (
+                <button key={key} onClick={()=>{ setVariant(key); setTab("question"); }}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-xl transition flex items-center gap-1 ${variant===key ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                  {label}
+                  {hasContent(key) && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"/>}
+                </button>
+              ))}
+            </div>
+
+            {/* 문제/해설 서브탭 */}
             <div className="flex gap-1 border-b border-slate-100 shrink-0">
               {[["question","문제"],["solution","해설"]].map(([key,label])=>(
                 <button key={key} onClick={()=>setTab(key)}
                   className={`px-4 py-2 text-sm font-medium border-b-2 transition ${tab===key ? "border-indigo-500 text-indigo-600" : "border-transparent text-slate-400 hover:text-slate-600"}`}>
                   {label}
-                  {key==="question" && form.question && <span className="ml-1.5 text-[10px] text-emerald-500">●</span>}
-                  {key==="solution" && form.solution && <span className="ml-1.5 text-[10px] text-emerald-500">●</span>}
                 </button>
               ))}
             </div>
@@ -266,8 +298,8 @@ function ProblemEditModal({ tags, initial, examId, onSave, onClose }) {
               <div className="flex flex-col space-y-1">
                 <Lbl>HTML 편집</Lbl>
                 <textarea
-                  value={tab==="question" ? form.question : form.solution}
-                  onChange={e => { const v=e.target.value; f(tab, v); }}
+                  value={currentContent[tab] || ""}
+                  onChange={e => setContent(tab, e.target.value)}
                   placeholder={`<p>${tab==="question"?"문제":"해설"} 내용을 HTML로 입력</p>`}
                   className="flex-1 font-mono text-xs rounded-xl border border-slate-200 p-3 resize-none focus:outline-none focus:ring-2 focus:ring-slate-300"
                   style={{minHeight:"300px"}}
@@ -277,7 +309,7 @@ function ProblemEditModal({ tags, initial, examId, onSave, onClose }) {
                 <Lbl>미리보기</Lbl>
                 <div className="flex-1 rounded-xl border border-slate-200 p-4 overflow-y-auto bg-white text-sm leading-relaxed"
                   style={{minHeight:"300px"}}
-                  dangerouslySetInnerHTML={{__html: tab==="question" ? form.question : form.solution}}
+                  dangerouslySetInnerHTML={{__html: currentContent[tab] || ""}}
                 />
               </div>
             </div>
