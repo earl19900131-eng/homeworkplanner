@@ -103,6 +103,25 @@ function TagManager({ tags }) {
 }
 
 // ── 문제 편집 모달 ───────────────────────────────────────────────────────────
+// KaTeX 수식 렌더링 프리뷰
+function MathPreview({ html, className, style }) {
+  const ref = React.useRef();
+  React.useEffect(() => {
+    if (!ref.current) return;
+    ref.current.innerHTML = html || "";
+    if (window.renderMathInElement) {
+      renderMathInElement(ref.current, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "$",  right: "$",  display: false },
+        ],
+        throwOnError: false,
+      });
+    }
+  }, [html]);
+  return <div ref={ref} className={className} style={style}/>;
+}
+
 const BLANK_VAR = { question:"", solution:"" };
 
 function ProblemEditModal({ tags, initial, examId, onSave, onClose }) {
@@ -307,9 +326,9 @@ function ProblemEditModal({ tags, initial, examId, onSave, onClose }) {
               </div>
               <div className="flex flex-col space-y-1">
                 <Lbl>미리보기</Lbl>
-                <div className="flex-1 rounded-xl border border-slate-200 p-4 overflow-y-auto bg-white text-sm leading-relaxed"
+                <MathPreview html={currentContent[tab] || ""}
+                  className="flex-1 rounded-xl border border-slate-200 p-4 overflow-y-auto bg-white text-sm leading-relaxed"
                   style={{minHeight:"300px"}}
-                  dangerouslySetInnerHTML={{__html: currentContent[tab] || ""}}
                 />
               </div>
             </div>
