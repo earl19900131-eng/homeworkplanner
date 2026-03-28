@@ -2403,10 +2403,7 @@ function StudentCurriculumView({ studentId, materials = [] }) {
   React.useEffect(() => {
     const ref = db.ref("curriculumNodes");
     ref.on("value", snap => {
-      const data = snap.val() || {};
-      const merged = {};
-      Object.values(data).forEach(boardNodes => Object.assign(merged, boardNodes));
-      setAllNodes(merged);
+      setAllNodes(snap.val() || {});
     });
     return () => ref.off();
   }, []);
@@ -2418,28 +2415,35 @@ function StudentCurriculumView({ studentId, materials = [] }) {
     return () => ref.off();
   }, [studentId]);
 
-  const startNodeId = `start_${studentId}`;
-
+  // 보드별로 start_studentId를 각각 찾아 BFS → 모든 보드의 교재 수집
   const getPath = () => {
-    if (!allNodes[startNodeId]) return [];
-    const visited = new Set();
+    const startNodeId = `start_${studentId}`;
     const result = [];
-    const queue = [startNodeId];
-    while (queue.length) {
-      const nodeId = queue.shift();
-      if (visited.has(nodeId)) continue;
-      visited.add(nodeId);
-      const node = allNodes[nodeId];
-      if (!node) continue;
-      if (node.type === "material") result.push(node);
-      for (const nid of (node.nextNodes || [])) queue.push(nid);
-    }
+    const visitedGlobal = new Set();
+    Object.values(allNodes).forEach(boardNodes => {
+      if (!boardNodes[startNodeId]) return;
+      // 이 보드의 노드만으로 BFS
+      const queue = [startNodeId];
+      const visited = new Set();
+      while (queue.length) {
+        const nodeId = queue.shift();
+        if (visited.has(nodeId) || visitedGlobal.has(nodeId)) continue;
+        visited.add(nodeId);
+        visitedGlobal.add(nodeId);
+        const node = boardNodes[nodeId];
+        if (!node) continue;
+        if (node.type === "material") result.push(node);
+        for (const nid of (node.nextNodes || [])) queue.push(nid);
+      }
+    });
     return result;
   };
 
   const path = getPath();
 
-  if (!allNodes[startNodeId]) return (
+  const startNodeId = `start_${studentId}`;
+  const hasStart = Object.values(allNodes).some(b => b[startNodeId]);
+  if (!hasStart) return (
     <div className="rounded-2xl border border-dashed p-8 text-sm text-slate-400 text-center">
       아직 커리큘럼이 설정되지 않았습니다.<br/>선생님께 문의하세요.
     </div>
