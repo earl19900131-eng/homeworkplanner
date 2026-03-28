@@ -43,7 +43,7 @@ function SubjectPicker({ value, onChange }) {
 }
 const MOCK_GRADES     = ["중1","중2","중3","고1","고2","고3"];
 const MOCK_TYPES      = ["객관식","서술형","단답형"];
-const MOCK_DIFFICULTY = ["상","중","하"];
+const MOCK_DIFFICULTY = ["1","2","3","4","5","6","7","8","9","10"];
 const MOCK_MONTHS     = ["01","02","03","04","05","06","07","08","09","10","11","12"];
 
 // ── 태그 관리 탭 ────────────────────────────────────────────────────────────
@@ -124,7 +124,7 @@ function TagManager({ tags }) {
 function ProblemEditModal({ tags, initial, examId, onSave, onClose }) {
   const blankForm = {
     num:"", curriculumMap:{}, grade:"", year:"", month:"", source:"",
-    type:"객관식", difficulty:"중", question:"", solution:"", tags:{}
+    type:"객관식", difficulty:"5", question:"", solution:"", tags:{}
   };
   const [form, setForm]   = React.useState(initial || blankForm);
   const [tab, setTab]     = React.useState("question");
@@ -220,9 +220,9 @@ function ProblemEditModal({ tags, initial, examId, onSave, onClose }) {
               </div>
             </div>
             <div className="space-y-1">
-              <Lbl>출처</Lbl>
+              <Lbl>출제기관</Lbl>
               <input value={form.source} onChange={e=>f("source",e.target.value)}
-                placeholder="예: 3월 모의고사"
+                placeholder="예: 교육청, 수능, 사관학교"
                 className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"/>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -378,7 +378,7 @@ function ProblemListTab({ tags }) {
           )}
           {[
             ["grade",   "학년", ["", ...MOCK_GRADES]],
-            ["difficulty","난이도",["","상","중","하"]],
+            ["difficulty","난이도",["","1","2","3","4","5","6","7","8","9","10"]],
           ].map(([key,label,opts])=>(
             <div key={key} className="space-y-1">
               <Lbl>{label}</Lbl>
@@ -432,7 +432,7 @@ function ProblemListTab({ tags }) {
                       {(p.year||p.month) && <Badge>{[p.year,p.month].filter(Boolean).join("-")}</Badge>}
                       {p.source     && <Badge gray>{p.source}</Badge>}
                       {p.type       && <Badge gray>{p.type}</Badge>}
-                      {p.difficulty && <Badge color={p.difficulty==="상"?"red":p.difficulty==="하"?"blue":"yellow"}>{p.difficulty}</Badge>}
+                      {p.difficulty && <Badge color={Number(p.difficulty)>=8?"red":Number(p.difficulty)<=3?"blue":"yellow"}>{p.difficulty}</Badge>}
                     </div>
                     {p.tags && Object.keys(p.tags).length > 0 && (
                       <div className="flex flex-wrap gap-1">
@@ -537,7 +537,7 @@ function ExamListTab({ tags }) {
 
         {addingExam && (
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
-            {[["title","시험 제목 *",""],["source","출처",""],].map(([k,l,ph])=>(
+            {[["title","시험 제목 *",""],["source","출제기관",""],].map(([k,l,ph])=>(
               <div key={k} className="space-y-1">
                 <Lbl>{l}</Lbl>
                 <input value={examForm[k]||""} onChange={e=>setExamForm(f=>({...f,[k]:e.target.value}))}
@@ -626,7 +626,7 @@ function ExamListTab({ tags }) {
                         {p.curriculumMap && Object.entries(p.curriculumMap).map(([c,s])=>(
                           <Badge key={c} gray>{c}{s?` ${s}`:""}</Badge>
                         ))}
-                        {p.difficulty && <Badge color={p.difficulty==="상"?"red":p.difficulty==="하"?"blue":"yellow"}>{p.difficulty}</Badge>}
+                        {p.difficulty && <Badge color={Number(p.difficulty)>=8?"red":Number(p.difficulty)<=3?"blue":"yellow"}>{p.difficulty}</Badge>}
                         {p.tags && Object.keys(p.tags).map(tid=>tags[tid]&&(
                           <span key={tid} className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600">{tags[tid].name}</span>
                         ))}
@@ -661,7 +661,7 @@ function ExamListTab({ tags }) {
                                 <Badge key={c} gray>{c}{s?` ${s}`:""}</Badge>
                               ))}
                               {p.grade && <Badge gray>{p.grade}</Badge>}
-                              {p.difficulty && <Badge color={p.difficulty==="상"?"red":p.difficulty==="하"?"blue":"yellow"}>{p.difficulty}</Badge>}
+                              {p.difficulty && <Badge color={Number(p.difficulty)>=8?"red":Number(p.difficulty)<=3?"blue":"yellow"}>{p.difficulty}</Badge>}
                               {p.tags && Object.keys(p.tags).map(tid=>tags[tid]&&(
                                 <span key={tid} className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600">{tags[tid].name}</span>
                               ))}
