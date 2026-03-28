@@ -49,25 +49,14 @@ const MOCK_MONTHS     = ["01","02","03","04","05","06","07","08","09","10","11",
 
 // ── 태그 관리 탭 ────────────────────────────────────────────────────────────
 function TagManager({ tags }) {
-  const [form, setForm] = React.useState({ name:"", curriculumMap:{} });
+  const [name, setName] = React.useState("");
   const [saving, setSaving] = React.useState(false);
 
-  const grouped = React.useMemo(() => {
-    const g = {};
-    Object.entries(tags).forEach(([id, t]) => {
-      const pairs = Object.entries(t.curriculumMap || {})
-        .map(([c,s]) => s ? `${c} ${s}` : c).join(", ") || "기타";
-      if (!g[pairs]) g[pairs] = [];
-      g[pairs].push({ id, ...t });
-    });
-    return g;
-  }, [tags]);
-
   const save = async () => {
-    if (!form.name.trim()) return;
+    if (!name.trim()) return;
     setSaving(true);
-    await db.ref("mockTags").push({ name: form.name.trim(), curriculumMap: form.curriculumMap });
-    setForm({ name:"", curriculumMap:{} });
+    await db.ref("mockTags").push({ name: name.trim() });
+    setName("");
     setSaving(false);
   };
 
@@ -76,46 +65,38 @@ function TagManager({ tags }) {
     await db.ref(`mockTags/${id}`).remove();
   };
 
+  const sorted = Object.entries(tags).sort(([,a],[,b])=>a.name.localeCompare(b.name));
+
   return (
-    <div className="space-y-5">
-      {/* 추가 폼 */}
-      <Card className="p-4 space-y-3">
-        <h3 className="font-bold text-sm">태그 추가</h3>
-        <div className="flex gap-3 flex-wrap items-start">
-          <div className="space-y-1">
-            <Lbl>태그명 *</Lbl>
-            <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))}
+    <div className="space-y-4">
+      <Card className="p-4">
+        <div className="flex gap-3 items-end">
+          <div className="space-y-1 flex-1">
+            <Lbl>태그명</Lbl>
+            <input value={name} onChange={e=>setName(e.target.value)}
               onKeyDown={e=>e.key==="Enter"&&save()}
               placeholder="예: 이차함수"
-              className="w-36 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"/>
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"/>
           </div>
-          <div className="space-y-1">
-            <Lbl>개정별 과목</Lbl>
-            <SubjectPicker value={form.curriculumMap} onChange={v=>setForm(f=>({...f,curriculumMap:v}))}/>
-          </div>
-          <button onClick={save} disabled={saving}
-            className="px-4 py-2 text-sm rounded-xl bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-40 self-end">
+          <button onClick={save} disabled={saving||!name.trim()}
+            className="px-4 py-2 text-sm rounded-xl bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-40">
             추가
           </button>
         </div>
       </Card>
 
-      {/* 태그 목록 */}
-      {Object.keys(grouped).length === 0
+      {sorted.length === 0
         ? <div className="text-sm text-slate-400 text-center py-8 border border-dashed rounded-xl">등록된 태그가 없습니다.</div>
-        : Object.entries(grouped).sort(([a],[b])=>a.localeCompare(b)).map(([subj, list]) => (
-            <Card key={subj} className="p-4 space-y-2">
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wide">{subj}</div>
-              <div className="flex flex-wrap gap-2">
-                {list.sort((a,b)=>a.name.localeCompare(b.name)).map(t => (
-                  <div key={t.id} className="flex items-center gap-1 bg-slate-100 rounded-xl px-3 py-1.5">
-                    <span className="text-sm text-slate-700">{t.name}</span>
-                    <button onClick={()=>del(t.id)} className="text-slate-300 hover:text-red-500 text-xs leading-none ml-1">✕</button>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          ))
+        : <Card className="p-4">
+            <div className="flex flex-wrap gap-2">
+              {sorted.map(([id, t]) => (
+                <div key={id} className="flex items-center gap-1 bg-slate-100 rounded-xl px-3 py-1.5">
+                  <span className="text-sm text-slate-700">{t.name}</span>
+                  <button onClick={()=>del(id)} className="text-slate-300 hover:text-red-500 text-xs leading-none ml-1">✕</button>
+                </div>
+              ))}
+            </div>
+          </Card>
       }
     </div>
   );
