@@ -525,6 +525,7 @@ function StudentExamTab({ studentId }) {
   const [answers, setAnswers] = useState({});
   const [savedResult, setSavedResult] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [submitDone, setSubmitDone] = useState(false);
 
   useEffect(() => {
     const ref = db.ref("mockExams");
@@ -575,6 +576,8 @@ function StudentExamTab({ studentId }) {
     await db.ref(`mockExamResults/${activeExam.id}/${studentId}`).set(data);
     setSavedResult(data);
     setSaving(false);
+    setSubmitDone(true);
+    setTimeout(() => setSubmitDone(false), 3000);
   };
 
   if (activeExam) {
@@ -622,6 +625,9 @@ function StudentExamTab({ studentId }) {
           </div>
           <Btn onClick={handleSubmit} disabled={saving}>{saving?"제출 중...":"제출"}</Btn>
         </div>
+        {submitDone && (
+          <div className="text-sm font-semibold text-emerald-600 text-right mt-1">✓ 제출되었습니다</div>
+        )}
         {savedResult && (
           <div className="text-xs text-slate-400 text-right">
             마지막 제출: {savedResult.submittedAt}

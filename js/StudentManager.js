@@ -483,13 +483,25 @@ function StudentManager({ students, homeworks }) {
               📥 지급액 다운로드
             </button>
             <button onClick={async () => {
-              if (!confirm(`모든 학생의 시즌3 XP, 미지급 CP, 이전시즌 XP를 0으로 초기화합니다. 계속할까요?`)) return;
-              const snap = await db.ref("studentProfiles").get();
-              const data = snap.val() || {};
+              if (!confirm(`새 시즌 초기화: XP/CP를 0으로 리셋합니다.\n수업일지 데이터는 보존되며, 동기화해도 과거 시즌 CP는 반영되지 않습니다. 계속할까요?`)) return;
+              const [attendanceSnap, profilesSnap] = await Promise.all([
+                db.ref("lessonAttendance").get(),
+                db.ref("studentProfiles").get(),
+              ]);
+              const allAttendance = attendanceSnap.val() || {};
+              const allProfiles = profilesSnap.val() || {};
+              // 현재까지의 lessonAttendance CP 합산을 paidCp 기준선으로 저장
+              const cpBaseline = {};
+              Object.values(allAttendance).forEach(lesson => {
+                Object.entries(lesson).forEach(([sid, rec]) => {
+                  cpBaseline[sid] = (cpBaseline[sid] || 0) + Number(rec.cp || 0);
+                });
+              });
               const updates = {};
-              Object.keys(data).forEach(sid => {
+              Object.keys(allProfiles).forEach(sid => {
                 updates[`studentProfiles/${sid}/season3Xp`] = null;
                 updates[`studentProfiles/${sid}/unpaidCp`] = null;
+                updates[`studentProfiles/${sid}/paidCp`] = cpBaseline[sid] || null;
                 updates[`studentProfiles/${sid}/prevSeasonXp`] = null;
               });
               await db.ref().update(updates);
@@ -500,8 +512,12 @@ function StudentManager({ students, homeworks }) {
             </button>
             <button onClick={async () => {
               if (!confirm(`수업일지 전체 데이터를 읽어 XP/CP를 재계산합니다. 기존 수동 입력값은 덮어씁니다. 계속할까요?`)) return;
-              const snap = await db.ref("lessonAttendance").get();
-              const allAttendance = snap.val() || {};
+              const [attendanceSnap, profilesSnap] = await Promise.all([
+                db.ref("lessonAttendance").get(),
+                db.ref("studentProfiles").get(),
+              ]);
+              const allAttendance = attendanceSnap.val() || {};
+              const allProfiles = profilesSnap.val() || {};
               const totals = {};
               Object.values(allAttendance).forEach(lesson => {
                 Object.entries(lesson).forEach(([sid, rec]) => {
@@ -512,8 +528,9 @@ function StudentManager({ students, homeworks }) {
               });
               const updates = {};
               Object.entries(totals).forEach(([sid, t]) => {
+                const paidCp = Number(allProfiles[sid]?.paidCp || 0);
                 updates[`studentProfiles/${sid}/season3Xp`] = t.xp;
-                updates[`studentProfiles/${sid}/unpaidCp`] = Math.max(0, t.cp);
+                updates[`studentProfiles/${sid}/unpaidCp`] = Math.max(0, t.cp - paidCp);
               });
               await db.ref().update(updates);
               alert("동기화 완료!");
@@ -522,9 +539,16 @@ function StudentManager({ students, homeworks }) {
               🔄 XP/CP 전체 동기화
             </button>
             <button onClick={async () => {
-              if (!confirm(`미지급 CP를 전체 초기화할까요? (${sortedStudents.length}명)`)) return;
+              if (!confirm(`미지급 CP를 전체 지급 처리할까요? (${sortedStudents.length}명)`)) return;
+              const snap = await db.ref("studentProfiles").get();
+              const allProfiles = snap.val() || {};
               const updates = {};
-              sortedStudents.forEach(st => { updates[`studentProfiles/${st.id}/unpaidCp`] = null; });
+              sortedStudents.forEach(st => {
+                const unpaid = Number(allProfiles[st.id]?.unpaidCp || 0);
+                const alreadyPaid = Number(allProfiles[st.id]?.paidCp || 0);
+                if (unpaid > 0) updates[`studentProfiles/${st.id}/paidCp`] = alreadyPaid + unpaid;
+                updates[`studentProfiles/${st.id}/unpaidCp`] = null;
+              });
               await db.ref().update(updates);
             }}
               className="text-xs text-white bg-red-400 hover:bg-red-500 px-3 py-1.5 rounded-lg font-medium transition">
@@ -548,6 +572,7 @@ function StudentManager({ students, homeworks }) {
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">시즌3 누적 XP</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-emerald-600">All 시즌 누적 XP</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">미지급 CP</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-400">지급된 CP</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">카드번호</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">미지급액</th>
                   </tr>
@@ -581,6 +606,7 @@ function StudentManager({ students, homeworks }) {
                           {(Number(profile.prevSeasonXp||0) + Number(profile.season3Xp||0)) || <span className="text-slate-300 font-normal">-</span>}
                         </td>
                         <td className="px-3 py-2 text-xs"><XpCell studentId={s.id} field="unpaidCp" value={profile.unpaidCp} inputCls="w-20"/></td>
+                        <td className="px-3 py-2 text-xs text-slate-400">{Number(profile.paidCp||0) || <span className="text-slate-200">-</span>}</td>
                         <td className="px-3 py-2 text-xs"><XpCell studentId={s.id} field="cardNumber" value={profile.cardNumber} inputCls="w-28"/></td>
                         <td className="px-3 py-2 text-xs font-bold text-slate-700">
                           {(() => {
@@ -595,6 +621,31 @@ function StudentManager({ students, homeworks }) {
                     );
                   })}
                 </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-slate-200 bg-slate-50">
+                    <td colSpan={9} className="px-4 py-2.5 text-xs font-semibold text-slate-500 text-right">합계</td>
+                    <td className="px-3 py-2.5 text-xs font-bold text-slate-700">
+                      {sortedStudents.reduce((s, st) => s + Number((profiles[st.id]||{}).unpaidCp||0), 0) || "-"}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-slate-400">
+                      {sortedStudents.reduce((s, st) => s + Number((profiles[st.id]||{}).paidCp||0), 0) || "-"}
+                    </td>
+                    <td className="px-3 py-2.5"></td>
+                    <td className="px-3 py-2.5 text-xs font-bold text-slate-800">
+                      {(() => {
+                        const total = sortedStudents.reduce((sum, st) => {
+                          const p = profiles[st.id] || {};
+                          const cp = Number(p.unpaidCp || 0);
+                          if (!cp) return sum;
+                          const s3 = Number(p.season3Xp || 0);
+                          const rate = s3 >= 600 ? 11 : s3 >= 350 ? 10 : s3 >= 200 ? 9 : s3 >= -50 ? 8 : s3 >= -200 ? 7 : 6;
+                          return sum + cp * rate;
+                        }, 0);
+                        return total ? total.toLocaleString() + "원" : "-";
+                      })()}
+                    </td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
         }

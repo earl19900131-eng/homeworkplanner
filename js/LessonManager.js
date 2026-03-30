@@ -647,18 +647,38 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
       const board = allBoards[boardId];
       const startNode = board[`start_${studentId}`];
       if (!startNode) continue;
-      for (const toId of (startNode.nextNodes || [])) {
+      // BFS로 이 보드의 모든 교재 노드 탐색
+      const visited = new Set();
+      const queue = [...(startNode.nextNodes || [])];
+      while (queue.length) {
+        const toId = queue.shift();
+        if (visited.has(toId)) continue;
+        visited.add(toId);
         const matNode = board[toId];
-        if (!matNode || matNode.type !== "material") continue;
+        if (!matNode) continue;
+        if (matNode.type !== "material") {
+          for (const nid of (matNode.nextNodes || [])) queue.push(nid);
+          continue;
+        }
         const edgeStartNum = startNode.edgeMeta?.[toId]?.startNum || 1;
         const matStatus = allStatus[matNode.materialId] || {};
-        const totalProblems = matNode.totalProblems || 0;
-        // 오답관리에서 체크 안 된 첫 번째 문제번호 찾기 (없으면 edgeStartNum)
-        let startNum = edgeStartNum;
-        for (let p = edgeStartNum; p <= totalProblems; p++) {
-          if (!matStatus[p]) { startNum = p; break; }
+        const matSrc = materials.find(m => m.id === matNode.materialId);
+        const totalProblems = matNode.totalProblems || matSrc?.totalProblems || 0;
+        // 교재 등록 시 입력한 문제 범위 (예: 61-131)
+        const problemStart = matSrc?.problemStart || edgeStartNum;
+        const problemEnd = matSrc?.problemEnd || (problemStart + totalProblems - 1);
+        const floorNum = Math.max(problemStart, edgeStartNum);
+        // 오답 제출된 문제 기준으로 시작번호 계산
+        const checkedNums = Object.keys(matStatus).map(Number).filter(n => n >= floorNum);
+        let startNum;
+        if (checkedNums.length === 0) {
+          startNum = floorNum;
+        } else {
+          const checkedSet = new Set(checkedNums);
+          startNum = Math.min(...checkedNums);
+          while (checkedSet.has(startNum)) startNum++;
         }
-        const checked = Object.entries(matStatus).filter(([k]) => Number(k) >= edgeStartNum);
+        const checked = Object.entries(matStatus).filter(([k]) => Number(k) >= floorNum);
         const correct = checked.filter(([,v]) => v === "correct").length;
         const wrong   = checked.filter(([,v]) => v === "wrong").length;
         const unknown = checked.filter(([,v]) => v === "unknown").length;
@@ -666,23 +686,32 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
         const lastDone = checkedCount > 0
           ? [correct && `맞음 ${correct}`, wrong && `틀림 ${wrong}`, unknown && `모름 ${unknown}`].filter(Boolean).join(" / ")
           : null;
-        const matSubject = materials.find(m => m.id === matNode.materialId)?.subject || "공통수학1";
+        const matData = materials.find(m => m.id === matNode.materialId);
+        const matSubject = matData?.subject || "공통수학1";
+        const minutesPerProblem = matData?.minutesPerProblem || 3;
         mats.push({
           nodeId: toId,
           materialNodeId: matNode.materialId,
           materialName: matNode.materialName,
           totalProblems,
+          problemEnd,
           startNum,
           lastDone,
           hwType: startNode.hwType || "현행",
           subject: matSubject,
+          minutesPerProblem,
         });
-      }
+        // 다음 노드도 BFS 큐에 추가
+        for (const nid of (matNode.nextNodes || [])) queue.push(nid);
+      } // end while
     }
+    // 완료된 교재 건너뛰고 첫 번째 미완료 교재 선택
+    const firstActiveIdx = mats.findIndex(m => m.startNum <= m.problemEnd);
+    const selectedIdx = firstActiveIdx >= 0 ? firstActiveIdx : 0;
     setAutoHwModal({
-      studentId, studentName, lessonType, materials: mats, selectedIdx: 0,
-      days: "4", minPerProb: "3",
-      subject: mats[0]?.subject || "공통수학1",
+      studentId, studentName, lessonType, materials: mats, selectedIdx,
+      days: "4",
+      subject: mats[selectedIdx]?.subject || "공통수학1",
       coeff: profile.problemCoeff != null ? String(profile.problemCoeff) : "1",
     });
   };
@@ -693,19 +722,34 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
       await db.ref(`studentProfiles/${studentId}/problemCoeff`).set(num);
   };
 
-  // 자동 계산 결과 생성
+  // 자동 계산 결과 생성 (BFS 순서로 여러 교재에 걸쳐 채움)
   const calcAutoHw = (modal) => {
     if (!modal || modal.materials.length === 0) return null;
-    const mat = modal.materials[modal.selectedIdx];
     const days = parseInt(modal.days) || 1;
-    const minPerProb = parseFloat(modal.minPerProb) || 1;
     const coeff = parseFloat(modal.coeff) || 1;
     const totalMin = days * 120;
-    const timePerProb = minPerProb * coeff;
-    const numProblems = Math.max(1, Math.floor(totalMin / timePerProb));
-    const start = mat.startNum;
-    const end = start + numProblems - 1;
-    return { text: `${mat.materialName} ${start}~${end}번 (${numProblems}문제)`, numProblems, start, end };
+
+    // 첫 번째 미완료 교재 찾기
+    const startIdx = modal.materials.findIndex(m => m.startNum <= m.problemEnd);
+    if (startIdx < 0) return { text: "모든 교재 완료", numProblems: 0, parts: [] };
+
+    const curMat = modal.materials[startIdx];
+    const minPerProb = parseFloat(curMat.minutesPerProblem) || 3;
+    let needed = Math.max(1, Math.floor(totalMin / (minPerProb * coeff)));
+
+    const parts = [];
+    for (let i = startIdx; i < modal.materials.length && needed > 0; i++) {
+      const m = modal.materials[i];
+      const remaining = m.problemEnd - m.startNum + 1;
+      if (remaining <= 0) continue;
+      const take = Math.min(needed, remaining);
+      parts.push({ materialName: m.materialName, start: m.startNum, end: m.startNum + take - 1, count: take, nodeId: m.nodeId, materialNodeId: m.materialNodeId });
+      needed -= take;
+    }
+
+    const numProblems = parts.reduce((s, p) => s + p.count, 0);
+    const text = parts.map(p => `${p.materialName} ${p.start}~${p.end}번`).join(' + ') + ` (${numProblems}문제)`;
+    return { text, numProblems, parts };
   };
 
   // 현행/추가 저장
@@ -865,58 +909,60 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
             <div style={{ fontSize:13, color:"#94a3b8", marginBottom:16 }}>커리큘럼에 연결된 교재가 없습니다.<br/>커리큘럼 편집에서 학생 노드와 교재 노드를 연결하세요.</div>
           ) : (
             <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:16 }}>
-              {m.materials.length > 1 && (
-                <div>
-                  <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>교재 선택</div>
-                  <select value={m.selectedIdx} onChange={e=>{ const idx=Number(e.target.value); set({selectedIdx:idx, subject:m.materials[idx]?.subject||m.subject}); }} className={inputCls}>
-                    {m.materials.map((mat,i) => (
-                      <option key={i} value={i}>{mat.materialName} ({mat.startNum}번~{mat.lastDone ? " ✓"+mat.lastDone : ""}, 총{mat.totalProblems}문제)</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              {m.materials.length === 1 && (
-                <div style={{ fontSize:12, color:"#475569", background:"#f1f5f9", borderRadius:8, padding:"6px 10px" }}>
-                  📚 {m.materials[0].materialName} · <b>{m.materials[0].startNum}번</b>부터 시작 · 총 {m.materials[0].totalProblems}문제
-                  {m.materials[0].lastDone && <span style={{ color:"#10b981", marginLeft:6 }}>✓ {m.materials[0].lastDone}</span>}
-                </div>
-              )}
               <div>
                 <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>과목</div>
                 <select value={m.subject} onChange={e=>set({subject:e.target.value})} className={inputCls}>
                   {["중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"].map(s=><option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
                 <div>
                   <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>몇 일치</div>
                   <input type="number" min="1" value={m.days} onChange={e=>set({days:e.target.value})} className={inputCls} style={{ textAlign:"center" }}/>
-                </div>
-                <div>
-                  <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>분/문제</div>
-                  <input type="number" min="0.1" step="0.1" value={m.minPerProb} onChange={e=>set({minPerProb:e.target.value})} className={inputCls} style={{ textAlign:"center" }}/>
                 </div>
                 <div>
                   <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>계수</div>
                   <input type="number" min="0.1" step="0.1" value={m.coeff} onChange={e=>set({coeff:e.target.value})} onBlur={e=>saveCoeff(m.studentId, e.target.value)} className={inputCls} style={{ textAlign:"center" }}/>
                 </div>
               </div>
-              <div style={{ fontSize:11, color:"#64748b" }}>하루 2시간 × {m.days}일 = {(parseInt(m.days)||0)*120}분 ÷ ({m.minPerProb}분 × {m.coeff}) = <b>{result?.numProblems || 0}문제</b></div>
-              {result && (
+              {(() => {
+                const activeIdx = m.materials.findIndex(mat => mat.startNum <= mat.problemEnd);
+                const activeMat = activeIdx >= 0 ? m.materials[activeIdx] : null;
+                if (!activeMat) return null;
+                return (
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <div style={{ fontSize:11, color:"#64748b", whiteSpace:"nowrap" }}>시작 번호 ({activeMat.materialName})</div>
+                    <input type="number" min="1" value={activeMat.startNum}
+                      onChange={e => {
+                        const v = parseInt(e.target.value) || 1;
+                        set({ materials: m.materials.map((mat, i) => i === activeIdx ? { ...mat, startNum: v } : mat) });
+                      }}
+                      className={inputCls} style={{ textAlign:"center", width:70 }} />
+                  </div>
+                );
+              })()}
+              {result && result.parts && result.parts.length > 0 && (
+                <div style={{ fontSize:11, color:"#64748b" }}>
+                  하루 2시간 × {m.days}일 = {(parseInt(m.days)||0)*120}분 ÷ ({result.parts[0] && (m.materials.find(mat=>mat.nodeId===result.parts[0].nodeId)?.minutesPerProblem||3)}분 × {m.coeff}) = <b>{result.numProblems}문제</b>
+                </div>
+              )}
+              {result && result.numProblems > 0 && (
                 <div style={{ background:"#eef2ff", borderRadius:8, padding:"8px 12px", fontSize:13, fontWeight:600, color:"#3730a3" }}>
                   📝 {result.text}
                 </div>
+              )}
+              {result && result.numProblems === 0 && (
+                <div style={{ fontSize:13, color:"#10b981" }}>✅ 모든 교재 완료</div>
               )}
             </div>
           )}
           <div style={{ display:"flex", gap:8 }}>
             {result && (
               <button onClick={async () => {
-                const mat = m.materials[m.selectedIdx];
-                const hwType = m.lessonType || mat.hwType || "현행";
-                // 1. 수업일지 텍스트 저장
+                const firstPart = result.parts[0];
+                const firstMat = m.materials.find(mat => mat.nodeId === firstPart?.nodeId) || m.materials[0];
+                const hwType = m.lessonType || firstMat.hwType || "현행";
                 await saveHW(m.studentId, result.text);
-                // 2. confirmedHw에 자동 숙제 데이터 저장 (학생이 직접 등록)
                 await db.ref(`studentProfiles/${m.studentId}/confirmedHw/${hwType}`).set({
                   text: result.text,
                   date: lesson.date || todayString(),
@@ -924,9 +970,9 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
                   autoSubject: m.subject || "수학",
                   autoHwType: hwType,
                   autoTotalAmount: result.numProblems,
-                  autoStartProblem: result.start,
-                  autoMaterialNodeId: mat.nodeId,
-                  autoMaterialId: mat.materialNodeId,
+                  autoStartProblem: firstPart?.start,
+                  autoMaterialNodeId: firstMat.nodeId,
+                  autoMaterialId: firstMat.materialNodeId,
                 });
                 setAutoHwModal(null);
               }}

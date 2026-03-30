@@ -1,4 +1,13 @@
 // ── 오답관리 ─────────────────────────────────────────────────────────────────
+function ProblemImg({ matId, num }) {
+  const [url, setUrl] = React.useState(null);
+  React.useEffect(() => {
+    db.ref(`problemImages/${matId}/${num}`).once("value", snap => setUrl(snap.val() || null));
+  }, [matId, num]);
+  if (url) return <img src={url} alt={`${num}번`} style={{width:"100%",height:"auto",display:"block"}} />;
+  return <div className="h-36 flex items-center justify-center text-xs text-slate-300 bg-white">이미지 없음</div>;
+}
+
 const STATUS_CYCLE = [null, "correct", "wrong", "unknown"];
 const STATUS_STYLE = {
   correct: { bg: "#22c55e", text: "#fff", label: "맞음" },
@@ -269,12 +278,19 @@ function WrongAnswerManager({ students = [], materials = [] }) {
   const printGroups = [];
   for (let i = 0; i < pickedList.length; i += 4) printGroups.push(pickedList.slice(i, i + 4));
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     const student = students.find(s => s.id === selectedStudentId) || {};
     const studentName = student.name || "";
     const studentClass = student.className || "";
     const statusLabel = (s) => s === "wrong" ? "틀림" : s === "unknown" ? "모름" : s === "correct" ? "맞음" : "";
     const statusColor = (s) => s === "wrong" ? "#ef4444" : s === "unknown" ? "#8b5cf6" : "#22c55e";
+
+    // 이미지 URL 미리 로드
+    const imgUrls = {};
+    await Promise.all(pickedList.map(async p => {
+      const snap = await db.ref(`problemImages/${p.matId}/${p.num}`).once("value");
+      imgUrls[p.key] = snap.val() || null;
+    }));
 
     const problemBox = (p) => p ? `
       <div class="problem">
@@ -282,7 +298,9 @@ function WrongAnswerManager({ students = [], materials = [] }) {
           ${p.matName} ${p.num}번
           ${p.status ? `<span style="color:${statusColor(p.status)};font-size:10px;margin-left:6px">${statusLabel(p.status)}</span>` : ""}
         </div>
-        <div class="problem-body"></div>
+        <div class="problem-body">
+          ${imgUrls[p.key] ? `<img src="${imgUrls[p.key]}" style="max-width:100%;height:auto;display:block;" />` : ""}
+        </div>
       </div>` : `<div class="problem empty"></div>`;
 
     const pages = printGroups.map((group, gi) => `
@@ -384,7 +402,7 @@ function WrongAnswerManager({ students = [], materials = [] }) {
                           </span>
                         )}
                       </div>
-                      <div className="h-36 flex items-center justify-center text-xs text-slate-300 bg-white">이미지 없음</div>
+                      <ProblemImg matId={p.matId} num={p.num} />
                     </div>
                   ))}
                 </div>
@@ -399,7 +417,7 @@ function WrongAnswerManager({ students = [], materials = [] }) {
                           </span>
                         )}
                       </div>
-                      <div className="h-36 flex items-center justify-center text-xs text-slate-300 bg-white">이미지 없음</div>
+                      <ProblemImg matId={p.matId} num={p.num} />
                     </div>
                   ))}
                 </div>

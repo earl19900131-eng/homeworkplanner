@@ -360,76 +360,72 @@ function App() {
 
   // ── 로그인 화면 ─────────────────────────────────────────────────────────────
   if (!currentUser) return (
-    <div className="min-h-screen bg-slate-50 px-4 py-6">
-      <div className="mx-auto max-w-4xl space-y-5">
-        <Card className="p-6 stagger-item">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">숙제 소분 플래너</h1>
-              <p className="mt-1 text-sm text-slate-500">학생이 숙제를 직접 등록하면 매일 할 양으로 자동 분배됩니다.</p>
-              <div className="mt-2 flex items-center gap-1.5">
-                <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span className="text-xs text-emerald-600 font-medium">Firebase 연결됨</span>
-              </div>
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              <Badge variant="secondary">실시간 동기화</Badge>
-            </div>
+    <div style={{ minHeight:"100vh", background:"linear-gradient(145deg, #f8fafc 0%, #f0f4ff 50%, #e8f0fe 100%)", display:"flex", alignItems:"center", justifyContent:"center", position:"relative", overflow:"hidden", fontFamily:"'Segoe UI', sans-serif" }}>
+
+      {/* 배경 기하 도형 */}
+      <div style={{ position:"absolute", inset:0, pointerEvents:"none" }}>
+        <div style={{ position:"absolute", right:"8%", top:"8%", width:320, height:320, border:"1px solid rgba(100,130,220,0.15)", background:"rgba(100,130,220,0.04)", borderRadius:6, transform:"perspective(1200px) rotateX(22deg) rotateY(-28deg) rotateZ(4deg)" }}/>
+        <div style={{ position:"absolute", right:"14%", top:"18%", width:220, height:220, border:"1px solid rgba(100,130,220,0.1)", background:"rgba(100,130,220,0.03)", borderRadius:4, transform:"perspective(1200px) rotateX(18deg) rotateY(-22deg) rotateZ(2deg)" }}/>
+        <div style={{ position:"absolute", right:"5%", top:"42%", width:160, height:160, border:"1px solid rgba(100,130,220,0.1)", background:"rgba(100,130,220,0.03)", borderRadius:4, transform:"perspective(1200px) rotateX(25deg) rotateY(-35deg) rotateZ(6deg)" }}/>
+        <div style={{ position:"absolute", right:"28%", top:"65%", width:90, height:90, border:"1px solid rgba(100,130,220,0.12)", background:"rgba(100,130,220,0.03)", borderRadius:3, transform:"perspective(800px) rotateX(20deg) rotateY(-25deg)" }}/>
+        <div style={{ position:"absolute", right:"2%", bottom:"10%", width:120, height:120, border:"1px solid rgba(100,130,220,0.08)", background:"rgba(100,130,220,0.02)", borderRadius:4, transform:"perspective(800px) rotateX(15deg) rotateY(-20deg)" }}/>
+        <div style={{ position:"absolute", bottom:0, left:0, right:0, height:1, background:"linear-gradient(90deg, transparent, rgba(100,130,220,0.12), transparent)" }}/>
+        <div style={{ position:"absolute", bottom:32, left:32, width:28, height:28, borderLeft:"2px solid rgba(100,130,220,0.2)", borderBottom:"2px solid rgba(100,130,220,0.2)" }}/>
+        <div style={{ position:"absolute", top:32, left:32, width:28, height:28, borderLeft:"2px solid rgba(100,130,220,0.2)", borderTop:"2px solid rgba(100,130,220,0.2)" }}/>
+      </div>
+
+      {/* 콘텐츠 */}
+      <div style={{ position:"relative", zIndex:10, width:"100%", maxWidth:480, padding:"0 28px" }}>
+
+        {/* 브랜드 */}
+        <div style={{ marginBottom:40 }}>
+          <div style={{ fontSize:12, color:"#6b7ecc", letterSpacing:4, textTransform:"uppercase", marginBottom:16, fontWeight:700 }}>Beyond The Line Math</div>
+          <h1 style={{ fontSize:42, fontWeight:800, color:"#1a2340", lineHeight:1.15, marginBottom:14, letterSpacing:-0.5 }}>
+            한계를 넘어서,<br/>
+            <span style={{ color:"#4a6bd6" }}>다음 단계의 나를</span><br/>
+            만나다
+          </h1>
+          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+            <span style={{ width:7, height:7, borderRadius:"50%", background:"#22c55e", display:"inline-block", boxShadow:"0 0 6px #22c55e" }}/>
+            <span style={{ fontSize:12, color:"#64748b", fontWeight:500 }}>실시간 연결됨</span>
           </div>
-        </Card>
+        </div>
 
-        <div className="grid gap-5 md:grid-cols-2 stagger-item">
-          <Card className="p-6 space-y-5 stagger-item">
-            <div>
-              <h2 className="text-xl font-bold">로그인</h2>
-              <p className="text-sm text-slate-500 mt-1">학생은 이름을 타이핑해서 선택 후 PIN 입력, 선생님은 관리자 비밀번호를 입력합니다.</p>
-            </div>
-            <div className="flex gap-2 bg-slate-100 rounded-2xl p-1">
-              {["student","teacher"].map(r=>(
-                <button key={r} onClick={()=>{setLoginRole(r);setLoginSecret("");setLoginError("");}}
-                  className={`flex-1 py-2 text-sm font-medium rounded-xl transition-[color,background-color,transform,box-shadow] duration-150 ease-out active:scale-[0.96] ${loginRole===r?"bg-white shadow-sm":"text-slate-500 hover:text-slate-700"}`}>
-                  {r==="student"?"학생":"선생님"}
-                </button>
-              ))}
-            </div>
-
-            {loginRole==="student" ? (
-              <div className="space-y-4">
-                {students.length===0
-                  ? <AlertBox className="bg-amber-50 text-amber-700">⚠️ 등록된 학생이 없습니다. 선생님 계정으로 먼저 학생을 추가해 주세요.</AlertBox>
-                  : <StudentLoginForm students={students} onLogin={(id)=>{setCurrentUserId(id);setLoginError("");registerFCMToken(id,"student");}} loginError={loginError} setLoginError={setLoginError}/>
-                }
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Lbl>아이디</Lbl>
-                  <Inp value={loginId} onChange={e=>setLoginId(e.target.value)} placeholder="아이디 입력" onKeyDown={e=>e.key==="Enter"&&loginAsTeacher()}/>
-                </div>
-                <div className="space-y-2">
-                  <Lbl>비밀번호</Lbl>
-                  <Inp type="password" value={loginSecret} onChange={e=>setLoginSecret(e.target.value)} placeholder="비밀번호 입력" onKeyDown={e=>e.key==="Enter"&&loginAsTeacher()}/>
-                </div>
-                {loginError&&<AlertBox className="bg-red-50 text-red-700">{loginError}</AlertBox>}
-                <Btn onClick={loginAsTeacher} className="w-full">로그인</Btn>
-              </div>
-            )}
-          </Card>
-
-          <Card className="p-6 space-y-3 stagger-item">
-            <h2 className="text-xl font-bold">시작하는 방법</h2>
-            {[["1️⃣ 선생님 먼저 로그인","관리자 비밀번호로 로그인합니다."],
-              ["2️⃣ 학생 관리 탭","학생 이름, 반, PIN을 입력해 학생을 추가합니다."],
-              ["3️⃣ 학생에게 공유","이 페이지 주소를 학생들에게 공유합니다."],
-              ["4️⃣ 학생 로그인","학생은 본인 이름 선택 + PIN으로 접속합니다."],
-              ["5️⃣ 숙제 등록 & 체크","학생이 숙제 등록하면 선생님 화면에 실시간 반영됩니다."]
-            ].map(([t,d])=>(
-              <div key={t} className="rounded-2xl p-3" style={{boxShadow:"var(--shadow-border)"}}>
-                <div className="text-sm font-semibold">{t}</div>
-                <div className="text-xs text-slate-500 mt-0.5">{d}</div>
-              </div>
+        {/* 로그인 카드 */}
+        <div style={{ background:"rgba(255,255,255,0.75)", backdropFilter:"blur(24px)", WebkitBackdropFilter:"blur(24px)", border:"1px solid rgba(100,130,220,0.15)", borderRadius:20, padding:"32px 32px 28px", boxShadow:"0 8px 40px rgba(100,130,220,0.1)" }}>
+          {/* 탭 */}
+          <div style={{ display:"flex", gap:6, background:"rgba(100,130,220,0.07)", borderRadius:12, padding:5, marginBottom:28 }}>
+            {["student","teacher"].map(r=>(
+              <button key={r} onClick={()=>{setLoginRole(r);setLoginSecret("");setLoginError("");}}
+                style={{ flex:1, padding:"9px 0", fontSize:13, fontWeight:600, borderRadius:9, border:"none", cursor:"pointer", transition:"all 0.2s",
+                  background: loginRole===r ? "#ffffff" : "transparent",
+                  color: loginRole===r ? "#1a2340" : "#94a3b8",
+                  boxShadow: loginRole===r ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }}>
+                {r==="student" ? "학생" : "선생님"}
+              </button>
             ))}
-          </Card>
+          </div>
+
+          {loginRole==="student" ? (
+            <div>
+              {students.length===0
+                ? <div style={{ fontSize:13, color:"#92400e", background:"#fffbeb", border:"1px solid #fde68a", borderRadius:10, padding:"12px 16px" }}>⚠️ 등록된 학생이 없습니다. 선생님 계정으로 먼저 학생을 추가해 주세요.</div>
+                : <StudentLoginFormLight students={students} onLogin={(id)=>{setCurrentUserId(id);setLoginError("");registerFCMToken(id,"student");}} loginError={loginError} setLoginError={setLoginError}/>
+              }
+            </div>
+          ) : (
+            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              <input value={loginId} onChange={e=>setLoginId(e.target.value)} placeholder="아이디" onKeyDown={e=>e.key==="Enter"&&loginAsTeacher()}
+                style={{ width:"100%", background:"#f8fafc", border:"1px solid #e2e8f0", borderRadius:10, padding:"12px 16px", fontSize:14, color:"#1a2340", outline:"none", boxSizing:"border-box" }}/>
+              <input type="password" value={loginSecret} onChange={e=>setLoginSecret(e.target.value)} placeholder="비밀번호" onKeyDown={e=>e.key==="Enter"&&loginAsTeacher()}
+                style={{ width:"100%", background:"#f8fafc", border:"1px solid #e2e8f0", borderRadius:10, padding:"12px 16px", fontSize:14, color:"#1a2340", outline:"none", boxSizing:"border-box" }}/>
+              {loginError && <div style={{ fontSize:13, color:"#ef4444" }}>{loginError}</div>}
+              <button onClick={loginAsTeacher}
+                style={{ width:"100%", padding:"13px 0", borderRadius:10, border:"none", background:"#1a2340", color:"white", fontSize:14, fontWeight:700, cursor:"pointer", letterSpacing:0.5 }}>
+                로그인
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -443,7 +439,7 @@ function App() {
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-2xl font-bold tracking-tight">숙제 소분 플래너</h1>
+                <h1 className="text-2xl font-bold tracking-tight">Beyond The Line Math</h1>
                 <Badge>{currentTeacher?"선생님":"학생"}</Badge>
                 {saving&&<span className="text-xs text-slate-400 animate-pulse">저장 중...</span>}
               </div>
@@ -464,7 +460,7 @@ function App() {
             <div className="flex gap-2 bg-white rounded-2xl shadow-sm p-1">
               {(currentViewer
                 ? [["lessons","📓 수업일지"],["dashboard","📊 숙제 현황"],["wronganswer","❌ 오답관리"],["stats","📈 통계"]]
-                : [["lessons","📓 수업일지"],["dashboard","📊 숙제 현황"],["wronganswer","❌ 오답관리"],["stats","📈 통계"],["students","👥 학생 관리"],["curriculum","📚 커리큘럼"],["mockexam","📝 모의고사DB"]]
+                : [["lessons","📓 수업일지"],["dashboard","📊 숙제 현황"],["wronganswer","❌ 오답관리"],["stats","📈 통계"],["students","👥 학생 관리"],["curriculum","📚 커리큘럼"]]
               ).map(([tab,label])=>(
                 <button key={tab} onClick={()=>setTeacherTab(tab)}
                   className={`flex-1 py-2.5 text-sm font-medium rounded-xl transition ${teacherTab===tab?"bg-slate-900 text-white":"text-slate-500 hover:text-slate-700"}`}>
@@ -571,7 +567,6 @@ function App() {
             {teacherTab==="stats" && <TeacherStatsTab students={students} homeworks={homeworks} today={today}/>}
             {teacherTab==="students" && !currentViewer && <StudentManager students={students} homeworks={homeworks}/>}
             {teacherTab==="curriculum" && !currentViewer && <CurriculumManager students={students} materials={materials}/>}
-            {teacherTab==="mockexam" && !currentViewer && <MockExamManager/>}
           </div>
         )}
 

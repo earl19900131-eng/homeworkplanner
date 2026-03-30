@@ -8,6 +8,8 @@ function ProblemImageManager({ materialId }) {
   // 단건 교체용
   const [replaceNum, setReplaceNum] = React.useState(null);
   const replaceRef = React.useRef();
+  const cancelledRef = React.useRef(false);
+  const currentTaskRef = React.useRef(null);
 
   React.useEffect(() => {
     const ref = db.ref(`problemImages/${materialId}`);
@@ -18,7 +20,10 @@ function ProblemImageManager({ materialId }) {
   const uploadFile = async (file, num) => {
     const ext = file.name.split(".").pop();
     const ref = storage.ref(`problemImages/${materialId}/${num}.${ext}`);
-    await ref.put(file);
+    const task = ref.put(file);
+    currentTaskRef.current = task;
+    await task;
+    currentTaskRef.current = null;
     const url = await ref.getDownloadURL();
     await db.ref(`problemImages/${materialId}/${num}`).set(url);
   };
@@ -29,13 +34,26 @@ function ProblemImageManager({ materialId }) {
     const start = parseInt(startNum);
     if (!start || isNaN(start)) { setUploadError("시작 번호를 먼저 입력하세요."); return; }
     setUploadError("");
+    cancelledRef.current = false;
     for (let i = 0; i < files.length; i++) {
+      if (cancelledRef.current) break;
       const num = start + i;
       setProgress({ current: i + 1, total: files.length, num });
       try { await uploadFile(files[i], num); }
-      catch(err) { setUploadError(`${num}번 업로드 실패: ${err.message}`); break; }
+      catch(err) {
+        if (cancelledRef.current) break;
+        setUploadError(`${num}번 업로드 실패: ${err.message}`); break;
+      }
     }
     setProgress(null);
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
+  const handleCancel = () => {
+    cancelledRef.current = true;
+    if (currentTaskRef.current) currentTaskRef.current.cancel();
+    setProgress(null);
+    setUploadError("업로드가 취소되었습니다.");
     if (fileRef.current) fileRef.current.value = "";
   };
 
@@ -75,9 +93,15 @@ function ProblemImageManager({ materialId }) {
       <input ref={replaceRef} type="file" accept="image/*" onChange={handleReplace} className="hidden"/>
       {progress && (
         <div className="text-sm text-indigo-600 bg-indigo-50 rounded-xl px-4 py-2">
-          업로드 중... {progress.current}/{progress.total} ({progress.num}번)
+          <div className="flex items-center justify-between">
+            <span>업로드 중... {progress.current}/{progress.total} ({progress.num}번)</span>
+            <button onClick={handleCancel}
+              className="text-xs px-2 py-0.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 font-medium ml-3">
+              취소
+            </button>
+          </div>
           <div className="mt-1 h-1.5 bg-indigo-100 rounded-full overflow-hidden">
-            <div className="h-full bg-indigo-500 rounded-full transition-all" style={{width:`${progress.current/progress.total*100}%`}}/>
+            <div className="h-full bg-indigo-500 rounded-full animate-pulse" style={{width:`${progress.current/progress.total*100}%`}}/>
           </div>
         </div>
       )}
@@ -137,6 +161,37 @@ function MaterialsTab({ materials }) {
   const [editId, setEditId] = React.useState(null);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState("");
+  const [syncing, setSyncing] = React.useState(false);
+  const [syncResult, setSyncResult] = React.useState(null); // { updated, total }
+
+  // 커리큘럼 노드의 totalProblems를 교재 원본과 동기화
+  const syncNodes = async () => {
+    if (!confirm("모든 커리큘럼 보드의 교재 노드 문제수를 현재 교재 등록 정보 기준으로 동기화할까요?")) return;
+    setSyncing(true);
+    setSyncResult(null);
+    const snap = await db.ref("curriculumNodes").once("value");
+    const allBoards = snap.val() || {};
+    const matMap = {};
+    materials.forEach(m => { matMap[m.id] = m; });
+    const updates = {};
+    let total = 0, updated = 0;
+    Object.entries(allBoards).forEach(([boardId, boardNodes]) => {
+      Object.entries(boardNodes || {}).forEach(([nodeId, node]) => {
+        if (node.type !== "material" || !node.materialId) return;
+        total++;
+        const mat = matMap[node.materialId];
+        if (!mat) return;
+        if (Number(node.totalProblems) !== Number(mat.totalProblems)) {
+          updates[`curriculumNodes/${boardId}/${nodeId}/totalProblems`] = mat.totalProblems;
+          updated++;
+        }
+      });
+    });
+    if (Object.keys(updates).length > 0) await db.ref().update(updates);
+    setSyncing(false);
+    setSyncResult({ updated, total });
+    setTimeout(() => setSyncResult(null), 4000);
+  };
   const [subjectFilter, setSubjectFilter] = React.useState("전체");
 
   // 드래그 앤 드랍
@@ -318,7 +373,12 @@ function MaterialsTab({ materials }) {
               placeholder="새 폴더명 입력 (예: 공통수학1, 중2 추가)"
               className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"/>
             <Btn onClick={addFolder}>+ 폴더 추가</Btn>
+            <button onClick={syncNodes} disabled={syncing}
+              className="px-3 py-1.5 text-sm rounded-xl bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-40 font-medium whitespace-nowrap">
+              {syncing ? "동기화 중..." : "🔄 문제수 동기화"}
+            </button>
           </div>
+          {syncResult && <div className="text-xs text-emerald-600">{syncResult.updated}개 노드 업데이트됨 (총 {syncResult.total}개)</div>}
           {rootFolders.length === 0 && unclassified.length === 0
             ? <div className="rounded-2xl border border-dashed p-8 text-sm text-slate-400 text-center">폴더를 추가해 주세요.</div>
             : renderFolderGrid(rootFolders)
@@ -602,7 +662,7 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
 
   React.useEffect(() => {
     const onKeyDown = (e) => {
-      if (e.key === "Escape") { setConnectingFrom(null); return; }
+      if (e.key === "Escape") { setConnectingFrom(null); setSelectedIds(new Set()); setActivePathStudentId(null); return; }
       const tag = document.activeElement?.tagName;
       const inInput = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
       if (e.code === "Space" && !inInput) {
@@ -768,15 +828,19 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
     }
 
     // 선택 처리
+    const clickedNode = nodes[nodeId];
+    const isOnlySelected = selectedIds.has(nodeId) && selectedIds.size === 1;
+    const isInMultiSelection = selectedIds.has(nodeId) && selectedIds.size > 1;
     const nextSelected = e.shiftKey
       ? new Set([...selectedIds, nodeId])
-      : selectedIds.has(nodeId) ? selectedIds : new Set([nodeId]);
+      : isOnlySelected ? new Set()        // 단독 선택 노드 재클릭 → 해제
+      : isInMultiSelection ? selectedIds  // 다중 선택 중 하나 클릭 → 유지
+      : new Set([nodeId]);                // 미선택 노드 클릭 → 단독 선택
     setSelectedIds(nextSelected);
 
-    // 학생 노드 클릭 시 경로 자동 표시
-    const clickedNode = nodes[nodeId];
+    // 학생 노드 클릭 시 경로 자동 표시 (토글)
     if (clickedNode?.type === "start") {
-      setActivePathStudentId(clickedNode.studentId);
+      setActivePathStudentId(isOnlySelected ? null : clickedNode.studentId);
       setPathEditMode(false);
     } else {
       setActivePathStudentId(null);
@@ -785,7 +849,8 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
 
     // 드래그 오프셋 계산 (선택된 모든 노드)
     const { cx, cy } = canvasXY(e);
-    const dragNodeIds = nextSelected.has(nodeId) ? [...nextSelected] : [nodeId];
+    const dragIds = isInMultiSelection ? [...selectedIds] : (nextSelected.has(nodeId) ? [...nextSelected] : [nodeId]);
+    const dragNodeIds = dragIds;
     const offsets = {};
     for (const nid of dragNodeIds) {
       const n = nodes[nid];
@@ -808,8 +873,6 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
     if (pathEditMode) return;
     const { cx, cy } = canvasXY(e);
     setBoxSelect({ x1: cx, y1: cy, x2: cx, y2: cy });
-    setSelectedIds(new Set());
-    setActivePathStudentId(null);
   };
 
   const handleMouseMove = (e) => {
