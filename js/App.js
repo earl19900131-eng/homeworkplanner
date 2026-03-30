@@ -433,13 +433,13 @@ function App() {
 
   // ── 로그인 후 화면 ──────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-slate-50 px-3 py-4 md:px-6 md:py-6">
+    <div className="min-h-screen px-3 py-4 md:px-6 md:py-6" style={{background:"linear-gradient(145deg, #f8fafc 0%, #f0f4ff 50%, #e8f0fe 100%)", minHeight:"100vh"}}>
       <div className="mx-auto max-w-6xl space-y-4">
         <Card className="p-4 md:p-5">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-2xl font-bold tracking-tight">Beyond The Line Math</h1>
+                <h1 className="text-2xl font-bold tracking-tight" style={{color:"#1a2340"}}>Beyond The Line Math</h1>
                 <Badge>{currentTeacher?"선생님":"학생"}</Badge>
                 {saving&&<span className="text-xs text-slate-400 animate-pulse">저장 중...</span>}
               </div>
@@ -448,7 +448,7 @@ function App() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-500 bg-slate-100 rounded-2xl px-3 py-1.5">📅 {today}</span>
+              <span className="text-sm px-3 py-1.5 rounded-2xl" style={{color:"#4a6bd6", background:"#eef2ff"}}>📅 {today}</span>
               <Btn variant="outline" onClick={logout}>로그아웃</Btn>
             </div>
           </div>
@@ -457,13 +457,14 @@ function App() {
         {/* ── 선생님 / 뷰어 ── */}
         {(currentTeacher || currentViewer) && (
           <div className="space-y-4">
-            <div className="flex gap-2 bg-white rounded-2xl shadow-sm p-1">
+            <div className="flex gap-2 bg-white rounded-2xl p-1" style={{boxShadow:"0px 0px 0px 1px rgba(74,107,214,0.08), 0px 2px 8px rgba(74,107,214,0.06)"}}>
               {(currentViewer
                 ? [["lessons","📓 수업일지"],["dashboard","📊 숙제 현황"],["wronganswer","❌ 오답관리"],["stats","📈 통계"]]
                 : [["lessons","📓 수업일지"],["dashboard","📊 숙제 현황"],["wronganswer","❌ 오답관리"],["stats","📈 통계"],["students","👥 학생 관리"],["curriculum","📚 커리큘럼"]]
               ).map(([tab,label])=>(
                 <button key={tab} onClick={()=>setTeacherTab(tab)}
-                  className={`flex-1 py-2.5 text-sm font-medium rounded-xl transition ${teacherTab===tab?"bg-slate-900 text-white":"text-slate-500 hover:text-slate-700"}`}>
+                  className="flex-1 py-2.5 text-sm font-medium rounded-xl transition"
+                  style={teacherTab===tab ? {background:"#1a2340", color:"white"} : {color:"#64748b"}}>
                   {label}
                 </button>
               ))}
