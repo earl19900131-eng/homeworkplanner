@@ -160,6 +160,7 @@ function StudentTodayLessonSection({ studentId, today }) {
       newTags.unshift("출석");
       newTags.unshift("지각");
     } else {
+      newTags.unshift("지각안함");
       newTags.unshift("출석");
     }
 
