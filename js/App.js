@@ -572,7 +572,7 @@ function App() {
               </div>
             )}
 
-            {teacherTab==="lessons" && <LessonManager students={students} materials={materials} isViewer={!!currentViewer}/>}
+            {teacherTab==="lessons" && <LessonManager students={students} materials={materials} isViewer={!!currentViewer} onViewStudent={id=>setCurrentUserId(id)}/>}
             {teacherTab==="wronganswer" && <WrongAnswerManager students={students} materials={materials}/>}
             {teacherTab==="stats" && <TeacherStatsTab students={students} homeworks={homeworks} today={today}/>}
             {teacherTab==="students" && !currentViewer && <StudentManager students={students} homeworks={homeworks}/>}

@@ -433,7 +433,7 @@ function RemainingPickerModal({ studentName, assessmentName, totalProblems, curr
   );
 }
 
-function LessonDetailView({ lesson, lessons = [], students, materials = [], attendance, allAttendance, isViewer = false, onBack, onEdit }) {
+function LessonDetailView({ lesson, lessons = [], students, materials = [], attendance, allAttendance, isViewer = false, onBack, onEdit, onViewStudent }) {
   const [editingHW, setEditingHW] = React.useState(null);
   const [hwValue, setHwValue] = React.useState("");
   const [unitModal, setUnitModal] = React.useState(null); // studentId
@@ -452,6 +452,23 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
   // { studentId, studentName, materials:[{nodeId,materialName,totalProblems,startNum}], selectedIdx, days, minPerProb, coeff }
   const fullscreenRef = React.useRef(null);
   const containerRef = React.useRef(null);
+  const COL_KEYS = ["학생", "지난숙제", "숙제", "평가", "행동태그", "XP", "CP"];
+  const COL_DEFAULTS = [170, 220, 220, 180, 220, 80, 80];
+  const [colWidths, setColWidths] = React.useState(COL_DEFAULTS);
+  const resizingRef = React.useRef(null); // { colIdx, startX, startW }
+
+  const onResizeStart = (colIdx, e) => {
+    e.preventDefault();
+    resizingRef.current = { colIdx, startX: e.clientX, startW: colWidths[colIdx] };
+    const onMove = (me) => {
+      const { colIdx, startX, startW } = resizingRef.current;
+      const newW = Math.max(60, startW + me.clientX - startX);
+      setColWidths(prev => { const next = [...prev]; next[colIdx] = newW; return next; });
+    };
+    const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); resizingRef.current = null; };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -1126,16 +1143,21 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
       /* 일반 표 */
       <Card className="p-0 overflow-hidden">
         <div ref={containerRef} tabIndex={0} className="overflow-x-auto outline-none">
-          <table className="text-sm border-collapse">
+          <table className="text-sm border-collapse" style={{tableLayout:"fixed"}}>
+            <colgroup>
+              {colWidths.map((w, i) => <col key={i} style={{width: w}}/>)}
+            </colgroup>
             <thead>
               <tr className="bg-slate-50">
-                <th className="sticky left-0 z-10 bg-slate-50 px-4 py-3 text-left text-xs font-bold text-slate-500 border-b border-r border-slate-200 min-w-[150px]">학생</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 border-b border-r border-slate-200 min-w-[220px]">지난 숙제</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[220px]">숙제</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[180px]">평가</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[220px]">행동태그</th>
-                <th className="px-4 py-3 text-center text-xs font-bold text-slate-600 border-b border-r border-slate-200 min-w-[80px]">획득 XP</th>
-                <th className="px-4 py-3 text-center text-xs font-bold text-slate-600 border-b border-slate-200 min-w-[80px]">획득 CP</th>
+                {[["학생","left","text-slate-500",true],["지난 숙제","left","text-slate-400",false],["숙제","left","text-slate-600",false],["평가","left","text-slate-600",false],["행동태그","left","text-slate-600",false],["획득 XP","center","text-slate-600",false],["획득 CP","center","text-slate-600",false]].map(([label, align, color, sticky], ci) => (
+                  <th key={ci} className={`${sticky?"sticky left-0 z-10 bg-slate-50 ":""}px-4 py-3 text-${align} text-xs font-bold ${color} border-b border-r border-slate-200 select-none overflow-hidden`}
+                    style={{position: sticky ? "sticky" : "relative", width: colWidths[ci]}}>
+                    <span className="truncate block">{label}</span>
+                    <div onMouseDown={e => onResizeStart(ci, e)}
+                      style={{position:"absolute",right:0,top:0,bottom:0,width:6,cursor:"col-resize",zIndex:10,background:"transparent"}}
+                      className="hover:bg-blue-300 opacity-0 hover:opacity-60 transition-opacity"/>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -1151,7 +1173,7 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-full bg-slate-800 text-white flex items-center justify-center text-xs font-bold shrink-0">{s.name[0]}</div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="font-semibold text-sm">{s.name}</span>
                             <button type="button"
                               onClick={e => { e.stopPropagation(); saveLessonType(s.id, sRec.lessonType === "현행" ? "추가1" : sRec.lessonType === "추가1" ? "추가2" : "현행"); }}
@@ -1163,6 +1185,13 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
                                   : "bg-sky-50 text-sky-600 border-sky-200 hover:bg-sky-100"}`}>
                               {sRec.lessonType === "추가1" ? "추가1" : sRec.lessonType === "추가2" ? "추가2" : "현행"}
                             </button>
+                            {onViewStudent && (
+                              <button type="button" onClick={e => { e.stopPropagation(); onViewStudent(s.id); }}
+                                className="text-[10px] px-1.5 py-0.5 rounded-md font-bold border transition shrink-0"
+                                style={{background:"#eef2ff", color:"#4a6bd6", borderColor:"#c7d2fe"}}>
+                                👤
+                              </button>
+                            )}
                           </div>
                           <div className="text-[10px] text-slate-400 flex gap-2">
                             <span>{s.className}</span>
@@ -1629,7 +1658,7 @@ function LessonCalendar({ lessons, today, focusDateOverride, focusTrigger, onDay
 }
 
 // ── 수업일지 메인 ─────────────────────────────────────────────────────────
-function LessonManager({ students, materials = [], isViewer = false }) {
+function LessonManager({ students, materials = [], isViewer = false, onViewStudent }) {
   const today = todayString();
   const [lessons, setLessons] = React.useState([]);
   const [attendance, setAttendance] = React.useState({});
@@ -1693,6 +1722,7 @@ function LessonManager({ students, materials = [], isViewer = false }) {
           isViewer={isViewer}
           onBack={handleBack}
           onEdit={() => setAddModal({ date: currentLesson.date, lesson: currentLesson })}
+          onViewStudent={onViewStudent}
         />
         {addModal && (
           <LessonModal
