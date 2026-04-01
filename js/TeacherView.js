@@ -1,3 +1,150 @@
+// ── 학생 달력 모달 (숙제현황 / 출결현황 공용) ─────────────────────────────────
+function StudentCalendarModal({ type, student, hws, lessons, attendance, onClose }) {
+  const now = new Date();
+  const [year, setYear] = React.useState(now.getFullYear());
+  const [month, setMonth] = React.useState(now.getMonth());
+
+  // 날짜별 상태 맵 계산
+  const dayMap = React.useMemo(() => {
+    const map = {};
+    if (type === "homework") {
+      (hws || []).forEach(hw => {
+        if (!hw.dueDate) return;
+        const prev = map[hw.dueDate];
+        const v = hw.teacherVerified;
+        // 우선순위: 미이행 > 미판정 > 이행
+        if (!prev) { map[hw.dueDate] = v || "미판정"; return; }
+        if (prev === "미이행") return;
+        if (v === "미이행") { map[hw.dueDate] = "미이행"; return; }
+        if (!v || !prev || prev === "미판정") { map[hw.dueDate] = v || "미판정"; }
+      });
+    } else {
+      (lessons || []).forEach(l => {
+        if (!(l.studentIds || []).includes(student.id)) return;
+        const tags = (attendance[l._key]?.[student.id]?.tags) || [];
+        let status = null;
+        if (tags.includes("무단결석")) status = "무단결석";
+        else if (tags.includes("결석")) status = "결석";
+        else if (tags.includes("지각")) status = "지각";
+        else if (tags.includes("출석")) status = "출석";
+        if (status) map[l.date] = status;
+      });
+    }
+    return map;
+  }, [type, hws, lessons, attendance, student]);
+
+  // 달력 셀 생성
+  const cells = React.useMemo(() => {
+    const first = new Date(year, month, 1);
+    const startDow = first.getDay();
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    const result = [];
+    for (let i = 0; i < startDow; i++) result.push(null);
+    for (let d = 1; d <= lastDay; d++) {
+      const dateStr = `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+      result.push({ d, dateStr });
+    }
+    while (result.length % 7 !== 0) result.push(null);
+    return result;
+  }, [year, month]);
+
+  const dotColor = (status) => {
+    if (type === "homework") {
+      if (status === "이행") return "bg-emerald-400";
+      if (status === "미이행") return "bg-red-400";
+      return "bg-slate-300";
+    } else {
+      if (status === "출석") return "bg-emerald-400";
+      if (status === "지각") return "bg-amber-400";
+      if (status === "결석") return "bg-red-400";
+      if (status === "무단결석") return "bg-pink-500";
+      return "bg-slate-300";
+    }
+  };
+
+  const bgColor = (status) => {
+    if (!status) return "";
+    if (type === "homework") {
+      if (status === "이행") return "bg-emerald-50";
+      if (status === "미이행") return "bg-red-50";
+      return "bg-slate-50";
+    } else {
+      if (status === "출석") return "bg-emerald-50";
+      if (status === "지각") return "bg-amber-50";
+      if (status === "결석") return "bg-red-50";
+      if (status === "무단결석") return "bg-pink-50";
+      return "";
+    }
+  };
+
+  const prevMonth = () => { if (month === 0) { setYear(y=>y-1); setMonth(11); } else setMonth(m=>m-1); };
+  const nextMonth = () => { if (month === 11) { setYear(y=>y+1); setMonth(0); } else setMonth(m=>m+1); };
+
+  const legends = type === "homework"
+    ? [["bg-emerald-400","이행"],["bg-red-400","미이행"],["bg-slate-300","미판정"]]
+    : [["bg-emerald-400","출석"],["bg-amber-400","지각"],["bg-red-400","결석"],["bg-pink-500","무단결석"]];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e=>e.stopPropagation()}>
+        {/* 헤더 */}
+        <div className="p-5 pb-3 border-b" style={{background:"linear-gradient(135deg,#1a2340,#2d3a6b)"}}>
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="text-xs text-blue-300 font-medium mb-0.5">{type === "homework" ? "숙제 이행 달력" : "출결 달력"}</div>
+              <div className="text-lg font-bold text-white">{student.name}</div>
+              <div className="text-sm text-blue-200">{student.className}</div>
+            </div>
+            <button onClick={onClose} className="text-white/60 hover:text-white text-2xl font-bold leading-none">×</button>
+          </div>
+        </div>
+
+        <div className="p-4 space-y-3">
+          {/* 월 네비게이션 */}
+          <div className="flex items-center justify-between">
+            <button onClick={prevMonth} className="w-8 h-8 rounded-lg border flex items-center justify-center text-slate-500 hover:bg-slate-50">‹</button>
+            <div className="font-bold text-slate-800">{year}년 {month+1}월</div>
+            <button onClick={nextMonth} className="w-8 h-8 rounded-lg border flex items-center justify-center text-slate-500 hover:bg-slate-50">›</button>
+          </div>
+
+          {/* 요일 헤더 */}
+          <div className="grid grid-cols-7 text-center">
+            {["일","월","화","수","목","금","토"].map((d,i) => (
+              <div key={d} className={`text-xs font-bold py-1 ${i===0?"text-red-400":i===6?"text-blue-400":"text-slate-400"}`}>{d}</div>
+            ))}
+          </div>
+
+          {/* 날짜 칸 */}
+          <div className="grid grid-cols-7 gap-0.5">
+            {cells.map((cell, i) => {
+              if (!cell) return <div key={i}/>;
+              const status = dayMap[cell.dateStr];
+              const dow = (i) % 7;
+              return (
+                <div key={cell.dateStr} className={`rounded-lg p-1 min-h-[44px] flex flex-col items-center gap-0.5 ${bgColor(status)}`}>
+                  <div className={`text-xs font-medium ${dow===0?"text-red-400":dow===6?"text-blue-400":"text-slate-600"}`}>{cell.d}</div>
+                  {status && <div className={`w-2.5 h-2.5 rounded-full ${dotColor(status)}`}/>}
+                  {status && <div className="text-[8px] text-slate-500 leading-tight text-center">{status}</div>}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 범례 */}
+          <div className="flex flex-wrap gap-3 pt-1 border-t">
+            {legends.map(([cls, label]) => (
+              <div key={label} className="flex items-center gap-1.5">
+                <div className={`w-2.5 h-2.5 rounded-full ${cls}`}/>
+                <span className="text-xs text-slate-500">{label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── 선생님 통계 탭 ────────────────────────────────────────────────────────────
 function TeacherStatsTab({ students, homeworks, today }) {
   const [statsTab, setStatsTab] = useState("homework"); // "homework" | "attendance"
@@ -23,6 +170,7 @@ function HomeworkStatsSection({ students, homeworks, today }) {
   const hwByStudent = useMemo(() => homeworks.reduce((acc,hw)=>{ (acc[hw.studentId]||(acc[hw.studentId]=[])).push(hw); return acc; },{}), [homeworks]);
   const classes = [...new Set(students.map(s=>s.className))].sort();
   const [selectedClass, setSelectedClass] = useState("all");
+  const [calendarModal, setCalendarModal] = useState(null); // { student, hws }
 
   const filteredStudents = selectedClass === "all" ? students : students.filter(s=>s.className===selectedClass);
 
@@ -57,6 +205,14 @@ function HomeworkStatsSection({ students, homeworks, today }) {
 
   return (
     <div className="space-y-5">
+      {calendarModal && (
+        <StudentCalendarModal
+          type="homework"
+          student={calendarModal.student}
+          hws={calendarModal.hws}
+          onClose={() => setCalendarModal(null)}
+        />
+      )}
       <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
         {classRates.map(c => (
           <Card key={c.cls} className="p-4">
@@ -94,7 +250,8 @@ function HomeworkStatsSection({ students, homeworks, today }) {
           ? <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-400 text-center">데이터가 없습니다.</div>
           : <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {studentRates.map(s => (
-                <div key={s.id} className="rounded-2xl border p-3 space-y-2">
+                <div key={s.id} className="rounded-2xl border p-3 space-y-2 cursor-pointer hover:bg-slate-50 transition"
+                  onClick={() => setCalendarModal({ student: s, hws: (hwByStudent[s.id]||[]).filter(hw=>hw.dueDate<=today) })}>
                   <div className="flex items-center justify-between gap-1">
                     <div className="text-sm font-semibold truncate">{s.name}</div>
                     <div className={`rounded-xl px-2 py-0.5 text-xs font-bold ${rateColor(s.rate)}`}>
@@ -120,6 +277,7 @@ function AttendanceStatsSection({ students }) {
   const [allAttendance, setAllAttendance] = React.useState({});
   const [allLessons, setAllLessons] = React.useState([]);
   const [selectedClass, setSelectedClass] = useState("all");
+  const [calendarModal, setCalendarModal] = useState(null); // { student }
   const classes = [...new Set(students.map(s=>s.className))].sort();
 
   React.useEffect(() => {
@@ -185,6 +343,15 @@ function AttendanceStatsSection({ students }) {
 
   return (
     <div className="space-y-5">
+      {calendarModal && (
+        <StudentCalendarModal
+          type="attendance"
+          student={calendarModal.student}
+          lessons={allLessons}
+          attendance={allAttendance}
+          onClose={() => setCalendarModal(null)}
+        />
+      )}
       {/* 반별 카드 */}
       <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
         {classStats.map(c => (
@@ -227,7 +394,8 @@ function AttendanceStatsSection({ students }) {
           ? <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-400 text-center">데이터가 없습니다.</div>
           : <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {studentStats.map(s => (
-                <div key={s.id} className="rounded-2xl border p-3 space-y-2">
+                <div key={s.id} className="rounded-2xl border p-3 space-y-2 cursor-pointer hover:bg-slate-50 transition"
+                  onClick={() => setCalendarModal({ student: s })}>
                   <div className="flex items-center justify-between gap-1">
                     <div className="text-sm font-semibold truncate">{s.name}</div>
                     <div className={`rounded-xl px-2 py-0.5 text-xs font-bold ${rateColor(s.출석률)}`}>
