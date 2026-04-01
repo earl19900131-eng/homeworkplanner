@@ -452,8 +452,8 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
   // { studentId, studentName, materials:[{nodeId,materialName,totalProblems,startNum}], selectedIdx, days, minPerProb, coeff }
   const fullscreenRef = React.useRef(null);
   const containerRef = React.useRef(null);
-  const COL_KEYS = ["학생", "지난숙제", "숙제", "평가", "행동태그", "데일리코멘트", "XP", "CP"];
-  const COL_DEFAULTS = [170, 220, 220, 180, 220, 220, 80, 80];
+  const COL_KEYS = ["학생", "지난숙제", "숙제", "평가", "행동태그", "데일리코멘트", "등원", "하원", "XP", "CP"];
+  const COL_DEFAULTS = [170, 220, 220, 180, 220, 220, 80, 80, 80, 80];
   const [colWidths, setColWidths] = React.useState(COL_DEFAULTS);
   const resizingRef = React.useRef(null); // { colIdx, startX, startW }
 
@@ -623,6 +623,16 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
   const saveDailyComment = async (studentId, val) => {
     if (val.trim()) await db.ref(`lessonAttendance/${lesson._key}/${studentId}/dailyComment`).set(val.trim());
     else await db.ref(`lessonAttendance/${lesson._key}/${studentId}/dailyComment`).remove();
+  };
+
+  const saveArrivalTime = async (studentId, val) => {
+    if (val) await db.ref(`lessonAttendance/${lesson._key}/${studentId}/arrivalTime`).set(val);
+    else await db.ref(`lessonAttendance/${lesson._key}/${studentId}/arrivalTime`).remove();
+  };
+
+  const saveDepartureTime = async (studentId, val) => {
+    if (val) await db.ref(`lessonAttendance/${lesson._key}/${studentId}/departureTime`).set(val);
+    else await db.ref(`lessonAttendance/${lesson._key}/${studentId}/departureTime`).remove();
   };
 
   const rawSaveTags = async (studentId, tags) => {
@@ -1154,7 +1164,7 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
             </colgroup>
             <thead>
               <tr className="bg-slate-50">
-                {[["학생","left","text-slate-500",true],["지난 숙제","left","text-slate-400",false],["숙제","left","text-slate-600",false],["평가","left","text-slate-600",false],["행동태그","left","text-slate-600",false],["데일리코멘트","left","text-slate-600",false],["획득 XP","center","text-slate-600",false],["획득 CP","center","text-slate-600",false]].map(([label, align, color, sticky], ci) => (
+                {[["학생","left","text-slate-500",true],["지난 숙제","left","text-slate-400",false],["숙제","left","text-slate-600",false],["평가","left","text-slate-600",false],["행동태그","left","text-slate-600",false],["데일리코멘트","left","text-slate-600",false],["등원","center","text-slate-600",false],["하원","center","text-slate-600",false],["획득 XP","center","text-slate-600",false],["획득 CP","center","text-slate-600",false]].map(([label, align, color, sticky], ci) => (
                   <th key={ci} className={`${sticky?"sticky left-0 z-10 bg-slate-50 ":""}px-4 py-3 text-${align} text-xs font-bold ${color} border-b border-r border-slate-200 select-none overflow-hidden`}
                     style={{position: sticky ? "sticky" : "relative", width: colWidths[ci]}}>
                     <span className="truncate block">{label}</span>
@@ -1334,6 +1344,19 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
                         style={{minWidth:0}}
                         onClick={e => e.stopPropagation()}
                       />
+                    </td>
+
+                    <td className="border-b border-r border-slate-100 text-center py-1.5 px-2">
+                      <input type="time" defaultValue={sRec.arrivalTime || ""}
+                        onBlur={e => saveArrivalTime(s.id, e.target.value)}
+                        className="w-full text-xs text-center outline-none bg-transparent text-slate-600"
+                        onClick={e => e.stopPropagation()}/>
+                    </td>
+                    <td className="border-b border-r border-slate-100 text-center py-1.5 px-2">
+                      <input type="time" defaultValue={sRec.departureTime || ""}
+                        onBlur={e => saveDepartureTime(s.id, e.target.value)}
+                        className="w-full text-xs text-center outline-none bg-transparent text-slate-600"
+                        onClick={e => e.stopPropagation()}/>
                     </td>
 
                     <td className="border-b border-r border-slate-100 text-center py-2.5 px-3">
