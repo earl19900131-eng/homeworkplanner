@@ -1,7 +1,21 @@
 // ── 학부모 보고서 섹션 ───────────────────────────────────────────────────────
 function ParentReportsSection({ studentId, studentName, studentClass }) {
   const [reports, setReports] = React.useState([]);
-  const [modal, setModal] = React.useState(null); // report object
+  const [modal, setModal] = React.useState(null);
+  const READ_KEY = `hwp-read-reports-${studentId}`;
+  const [readKeys, setReadKeys] = React.useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(READ_KEY) || "[]")); }
+    catch { return new Set(); }
+  });
+
+  const markRead = (lessonKey) => {
+    setReadKeys(prev => {
+      const next = new Set(prev);
+      next.add(lessonKey);
+      localStorage.setItem(READ_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  };
 
   React.useEffect(() => {
     const ref = db.ref(`parentReportIndex/${studentId}`);
@@ -9,7 +23,7 @@ function ParentReportsSection({ studentId, studentName, studentClass }) {
       const data = snap.val() || {};
       const arr = Object.entries(data)
         .map(([lessonKey, v]) => ({ ...v, lessonKey }))
-        .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+        .sort((a, b) => (b.sentAt || "").localeCompare(a.sentAt || ""));
       setReports(arr);
     });
     return () => ref.off();
@@ -42,9 +56,13 @@ function ParentReportsSection({ studentId, studentName, studentClass }) {
         const isLate = tags.includes("지각");
         return (
           <button key={r.lessonKey} type="button"
-            className="w-full text-left rounded-2xl border border-slate-200 bg-white px-4 py-3 flex items-center justify-between gap-2 hover:border-blue-200 hover:shadow-sm transition"
-            onClick={() => setModal(r)}>
+            className="w-full text-left rounded-2xl border bg-white px-4 py-3 flex items-center justify-between gap-2 hover:border-blue-200 hover:shadow-sm transition"
+            style={{borderColor: readKeys.has(r.lessonKey) ? "#e2e8f0" : "#fca5a5"}}
+            onClick={() => { setModal(r); markRead(r.lessonKey); }}>
             <div className="flex items-center gap-3 flex-wrap">
+              {!readKeys.has(r.lessonKey) && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-lg bg-red-500 text-white shrink-0">NEW</span>
+              )}
               <div className="text-sm font-bold" style={{color:"#1a2340"}}>{fmtDate(r.date)}</div>
               <div className="text-xs text-slate-500">{r.lessonTitle}</div>
               {isAbsent && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-lg bg-red-100 text-red-600">결석</span>}
@@ -135,6 +153,216 @@ function ParentReportsSection({ studentId, studentName, studentClass }) {
           </div>
         );
       })()}
+    </div>
+  );
+}
+
+// ── 학부모 알림 섹션 ─────────────────────────────────────────────────────────
+function ParentNoticesSection({ studentId }) {
+  const [tab, setTab] = React.useState("broadcast");
+  const [broadcasts, setBroadcasts] = React.useState([]);
+  const [personal, setPersonal] = React.useState([]);
+  const BC_READ_KEY = "hwp-read-bc";
+  const PM_READ_KEY = `hwp-read-pm-${studentId}`;
+  const [readBc, setReadBc] = React.useState(() => { try { return new Set(JSON.parse(localStorage.getItem(BC_READ_KEY)||"[]")); } catch { return new Set(); } });
+  const [readPm, setReadPm] = React.useState(() => { try { return new Set(JSON.parse(localStorage.getItem(PM_READ_KEY)||"[]")); } catch { return new Set(); } });
+
+  React.useEffect(() => {
+    const ref = db.ref("parentBroadcast");
+    ref.on("value", snap => {
+      const data = snap.val() || {};
+      setBroadcasts(Object.entries(data).map(([k,v])=>({...v,id:k})).sort((a,b)=>b.sentAt.localeCompare(a.sentAt)));
+    });
+    return () => ref.off();
+  }, []);
+
+  React.useEffect(() => {
+    const ref = db.ref(`parentMessages/${studentId}`);
+    ref.on("value", snap => {
+      const data = snap.val() || {};
+      setPersonal(Object.entries(data).map(([k,v])=>({...v,id:k})).sort((a,b)=>b.sentAt.localeCompare(a.sentAt)));
+    });
+    return () => ref.off();
+  }, [studentId]);
+
+  const DOW = ["일","월","화","수","목","금","토"];
+  const fmtDate = (iso) => { if (!iso) return ""; const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")} (${DOW[d.getDay()]}) ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`; };
+
+  const markBc = (id) => setReadBc(prev => { const n=new Set(prev);n.add(id);localStorage.setItem(BC_READ_KEY,JSON.stringify([...n]));return n; });
+  const markPm = (id) => setReadPm(prev => { const n=new Set(prev);n.add(id);localStorage.setItem(PM_READ_KEY,JSON.stringify([...n]));return n; });
+
+  const [openItem, setOpenItem] = React.useState(null);
+
+  const bcUnread = broadcasts.filter(n=>!readBc.has(n.id)).length;
+  const pmUnread = personal.filter(n=>!readPm.has(n.id)).length;
+
+  const NoticeCard = ({ item, isRead, onOpen }) => (
+    <button type="button" onClick={onOpen}
+      className="w-full text-left rounded-2xl border bg-white px-4 py-3 space-y-1 hover:border-blue-200 hover:shadow-sm transition"
+      style={{borderColor: isRead ? "#e2e8f0" : "#fca5a5"}}>
+      <div className="flex items-center gap-2">
+        {!isRead && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-lg bg-red-500 text-white shrink-0">NEW</span>}
+        <span className="text-sm font-bold text-slate-800">{item.title}</span>
+      </div>
+      <div className="text-xs text-slate-400">{fmtDate(item.sentAt)}</div>
+    </button>
+  );
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2 bg-slate-100 rounded-2xl p-1">
+        {[["broadcast", `전체 알림${bcUnread>0?` (${bcUnread})`:"" }`],["personal",`개인 알림${pmUnread>0?` (${pmUnread})`:"" }`]].map(([k,l])=>(
+          <button key={k} onClick={()=>setTab(k)}
+            className={`flex-1 py-2 text-sm font-medium rounded-xl transition ${tab===k?"bg-white shadow-sm text-slate-800":"text-slate-500"}`}>{l}
+          </button>
+        ))}
+      </div>
+
+      {tab==="broadcast" && (
+        broadcasts.length===0
+          ? <div className="rounded-2xl border border-dashed p-8 text-sm text-slate-400 text-center">전체 알림이 없습니다.</div>
+          : broadcasts.map(n => <NoticeCard key={n.id} item={n} isRead={readBc.has(n.id)} onOpen={()=>{setOpenItem({...n,type:"bc"});markBc(n.id);}}/>)
+      )}
+      {tab==="personal" && (
+        personal.length===0
+          ? <div className="rounded-2xl border border-dashed p-8 text-sm text-slate-400 text-center">개인 알림이 없습니다.</div>
+          : personal.map(n => <NoticeCard key={n.id} item={n} isRead={readPm.has(n.id)} onOpen={()=>{setOpenItem({...n,type:"pm"});markPm(n.id);}}/>)
+      )}
+
+      {openItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={()=>setOpenItem(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4" onClick={e=>e.stopPropagation()}>
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="text-xs text-slate-400 mb-1">{openItem.type==="bc"?"전체 알림":"개인 알림"} · {fmtDate(openItem.sentAt)}</div>
+                <div className="text-lg font-bold text-slate-800">{openItem.title}</div>
+              </div>
+              <button onClick={()=>setOpenItem(null)} className="text-slate-400 hover:text-slate-600 text-2xl font-bold ml-3">×</button>
+            </div>
+            <div className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap bg-slate-50 rounded-xl px-4 py-3">{openItem.body}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 선생님 학부모 알림 발송 탭 ────────────────────────────────────────────────
+function TeacherNoticesTab({ students }) {
+  const [tab, setTab] = React.useState("broadcast");
+  const [selStudentId, setSelStudentId] = React.useState("");
+  const [title, setTitle] = React.useState("");
+  const [body, setBody] = React.useState("");
+  const [sending, setSending] = React.useState(false);
+  const [sentOk, setSentOk] = React.useState(false);
+  const [broadcasts, setBroadcasts] = React.useState([]);
+  const [personal, setPersonal] = React.useState([]);
+
+  React.useEffect(() => {
+    const ref = db.ref("parentBroadcast");
+    ref.on("value", snap => {
+      const data = snap.val() || {};
+      setBroadcasts(Object.entries(data).map(([k,v])=>({...v,id:k})).sort((a,b)=>b.sentAt.localeCompare(a.sentAt)));
+    });
+    return () => ref.off();
+  }, []);
+
+  React.useEffect(() => {
+    if (!selStudentId) { setPersonal([]); return; }
+    const ref = db.ref(`parentMessages/${selStudentId}`);
+    ref.on("value", snap => {
+      const data = snap.val() || {};
+      setPersonal(Object.entries(data).map(([k,v])=>({...v,id:k})).sort((a,b)=>b.sentAt.localeCompare(a.sentAt)));
+    });
+    return () => ref.off();
+  }, [selStudentId]);
+
+  const DOW = ["일","월","화","수","목","금","토"];
+  const fmtDate = (iso) => { if (!iso) return ""; const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")} (${DOW[d.getDay()]}) ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`; };
+
+  const send = async () => {
+    if (!title.trim() || !body.trim()) return;
+    if (tab==="personal" && !selStudentId) return;
+    setSending(true);
+    const sentAt = new Date().toISOString();
+    const id = Date.now().toString();
+    if (tab==="broadcast") {
+      await db.ref(`parentBroadcast/${id}`).set({ title:title.trim(), body:body.trim(), sentAt });
+    } else {
+      await db.ref(`parentMessages/${selStudentId}/${id}`).set({ title:title.trim(), body:body.trim(), sentAt });
+    }
+    setTitle(""); setBody(""); setSending(false); setSentOk(true);
+    setTimeout(()=>setSentOk(false), 2000);
+  };
+
+  const del = async (type, id, studentId) => {
+    if (!confirm("삭제할까요?")) return;
+    if (type==="bc") await db.ref(`parentBroadcast/${id}`).remove();
+    else await db.ref(`parentMessages/${studentId}/${id}`).remove();
+  };
+
+  const inp = "w-full border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-300";
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2 bg-white rounded-2xl p-1" style={{boxShadow:"0px 0px 0px 1px rgba(74,107,214,0.08), 0px 2px 8px rgba(74,107,214,0.06)"}}>
+        {[["broadcast","전체 알림"],["personal","개인 알림"]].map(([k,l])=>(
+          <button key={k} onClick={()=>setTab(k)}
+            className={`flex-1 py-2 text-sm font-bold rounded-xl transition ${tab===k?"text-white":"text-slate-500"}`}
+            style={tab===k?{background:"#1a2340"}:{}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      <Card className="p-4 space-y-3">
+        <h3 className="font-bold text-sm">새 {tab==="broadcast"?"전체":"개인"} 알림 발송</h3>
+        {tab==="personal" && (
+          <select value={selStudentId} onChange={e=>setSelStudentId(e.target.value)} className={inp}>
+            <option value="">학생 선택...</option>
+            {students.map(s=><option key={s.id} value={s.id}>{s.name} ({s.className})</option>)}
+          </select>
+        )}
+        <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="제목" className={inp}/>
+        <textarea value={body} onChange={e=>setBody(e.target.value)} placeholder="내용" rows={4} className={`${inp} resize-none`}/>
+        <button onClick={send} disabled={sending||sentOk||!title.trim()||!body.trim()||(tab==="personal"&&!selStudentId)}
+          className="w-full py-2.5 rounded-xl text-sm font-bold text-white transition"
+          style={{background: sentOk?"#22c55e":"#1a2340", opacity: (sending||!title.trim()||!body.trim())?0.5:1}}>
+          {sending?"발송 중...":sentOk?"발송 완료!":"발송"}
+        </button>
+      </Card>
+
+      <Card className="p-4 space-y-3">
+        <h3 className="font-bold text-sm text-slate-500">발송 내역</h3>
+        {tab==="broadcast" && (
+          broadcasts.length===0
+            ? <div className="text-xs text-slate-400 text-center py-4">발송 내역 없음</div>
+            : broadcasts.map(n=>(
+              <div key={n.id} className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2 last:border-0 last:pb-0">
+                <div>
+                  <div className="text-sm font-medium text-slate-800">{n.title}</div>
+                  <div className="text-xs text-slate-400">{fmtDate(n.sentAt)}</div>
+                </div>
+                <button onClick={()=>del("bc",n.id)} className="text-xs text-red-400 hover:text-red-600 shrink-0">삭제</button>
+              </div>
+            ))
+        )}
+        {tab==="personal" && (
+          !selStudentId
+            ? <div className="text-xs text-slate-400 text-center py-4">학생을 선택하면 내역이 표시됩니다.</div>
+            : personal.length===0
+              ? <div className="text-xs text-slate-400 text-center py-4">발송 내역 없음</div>
+              : personal.map(n=>(
+                <div key={n.id} className="flex items-start justify-between gap-2 border-b border-slate-100 pb-2 last:border-0 last:pb-0">
+                  <div>
+                    <div className="text-sm font-medium text-slate-800">{n.title}</div>
+                    <div className="text-xs text-slate-400">{fmtDate(n.sentAt)}</div>
+                  </div>
+                  <button onClick={()=>del("personal",n.id,selStudentId)} className="text-xs text-red-400 hover:text-red-600 shrink-0">삭제</button>
+                </div>
+              ))
+        )}
+      </Card>
     </div>
   );
 }
@@ -548,6 +776,7 @@ function App() {
   // 학부모는 접근 불가 탭으로 이동 시 오늘 탭으로 리셋
   useEffect(() => {
     if (isParent && ["create","exam","mypage"].includes(activeTab)) setActiveTab("today");
+    if (!isParent && activeTab==="notices") setActiveTab("today");
   }, [isParent, activeTab]);
 
   useEffect(() => {
@@ -834,7 +1063,7 @@ function App() {
             <div className="flex gap-2 bg-white rounded-2xl p-1" style={{boxShadow:"0px 0px 0px 1px rgba(74,107,214,0.08), 0px 2px 8px rgba(74,107,214,0.06)"}}>
               {(currentViewer
                 ? [["lessons","📓 수업일지"],["dashboard","📊 숙제 현황"],["wronganswer","❌ 오답관리"],["stats","📈 통계"]]
-                : [["lessons","📓 수업일지"],["dashboard","📊 숙제 현황"],["wronganswer","❌ 오답관리"],["stats","📈 통계"],["students","👥 학생 관리"],["curriculum","📚 커리큘럼"]]
+                : [["lessons","📓 수업일지"],["dashboard","📊 숙제 현황"],["wronganswer","❌ 오답관리"],["stats","📈 통계"],["students","👥 학생 관리"],["curriculum","📚 커리큘럼"],["notices","📢 알림"]]
               ).map(([tab,label])=>(
                 <button key={tab} onClick={()=>setTeacherTab(tab)}
                   className="flex-1 py-2.5 text-sm font-medium rounded-xl transition"
@@ -951,6 +1180,7 @@ function App() {
             {teacherTab==="stats" && <TeacherStatsTab students={students} homeworks={homeworks} today={today}/>}
             {teacherTab==="students" && !currentViewer && <StudentManager students={students} homeworks={homeworks}/>}
             {teacherTab==="curriculum" && !currentViewer && <CurriculumManager students={students} materials={materials}/>}
+            {teacherTab==="notices" && !currentViewer && <TeacherNoticesTab students={students}/>}
           </div>
         )}
 
@@ -968,7 +1198,7 @@ function App() {
             <Card className="p-3">
               <div className="flex gap-2 bg-slate-100 rounded-2xl p-1 mb-4">
                 {(isParent
-                  ? [["today","오늘"],["all","전체"],["curriculum","커리큘럼"]]
+                  ? [["today","보고서"],["notices","학부모님께"],["all","전체"],["curriculum","커리큘럼"]]
                   : [["today","오늘"],["create","등록"],["all","전체"],["curriculum","커리큘럼"],["exam","평가"],["mypage","마이페이지"]]
                 ).map(([tab,label])=>(
                   <button key={tab} onClick={()=>setActiveTab(tab)}
@@ -1242,6 +1472,10 @@ function App() {
 
               {activeTab==="curriculum" && (
                 <StudentCurriculumView studentId={currentStudent.id} materials={materials}/>
+              )}
+
+              {activeTab==="notices" && isParent && (
+                <ParentNoticesSection studentId={currentStudent.id}/>
               )}
 
               {activeTab==="exam" && (
