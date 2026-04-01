@@ -440,6 +440,8 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
   const [remainingModal, setRemainingModal] = React.useState(null); // studentId
   const [profiles, setProfiles] = React.useState({});
   const [assessmentList, setAssessmentList] = React.useState([]);
+  const [mockExams, setMockExams] = React.useState([]);
+  const [mockExamFolders, setMockExamFolders] = React.useState([]);
   const [tagModal, setTagModal] = React.useState(null);       // studentId
   const [tagModalOriginal, setTagModalOriginal] = React.useState([]); // 모달 열릴 때 태그 스냅샷
   const [focusedCell, setFocusedCell] = React.useState(null); // { row, col }
@@ -545,6 +547,22 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
     return () => { ref1.off("value", h1); ref2.off("value", h2); };
   }, []);
 
+  // 모의평가 관련 데이터 (평가 수업용)
+  React.useEffect(() => {
+    if (!isMockSession) return;
+    const r1 = db.ref("mockExams");
+    const r2 = db.ref("mockExamFolders");
+    const h1 = r1.on("value", snap => {
+      const val = snap.val() || {};
+      setMockExams(Object.values(val).sort((a,b) => (a.round||0)-(b.round||0)));
+    });
+    const h2 = r2.on("value", snap => {
+      const val = snap.val() || {};
+      setMockExamFolders(Object.values(val).sort((a,b) => (a.createdAt||0)-(b.createdAt||0)));
+    });
+    return () => { r1.off("value", h1); r2.off("value", h2); };
+  }, [isMockSession]);
+
   // assessmentId → 평가 정보 반환 (lessonType: "추가1"/"추가2" 이면 advanceAssessment 사용)
   const getStudentAssessmentInfo = (studentId, lessonType) => {
     const profile = profiles[studentId] || {};
@@ -643,8 +661,8 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
     else await db.ref(`lessonAttendance/${lesson._key}/${studentId}/departureTime`).remove();
   };
 
-  const saveMockExamType = async (studentId, val) => {
-    await db.ref(`lessonAttendance/${lesson._key}/${studentId}/mockExamType`).set(val);
+  const saveMockExamId = async (studentId, examId) => {
+    await db.ref(`lessonAttendance/${lesson._key}/${studentId}/mockExamId`).set(examId || null);
   };
 
   const sendReport = async (student, rec) => {
@@ -1278,18 +1296,39 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
                         )}
                       </td>
                       {/* 모의평가 내용 */}
-                      <td className="border-b border-r border-slate-100 px-3 py-2">
-                        <select
-                          value={sRec.mockExamType || ""}
-                          onChange={e => { e.stopPropagation(); saveMockExamType(s.id, e.target.value); }}
-                          onClick={e => e.stopPropagation()}
-                          className="w-full text-xs rounded-lg border border-slate-200 bg-white px-2 py-1.5 outline-none focus:ring-2 focus:ring-slate-300">
-                          <option value="">선택</option>
-                          <option value="내신">내신</option>
-                          <option value="기출">기출</option>
-                          <option value="모의평가">모의평가</option>
-                        </select>
-                      </td>
+                      {(() => {
+                        const selectedExam = mockExams.find(e => e.id === sRec.mockExamId);
+                        const selectedFolderId = sRec.mockFolderId || (selectedExam ? selectedExam.folderId : "");
+                        const folderExams = mockExams.filter(e => e.folderId === selectedFolderId);
+                        return (
+                          <td className="border-b border-r border-slate-100 px-3 py-2 space-y-1.5">
+                            {/* 폴더(과목) 선택 */}
+                            <select
+                              value={selectedFolderId || ""}
+                              onChange={e => {
+                                e.stopPropagation();
+                                db.ref(`lessonAttendance/${lesson._key}/${s.id}/mockFolderId`).set(e.target.value || null);
+                                db.ref(`lessonAttendance/${lesson._key}/${s.id}/mockExamId`).set(null);
+                              }}
+                              onClick={e => e.stopPropagation()}
+                              className="w-full text-xs rounded-lg border border-slate-200 bg-white px-2 py-1.5 outline-none focus:ring-2 focus:ring-slate-300">
+                              <option value="">과목 선택</option>
+                              {mockExamFolders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                            </select>
+                            {/* 시험지 선택 */}
+                            {selectedFolderId && (
+                              <select
+                                value={sRec.mockExamId || ""}
+                                onChange={e => { e.stopPropagation(); saveMockExamId(s.id, e.target.value); }}
+                                onClick={e => e.stopPropagation()}
+                                className="w-full text-xs rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 outline-none focus:ring-2 focus:ring-amber-300">
+                                <option value="">시험지 선택</option>
+                                {folderExams.map(e => <option key={e.id} value={e.id}>{e.name}{e.round ? ` (${e.round}회)` : ""}</option>)}
+                              </select>
+                            )}
+                          </td>
+                        );
+                      })()}
                       {/* 등원 */}
                       <td className="border-b border-r border-slate-100 text-center py-1.5 px-2">
                         <input type="time" defaultValue={sRec.arrivalTime || ""}
