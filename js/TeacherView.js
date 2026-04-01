@@ -152,7 +152,7 @@ function TeacherStatsTab({ students, homeworks, today }) {
   return (
     <div className="space-y-4">
       <div className="flex gap-2 bg-white rounded-2xl p-1" style={{boxShadow:"0px 0px 0px 1px rgba(74,107,214,0.08), 0px 2px 8px rgba(74,107,214,0.06)"}}>
-        {[["homework","숙제현황"],["attendance","출결현황"]].map(([k,l])=>(
+        {[["homework","숙제통계"],["attendance","출결통계"]].map(([k,l])=>(
           <button key={k} onClick={()=>setStatsTab(k)}
             className={`flex-1 py-2 text-sm font-bold rounded-xl transition ${statsTab===k?"text-white":"text-slate-500"}`}
             style={statsTab===k?{background:"#1a2340"}:{}}>

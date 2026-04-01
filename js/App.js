@@ -1400,7 +1400,7 @@ function App() {
             <Card className="p-3">
               <div className="flex gap-2 bg-slate-100 rounded-2xl p-1 mb-4">
                 {(isParent
-                  ? [["notices","학부모님께"],["today","보고서"],["all","숙제"],["attendance","출결"],["curriculum","커리큘럼"]]
+                  ? [["notices","알림"],["today","보고서"],["all","숙제"],["attendance","출결"],["curriculum","커리큘럼"]]
                   : [["today","오늘"],["create","등록"],["all","전체"],["curriculum","커리큘럼"],["exam","평가"],["mypage","마이페이지"]]
                 ).map(([tab,label])=>(
                   <button key={tab} onClick={()=>setActiveTab(tab)}
