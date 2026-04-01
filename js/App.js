@@ -367,6 +367,208 @@ function TeacherNoticesTab({ students }) {
   );
 }
 
+// ── 학부모 출결 캘린더 ────────────────────────────────────────────────────────
+function ParentAttendanceCalendar({ studentId }) {
+  const today = new Date();
+  const [year, setYear] = React.useState(today.getFullYear());
+  const [month, setMonth] = React.useState(today.getMonth()); // 0-indexed
+  const [lessons, setLessons] = React.useState([]);
+  const [attendance, setAttendance] = React.useState({});
+  const [selectedDay, setSelectedDay] = React.useState(null);
+
+  React.useEffect(() => {
+    const ref = db.ref("lessons");
+    ref.on("value", snap => {
+      const data = snap.val() || {};
+      setLessons(Object.entries(data).map(([k,v])=>({...v,_key:k})).filter(l=>(l.studentIds||[]).includes(studentId)));
+    });
+    return () => ref.off();
+  }, [studentId]);
+
+  React.useEffect(() => {
+    const ref = db.ref(`lessonAttendance`);
+    ref.on("value", snap => {
+      const data = snap.val() || {};
+      // { lessonKey: { studentId: { tags, absenceReason, ... } } }
+      const result = {};
+      Object.entries(data).forEach(([lessonKey, students]) => {
+        if (students[studentId]) result[lessonKey] = students[studentId];
+      });
+      setAttendance(result);
+    });
+    return () => ref.off();
+  }, [studentId]);
+
+  const prevMonth = () => { if (month===0){setMonth(11);setYear(y=>y-1);}else setMonth(m=>m-1); setSelectedDay(null); };
+  const nextMonth = () => { if (month===11){setMonth(0);setYear(y=>y+1);}else setMonth(m=>m+1); setSelectedDay(null); };
+
+  // 날짜별 수업 맵
+  const dayMap = React.useMemo(() => {
+    const m = {};
+    lessons.forEach(l => {
+      if (!l.date) return;
+      const [y,mo,d] = l.date.split("-").map(Number);
+      if (y===year && mo-1===month) {
+        if (!m[d]) m[d] = [];
+        const rec = attendance[l._key] || {};
+        m[d].push({ lesson:l, rec });
+      }
+    });
+    return m;
+  }, [lessons, attendance, year, month]);
+
+  const getStatus = (entries) => {
+    for (const { rec } of entries) {
+      const tags = rec.tags || [];
+      if (tags.includes("무단결석")) return "무단결석";
+      if (tags.includes("결석")) return "결석";
+      if (tags.includes("지각")) return "지각";
+      if (tags.includes("출석")) return tags.includes("지각안함") ? "지각안함" : "출석";
+    }
+    return "수업";
+  };
+
+  const STATUS_COLOR = {
+    "출석":    { bg:"#dcfce7", text:"#15803d", dot:"#22c55e", label:"출석" },
+    "지각안함": { bg:"#dcfce7", text:"#15803d", dot:"#22c55e", label:"출석" },
+    "지각":    { bg:"#fef9c3", text:"#a16207", dot:"#eab308", label:"지각" },
+    "결석":    { bg:"#fee2e2", text:"#dc2626", dot:"#ef4444", label:"결석" },
+    "무단결석": { bg:"#fce7f3", text:"#9d174d", dot:"#ec4899", label:"무단결석" },
+    "수업":    { bg:"#f1f5f9", text:"#64748b", dot:"#94a3b8", label:"수업" },
+  };
+
+  const DOW_LABELS = ["일","월","화","수","목","금","토"];
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const cells = [];
+  for (let i=0;i<firstDay;i++) cells.push(null);
+  for (let d=1;d<=daysInMonth;d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+
+  // 월 통계
+  const stats = { 출석:0, 지각:0, 결석:0, 무단결석:0 };
+  Object.values(dayMap).forEach(entries => {
+    const s = getStatus(entries);
+    if (s==="출석"||s==="지각안함") stats["출석"]++;
+    else if (s==="지각") stats["지각"]++;
+    else if (s==="결석") stats["결석"]++;
+    else if (s==="무단결석") stats["무단결석"]++;
+  });
+
+  const selEntries = selectedDay ? (dayMap[selectedDay] || []) : [];
+
+  return (
+    <div className="space-y-4">
+      {/* 헤더 */}
+      <div className="flex items-center justify-between">
+        <button onClick={prevMonth} className="w-8 h-8 rounded-xl border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 text-sm font-bold">‹</button>
+        <div className="text-base font-bold" style={{color:"#1a2340"}}>{year}년 {month+1}월</div>
+        <button onClick={nextMonth} className="w-8 h-8 rounded-xl border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50 text-sm font-bold">›</button>
+      </div>
+
+      {/* 월 통계 */}
+      <div className="grid grid-cols-4 gap-2">
+        {[["출석","#22c55e"],["지각","#eab308"],["결석","#ef4444"],["무단결석","#ec4899"]].map(([k,color])=>(
+          <div key={k} className="bg-white rounded-xl border border-slate-100 px-2 py-2 text-center">
+            <div className="text-lg font-bold" style={{color}}>{stats[k]}</div>
+            <div className="text-[10px] text-slate-400">{k}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* 캘린더 */}
+      <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+        {/* 요일 헤더 */}
+        <div className="grid grid-cols-7 border-b border-slate-100">
+          {DOW_LABELS.map((d,i)=>(
+            <div key={d} className="py-2 text-center text-xs font-medium" style={{color: i===0?"#ef4444":i===6?"#3b82f6":"#64748b"}}>{d}</div>
+          ))}
+        </div>
+        {/* 날짜 셀 */}
+        <div className="grid grid-cols-7">
+          {cells.map((d,i)=>{
+            if (!d) return <div key={`e${i}`} className="aspect-square border-r border-b border-slate-50"/>;
+            const entries = dayMap[d] || [];
+            const hasLesson = entries.length > 0;
+            const status = hasLesson ? getStatus(entries) : null;
+            const sc = status ? STATUS_COLOR[status] : null;
+            const dateStr = `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+            const isToday = dateStr === todayStr;
+            const isSel = selectedDay === d;
+            const dow = (firstDay + d - 1) % 7;
+            return (
+              <div key={d} onClick={()=>hasLesson&&setSelectedDay(isSel?null:d)}
+                className={`aspect-square border-r border-b border-slate-50 flex flex-col items-center justify-center gap-0.5 transition ${hasLesson?"cursor-pointer hover:opacity-80":""} ${isSel?"ring-2 ring-inset ring-blue-400":""}`}
+                style={sc ? {background:sc.bg} : {}}>
+                <span className="text-xs font-medium" style={{color: isToday?"#4a6bd6": dow===0?"#ef4444":dow===6?"#3b82f6":"#374151", fontWeight: isToday?800:undefined}}>
+                  {d}
+                </span>
+                {sc && <div className="w-1.5 h-1.5 rounded-full" style={{background:sc.dot}}/>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 범례 */}
+      <div className="flex gap-3 flex-wrap">
+        {Object.entries(STATUS_COLOR).filter(([k])=>k!=="지각안함"&&k!=="수업").map(([k,v])=>(
+          <div key={k} className="flex items-center gap-1 text-xs text-slate-500">
+            <div className="w-2.5 h-2.5 rounded-full" style={{background:v.dot}}/>
+            {k}
+          </div>
+        ))}
+      </div>
+
+      {/* 선택 날짜 상세 */}
+      {selectedDay && selEntries.length > 0 && (
+        <div className="space-y-2">
+          <div className="text-sm font-bold text-slate-600">{month+1}월 {selectedDay}일 수업</div>
+          {selEntries.map(({lesson:l, rec},i) => {
+            const tags = rec.tags || [];
+            const isAbsent = tags.includes("결석")||tags.includes("무단결석");
+            const isLate = tags.includes("지각");
+            const NEG = new Set(["지각","결석","무단결석","숙제미이행","노트미지참"]);
+            return (
+              <div key={i} className="bg-white rounded-xl border border-slate-100 p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-slate-800">{l.title}</span>
+                  {l.time && <span className="text-xs text-slate-400">{l.time.slice(0,5)}</span>}
+                </div>
+                {tags.length>0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {tags.filter(t=>["출석","지각안함","지각","결석","무단결석"].includes(t)).map(t=>(
+                      <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-lg border font-medium"
+                        style={NEG.has(t)?{background:"#fee2e2",color:"#dc2626",borderColor:"#fca5a5"}:{background:"#dcfce7",color:"#15803d",borderColor:"#86efac"}}>
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {isAbsent && rec.absenceReason && (
+                  <div className="text-xs text-red-600 bg-red-50 rounded-lg px-2 py-1">사유: {rec.absenceReason}</div>
+                )}
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="text-center bg-slate-50 rounded-lg py-1.5">
+                    <div className="text-slate-400 text-[10px]">등원</div>
+                    <div className="font-bold" style={{color:"#15803d"}}>{rec.arrivalTime||"—"}</div>
+                  </div>
+                  <div className="text-center bg-slate-50 rounded-lg py-1.5">
+                    <div className="text-slate-400 text-[10px]">하원</div>
+                    <div className="font-bold" style={{color:"#1d4ed8"}}>{rec.departureTime||"—"}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── 완료 체크 오답 입력 모달 ────────────────────────────────────────────────
 function CompletionModal({ startProblem, endProblem, studentId, materialId, onClose, onConfirm }) {
   const [statuses, setStatuses] = React.useState({});
@@ -775,8 +977,8 @@ function App() {
 
   // 학부모는 접근 불가 탭으로 이동 시 오늘 탭으로 리셋
   useEffect(() => {
-    if (isParent && ["create","exam","mypage"].includes(activeTab)) setActiveTab("today");
-    if (!isParent && activeTab==="notices") setActiveTab("today");
+    if (isParent && ["create","exam","mypage"].includes(activeTab)) setActiveTab("notices");
+    if (!isParent && ["notices","attendance"].includes(activeTab)) setActiveTab("today");
   }, [isParent, activeTab]);
 
   useEffect(() => {
@@ -1198,7 +1400,7 @@ function App() {
             <Card className="p-3">
               <div className="flex gap-2 bg-slate-100 rounded-2xl p-1 mb-4">
                 {(isParent
-                  ? [["today","보고서"],["notices","학부모님께"],["all","전체"],["curriculum","커리큘럼"]]
+                  ? [["notices","학부모님께"],["today","보고서"],["all","숙제"],["attendance","출결"],["curriculum","커리큘럼"]]
                   : [["today","오늘"],["create","등록"],["all","전체"],["curriculum","커리큘럼"],["exam","평가"],["mypage","마이페이지"]]
                 ).map(([tab,label])=>(
                   <button key={tab} onClick={()=>setActiveTab(tab)}
@@ -1476,6 +1678,10 @@ function App() {
 
               {activeTab==="notices" && isParent && (
                 <ParentNoticesSection studentId={currentStudent.id}/>
+              )}
+
+              {activeTab==="attendance" && isParent && (
+                <ParentAttendanceCalendar studentId={currentStudent.id}/>
               )}
 
               {activeTab==="exam" && (
