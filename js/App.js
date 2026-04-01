@@ -434,7 +434,7 @@ function App() {
   // ── 로그인 후 화면 ──────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen px-3 py-4 md:px-6 md:py-6" style={{background:"linear-gradient(145deg, #f8fafc 0%, #f0f4ff 50%, #e8f0fe 100%)", minHeight:"100vh"}}>
-      <div className="w-full space-y-4">
+      <div className={`space-y-4 ${(currentTeacher||currentViewer) ? "w-full" : "mx-auto max-w-lg"}`}>
         <Card className="p-4 md:p-5">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
