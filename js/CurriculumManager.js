@@ -2461,13 +2461,18 @@ function CurriculumManager({ students, materials }) {
 // ── 학생용 커리큘럼 뷰 ───────────────────────────────────────────────────────
 function StudentCurriculumView({ studentId, materials = [] }) {
   const [allNodes, setAllNodes] = React.useState({});
+  const [allPaths, setAllPaths] = React.useState({});
   const [allStatuses, setAllStatuses] = React.useState({});
 
   React.useEffect(() => {
     const ref = db.ref("curriculumNodes");
-    ref.on("value", snap => {
-      setAllNodes(snap.val() || {});
-    });
+    ref.on("value", snap => setAllNodes(snap.val() || {}));
+    return () => ref.off();
+  }, []);
+
+  React.useEffect(() => {
+    const ref = db.ref("studentPaths");
+    ref.on("value", snap => setAllPaths(snap.val() || {}));
     return () => ref.off();
   }, []);
 
@@ -2478,25 +2483,42 @@ function StudentCurriculumView({ studentId, materials = [] }) {
     return () => ref.off();
   }, [studentId]);
 
-  // 보드별로 start_studentId를 각각 찾아 BFS → 모든 보드의 교재 수집
+  // 보드별로 start_studentId를 찾아 경로 수집
+  // studentPaths가 있으면 해당 엣지만 따라감, 없으면 BFS
   const getPath = () => {
     const startNodeId = `start_${studentId}`;
     const result = [];
     const visitedGlobal = new Set();
-    Object.values(allNodes).forEach(boardNodes => {
+    Object.entries(allNodes).forEach(([boardId, boardNodes]) => {
       if (!boardNodes[startNodeId]) return;
-      // 이 보드의 노드만으로 BFS
-      const queue = [startNodeId];
+      const customEdges = allPaths[boardId]?.[studentId]; // { "fromId__toId": true }
+      const hasCustom = customEdges && Object.keys(customEdges).length > 0;
+      let curId = startNodeId;
       const visited = new Set();
-      while (queue.length) {
-        const nodeId = queue.shift();
-        if (visited.has(nodeId) || visitedGlobal.has(nodeId)) continue;
-        visited.add(nodeId);
-        visitedGlobal.add(nodeId);
-        const node = boardNodes[nodeId];
-        if (!node) continue;
-        if (node.type === "material") result.push(node);
-        for (const nid of (node.nextNodes || [])) queue.push(nid);
+      if (hasCustom) {
+        // 커스텀 경로: 엣지 셋에 포함된 연결만 따라가며 순서대로 탐색
+        while (curId && !visited.has(curId)) {
+          visited.add(curId);
+          visitedGlobal.add(curId);
+          const node = boardNodes[curId];
+          if (!node) break;
+          if (node.type === "material") result.push(node);
+          const nextId = (node.nextNodes || []).find(nid => customEdges[`${curId}__${nid}`]);
+          curId = nextId || null;
+        }
+      } else {
+        // 커스텀 경로 없으면 BFS
+        const queue = [startNodeId];
+        while (queue.length) {
+          const nodeId = queue.shift();
+          if (visited.has(nodeId) || visitedGlobal.has(nodeId)) continue;
+          visited.add(nodeId);
+          visitedGlobal.add(nodeId);
+          const node = boardNodes[nodeId];
+          if (!node) continue;
+          if (node.type === "material") result.push(node);
+          for (const nid of (node.nextNodes || [])) queue.push(nid);
+        }
       }
     });
     return result;

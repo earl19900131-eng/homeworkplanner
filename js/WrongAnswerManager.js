@@ -194,34 +194,60 @@ function WrongAnswerManager({ students = [], materials = [] }) {
 
   React.useEffect(() => {
     if (!selectedStudentId) { setStudentMaterials([]); return; }
-    const ref = db.ref("curriculumNodes");
-    ref.on("value", snap => {
-      const allBoards = snap.val() || {};
+    let nodesData = {};
+    let pathsData = {};
+    let nodesLoaded = false, pathsLoaded = false;
+
+    const rebuild = () => {
+      if (!nodesLoaded || !pathsLoaded) return;
       const mats = [];
-      for (const boardId of Object.keys(allBoards)) {
-        const board = allBoards[boardId];
-        const startNode = board[`start_${selectedStudentId}`];
+      for (const [boardId, board] of Object.entries(nodesData)) {
+        const startNodeId = `start_${selectedStudentId}`;
+        const startNode = board[startNodeId];
         if (!startNode) continue;
+        const customEdges = pathsData[boardId]?.[selectedStudentId];
+        const hasCustom = customEdges && Object.keys(customEdges).length > 0;
         const visited = new Set();
-        const queue = [...(startNode.nextNodes || [])];
-        while (queue.length) {
-          const nid = queue.shift();
-          if (visited.has(nid)) continue;
-          visited.add(nid);
-          const n = board[nid];
-          if (!n) continue;
-          if (n.type === "material") {
-            const mat = materials.find(m => m.id === n.materialId);
-            if (mat && !mats.find(m => m.id === mat.id))
-              mats.push({ ...mat, totalProblems: n.totalProblems || mat.totalProblems });
+        if (hasCustom) {
+          let curId = startNodeId;
+          while (curId && !visited.has(curId)) {
+            visited.add(curId);
+            const n = board[curId];
+            if (!n) break;
+            if (n.type === "material") {
+              const mat = materials.find(m => m.id === n.materialId);
+              if (mat && !mats.find(m => m.id === mat.id))
+                mats.push({ ...mat, totalProblems: n.totalProblems || mat.totalProblems });
+            }
+            const nextId = (n.nextNodes || []).find(nid => customEdges[`${curId}__${nid}`]);
+            curId = nextId || null;
           }
-          (n.nextNodes || []).forEach(id => queue.push(id));
+        } else {
+          const queue = [...(startNode.nextNodes || [])];
+          while (queue.length) {
+            const nid = queue.shift();
+            if (visited.has(nid)) continue;
+            visited.add(nid);
+            const n = board[nid];
+            if (!n) continue;
+            if (n.type === "material") {
+              const mat = materials.find(m => m.id === n.materialId);
+              if (mat && !mats.find(m => m.id === mat.id))
+                mats.push({ ...mat, totalProblems: n.totalProblems || mat.totalProblems });
+            }
+            (n.nextNodes || []).forEach(id => queue.push(id));
+          }
         }
       }
       setStudentMaterials(mats);
       setPicked({});
-    });
-    return () => ref.off();
+    };
+
+    const nodesRef = db.ref("curriculumNodes");
+    nodesRef.on("value", snap => { nodesData = snap.val() || {}; nodesLoaded = true; rebuild(); });
+    const pathsRef = db.ref("studentPaths");
+    pathsRef.on("value", snap => { pathsData = snap.val() || {}; pathsLoaded = true; rebuild(); });
+    return () => { nodesRef.off(); pathsRef.off(); };
   }, [selectedStudentId]);
 
   React.useEffect(() => {
