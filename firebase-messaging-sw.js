@@ -15,9 +15,10 @@ const messaging = firebase.messaging();
 
 // 앱이 백그라운드일 때 수신되는 알림 처리
 messaging.onBackgroundMessage((payload) => {
-  const { title, body } = payload.notification;
+  const title = (payload.notification || payload.data || {}).title || "알림";
+  const body = (payload.notification || payload.data || {}).body || "";
   self.registration.showNotification(title, {
     body,
-    icon: "/icon.png",
+    icon: "/icon-192.png",
   });
 });

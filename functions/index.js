@@ -54,7 +54,7 @@ exports.dailyIncompleteAlert = onSchedule(
       teacherTokens.forEach((token) => {
         messages.push({
           token,
-          notification: {
+          data: {
             title: `⚠️ 오늘 미완료 학생 ${incompleteList.length}명`,
             body: names,
           },
@@ -69,7 +69,7 @@ exports.dailyIncompleteAlert = onSchedule(
         .forEach((t) => {
           messages.push({
             token: t.token,
-            notification: {
+            data: {
               title: "📚 오늘 숙제 미완료",
               body: `${info.count}개 숙제가 아직 완료되지 않았습니다!`,
             },
@@ -114,14 +114,11 @@ exports.sendReportNotification = onValueWritten(
       .filter(t => t.role === "parent" && t.userId === parentUserId)
       .map(t => ({
         token: t.token,
-        notification: {
+        data: {
           title: "📋 수업 보고서 도착",
           body: `${report.date} ${report.lessonTitle} 수업 내용을 확인해주세요.`,
         },
-        webpush: {
-          notification: { icon: "/icon-192.png", badge: "/icon-192.png" },
-          fcmOptions: { link: "/" },
-        },
+        webpush: { fcmOptions: { link: "/" } },
       }));
 
     if (messages.length === 0) {
