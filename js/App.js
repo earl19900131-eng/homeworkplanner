@@ -201,7 +201,19 @@ function StudentTodayLessonSection({ studentId, today }) {
         // 평가 정보
         const asmId = (curType === "추가1" || curType === "추가2") ? profile.advanceAssessment : profile.currentAssessment;
         const asm = asmId ? assessments[asmId] : null;
-        const evalUnit = rec["현행평가"] || null;
+        // 단원번호 → 이름 변환
+        const curUnitNum = profile.currentUnit || null;
+        let unitName = null;
+        if (asm && asm.type !== "누적테스트" && curUnitNum && asm.tree) {
+          asm.tree.forEach((maj, mi) => {
+            (maj.middles || []).forEach((mid, di) => {
+              (mid.minors || []).forEach((min, ni) => {
+                if (`${mi+1}${di+1}${ni+1}` === String(curUnitNum)) unitName = min.minor;
+              });
+            });
+          });
+        }
+        const remaining = profile.remainingProblems != null ? profile.remainingProblems : (asm?.totalProblems || null);
 
         return (
           <div key={lesson._key} className="rounded-2xl border p-4 space-y-3"
@@ -228,9 +240,14 @@ function StudentTodayLessonSection({ studentId, today }) {
               <div className="space-y-0.5">
                 <div className="text-xs text-slate-400 font-medium">평가</div>
                 {asm ? (
-                  <div>
+                  <div className="space-y-0.5">
                     <div className="text-slate-700 text-xs font-medium">{asm.name}</div>
-                    {evalUnit && <div className="text-xs text-slate-400 mt-0.5">소단원: {evalUnit}</div>}
+                    {asm.type === "누적테스트"
+                      ? <div className="text-xs text-slate-400">남은 문제: {remaining ?? "-"}문제</div>
+                      : unitName
+                        ? <div className="text-xs text-slate-400">소단원: {unitName}</div>
+                        : <div className="text-xs text-slate-300">소단원 미지정</div>
+                    }
                   </div>
                 ) : <span className="text-slate-300 text-xs">미배정</span>}
               </div>
