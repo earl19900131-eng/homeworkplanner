@@ -90,9 +90,20 @@ function CompletionModal({ startProblem, endProblem, studentId, materialId, onCl
 }
 
 // ── 학생 오늘 수업 섹션 ───────────────────────────────────────────────────────
+const _BEHAVIOR_TAGS_MAP = (() => {
+  const m = {};
+  [
+    { name:"지각안함",xp:3 },{ name:"지각",xp:-5 },{ name:"출석",xp:10 },{ name:"결석",xp:0 },{ name:"무단결석",xp:-50 },
+    { name:"숙제해옴",xp:5 },{ name:"숙제미이행",xp:-10 },{ name:"노트미지참",xp:-5 },
+  ].forEach(t => { m[t.name] = t; });
+  return m;
+})();
+
 function StudentTodayLessonSection({ studentId, today }) {
   const [todayLessons, setTodayLessons] = React.useState([]);
   const [attendance, setAttendance] = React.useState({});
+  const [profile, setProfile] = React.useState({});
+  const [assessments, setAssessments] = React.useState({});
 
   React.useEffect(() => {
     const ref = db.ref("lessons");
@@ -110,24 +121,72 @@ function StudentTodayLessonSection({ studentId, today }) {
     if (todayLessons.length === 0) return;
     const refs = todayLessons.map(l => {
       const ref = db.ref(`lessonAttendance/${l._key}/${studentId}`);
-      ref.on("value", snap => {
-        setAttendance(prev => ({ ...prev, [l._key]: snap.val() || {} }));
-      });
+      ref.on("value", snap => setAttendance(prev => ({ ...prev, [l._key]: snap.val() || {} })));
       return ref;
     });
     return () => refs.forEach(r => r.off());
   }, [todayLessons.map(l => l._key).join(","), studentId]);
 
-  const saveTime = async (lessonKey, field) => {
+  React.useEffect(() => {
+    const pRef = db.ref(`studentProfiles/${studentId}`);
+    pRef.on("value", snap => setProfile(snap.val() || {}));
+    const aRef = db.ref("assessments");
+    aRef.on("value", snap => {
+      const data = snap.val() || {};
+      setAssessments(data);
+    });
+    return () => { pRef.off(); aRef.off(); };
+  }, [studentId]);
+
+  const calcXpCp = (tags) => {
+    let xp = 0, cp = 0;
+    tags.forEach(name => { const t = _BEHAVIOR_TAGS_MAP[name]; if (t) { xp += t.xp || 0; } });
+    return { xp, cp };
+  };
+
+  const handleArrival = async (lesson, currentRec) => {
     const now = new Date();
-    const hh = String(now.getHours()).padStart(2, "0");
-    const mm = String(now.getMinutes()).padStart(2, "0");
-    await db.ref(`lessonAttendance/${lessonKey}/${studentId}/${field}`).set(`${hh}:${mm}`);
+    const hh = String(now.getHours()).padStart(2,"0");
+    const mm = String(now.getMinutes()).padStart(2,"0");
+    const arrTime = `${hh}:${mm}`;
+
+    // 지각/출석 자동 태그
+    const lessonTime = lesson.time ? lesson.time.slice(0,5) : null;
+    const isLate = lessonTime && arrTime > lessonTime;
+    const autoTag = isLate ? "지각" : "출석";
+    const removeTag = isLate ? "출석" : "지각";
+
+    const prevTags = currentRec.tags || [];
+    const newTags = prevTags.filter(t => t !== removeTag && t !== "지각안함");
+    if (!newTags.includes(autoTag)) newTags.unshift(autoTag);
+
+    const { xp, cp } = calcXpCp(newTags);
+    await db.ref(`lessonAttendance/${lesson._key}/${studentId}`).update({
+      arrivalTime: arrTime,
+      tags: newTags,
+      xp, cp,
+    });
+  };
+
+  const handleDeparture = async (lessonKey) => {
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2,"0");
+    const mm = String(now.getMinutes()).padStart(2,"0");
+    await db.ref(`lessonAttendance/${lessonKey}/${studentId}/departureTime`).set(`${hh}:${mm}`);
+  };
+
+  const removeTag = async (lessonKey, tagName, currentRec) => {
+    const newTags = (currentRec.tags || []).filter(t => t !== tagName);
+    const { xp, cp } = calcXpCp(newTags);
+    await db.ref(`lessonAttendance/${lessonKey}/${studentId}`).update({ tags: newTags, xp, cp });
   };
 
   if (todayLessons.length === 0) return null;
 
-  const SESSION_COLORS = { "평가": { bg:"#fff7ed", border:"#fed7aa", text:"#c2410c" }, "보강": { bg:"#f0fdf4", border:"#bbf7d0", text:"#15803d" } };
+  const SESSION_COLORS = {
+    "평가": { bg:"#fff7ed", border:"#fed7aa", text:"#c2410c" },
+    "보강": { bg:"#f0fdf4", border:"#bbf7d0", text:"#15803d" },
+  };
 
   return (
     <div className="space-y-3">
@@ -136,50 +195,77 @@ function StudentTodayLessonSection({ studentId, today }) {
         const rec = attendance[lesson._key] || {};
         const sc = SESSION_COLORS[lesson.sessionType] || { bg:"#f8fafc", border:"#e2e8f0", text:"#475569" };
         const curType = rec.lessonType || "현행";
-        const hwText = rec[curType === "현행" ? "현행숙제" : curType === "추가1" ? "추가1숙제" : "추가2숙제"] || rec["현행숙제"] || "";
+        const hwText = curType === "추가1" ? rec["추가1숙제"] : curType === "추가2" ? rec["추가2숙제"] : rec["현행숙제"];
         const tags = rec.tags || [];
+
+        // 평가 정보
+        const asmId = (curType === "추가1" || curType === "추가2") ? profile.advanceAssessment : profile.currentAssessment;
+        const asm = asmId ? assessments[asmId] : null;
+        const evalUnit = rec["현행평가"] || null;
+
         return (
           <div key={lesson._key} className="rounded-2xl border p-4 space-y-3"
             style={{ background: sc.bg, borderColor: sc.border }}>
-            <div className="flex items-center gap-2">
+
+            {/* 수업 헤더 */}
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="font-semibold text-base">{lesson.title}</span>
               {lesson.sessionType && lesson.sessionType !== "수업" && (
                 <span className="text-xs font-bold px-2 py-0.5 rounded-lg border"
-                  style={{ color: sc.text, borderColor: sc.border, background: "#fff" }}>
+                  style={{ color: sc.text, borderColor: sc.border, background:"#fff" }}>
                   {lesson.sessionType}
                 </span>
               )}
               {lesson.time && <span className="text-xs text-slate-400">{lesson.time.slice(0,5)}</span>}
             </div>
 
+            {/* 숙제 + 평가 */}
             <div className="grid grid-cols-2 gap-3 text-sm">
-              {hwText ? (
-                <div className="space-y-0.5">
-                  <div className="text-xs text-slate-400 font-medium">숙제</div>
-                  <div className="text-slate-700">{hwText}</div>
-                </div>
-              ) : <div/>}
-              {tags.length > 0 ? (
-                <div className="space-y-0.5">
-                  <div className="text-xs text-slate-400 font-medium">행동태그</div>
-                  <div className="flex flex-wrap gap-1">
-                    {tags.map(t => (
-                      <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-lg border font-medium bg-white text-slate-600 border-slate-200">{t}</span>
-                    ))}
+              <div className="space-y-0.5">
+                <div className="text-xs text-slate-400 font-medium">숙제</div>
+                <div className="text-slate-700">{hwText || <span className="text-slate-300">없음</span>}</div>
+              </div>
+              <div className="space-y-0.5">
+                <div className="text-xs text-slate-400 font-medium">평가</div>
+                {asm ? (
+                  <div>
+                    <div className="text-slate-700 text-xs font-medium">{asm.name}</div>
+                    {evalUnit && <div className="text-xs text-slate-400 mt-0.5">소단원: {evalUnit}</div>}
                   </div>
-                </div>
-              ) : <div/>}
+                ) : <span className="text-slate-300 text-xs">미배정</span>}
+              </div>
             </div>
 
+            {/* 행동태그 */}
+            {tags.length > 0 && (
+              <div className="space-y-1">
+                <div className="text-xs text-slate-400 font-medium">행동태그</div>
+                <div className="flex flex-wrap gap-1">
+                  {tags.map(t => {
+                    const def = _BEHAVIOR_TAGS_MAP[t];
+                    const isNeg = def && def.xp < 0;
+                    return (
+                      <button key={t} type="button"
+                        onClick={() => removeTag(lesson._key, t, rec)}
+                        className={`text-[10px] px-1.5 py-0.5 rounded-lg border font-medium transition hover:opacity-70 ${isNeg ? "bg-red-50 text-red-600 border-red-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>
+                        {t} ×
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 등원/하원 버튼 */}
             <div className="flex gap-2 pt-1">
-              <button type="button" onClick={() => saveTime(lesson._key, "arrivalTime")}
+              <button type="button" onClick={() => handleArrival(lesson, rec)}
                 className="flex-1 py-2 rounded-xl text-sm font-semibold border transition hover:opacity-80"
                 style={rec.arrivalTime
                   ? { background:"#dcfce7", color:"#15803d", borderColor:"#86efac" }
                   : { background:"#f1f5f9", color:"#475569", borderColor:"#e2e8f0" }}>
                 {rec.arrivalTime ? `✓ 등원 ${rec.arrivalTime}` : "등원"}
               </button>
-              <button type="button" onClick={() => saveTime(lesson._key, "departureTime")}
+              <button type="button" onClick={() => handleDeparture(lesson._key)}
                 className="flex-1 py-2 rounded-xl text-sm font-semibold border transition hover:opacity-80"
                 style={rec.departureTime
                   ? { background:"#dbeafe", color:"#1d4ed8", borderColor:"#93c5fd" }
