@@ -89,6 +89,111 @@ function CompletionModal({ startProblem, endProblem, studentId, materialId, onCl
   );
 }
 
+// ── 학생 오늘 수업 섹션 ───────────────────────────────────────────────────────
+function StudentTodayLessonSection({ studentId, today }) {
+  const [todayLessons, setTodayLessons] = React.useState([]);
+  const [attendance, setAttendance] = React.useState({});
+
+  React.useEffect(() => {
+    const ref = db.ref("lessons");
+    ref.on("value", snap => {
+      const data = snap.val() || {};
+      const list = Object.entries(data)
+        .map(([k, v]) => ({ ...v, _key: k }))
+        .filter(l => l.date === today && (l.studentIds || []).includes(studentId));
+      setTodayLessons(list);
+    });
+    return () => ref.off();
+  }, [studentId, today]);
+
+  React.useEffect(() => {
+    if (todayLessons.length === 0) return;
+    const refs = todayLessons.map(l => {
+      const ref = db.ref(`lessonAttendance/${l._key}/${studentId}`);
+      ref.on("value", snap => {
+        setAttendance(prev => ({ ...prev, [l._key]: snap.val() || {} }));
+      });
+      return ref;
+    });
+    return () => refs.forEach(r => r.off());
+  }, [todayLessons.map(l => l._key).join(","), studentId]);
+
+  const saveTime = async (lessonKey, field) => {
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
+    await db.ref(`lessonAttendance/${lessonKey}/${studentId}/${field}`).set(`${hh}:${mm}`);
+  };
+
+  if (todayLessons.length === 0) return null;
+
+  const SESSION_COLORS = { "평가": { bg:"#fff7ed", border:"#fed7aa", text:"#c2410c" }, "보강": { bg:"#f0fdf4", border:"#bbf7d0", text:"#15803d" } };
+
+  return (
+    <div className="space-y-3">
+      <h2 className="text-lg font-bold">오늘 수업</h2>
+      {todayLessons.map(lesson => {
+        const rec = attendance[lesson._key] || {};
+        const sc = SESSION_COLORS[lesson.sessionType] || { bg:"#f8fafc", border:"#e2e8f0", text:"#475569" };
+        const curType = rec.lessonType || "현행";
+        const hwText = rec[curType === "현행" ? "현행숙제" : curType === "추가1" ? "추가1숙제" : "추가2숙제"] || rec["현행숙제"] || "";
+        const tags = rec.tags || [];
+        return (
+          <div key={lesson._key} className="rounded-2xl border p-4 space-y-3"
+            style={{ background: sc.bg, borderColor: sc.border }}>
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-base">{lesson.title}</span>
+              {lesson.sessionType && lesson.sessionType !== "수업" && (
+                <span className="text-xs font-bold px-2 py-0.5 rounded-lg border"
+                  style={{ color: sc.text, borderColor: sc.border, background: "#fff" }}>
+                  {lesson.sessionType}
+                </span>
+              )}
+              {lesson.time && <span className="text-xs text-slate-400">{lesson.time.slice(0,5)}</span>}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              {hwText ? (
+                <div className="space-y-0.5">
+                  <div className="text-xs text-slate-400 font-medium">숙제</div>
+                  <div className="text-slate-700">{hwText}</div>
+                </div>
+              ) : <div/>}
+              {tags.length > 0 ? (
+                <div className="space-y-0.5">
+                  <div className="text-xs text-slate-400 font-medium">행동태그</div>
+                  <div className="flex flex-wrap gap-1">
+                    {tags.map(t => (
+                      <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-lg border font-medium bg-white text-slate-600 border-slate-200">{t}</span>
+                    ))}
+                  </div>
+                </div>
+              ) : <div/>}
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button type="button" onClick={() => saveTime(lesson._key, "arrivalTime")}
+                className="flex-1 py-2 rounded-xl text-sm font-semibold border transition hover:opacity-80"
+                style={rec.arrivalTime
+                  ? { background:"#dcfce7", color:"#15803d", borderColor:"#86efac" }
+                  : { background:"#f1f5f9", color:"#475569", borderColor:"#e2e8f0" }}>
+                {rec.arrivalTime ? `✓ 등원 ${rec.arrivalTime}` : "등원"}
+              </button>
+              <button type="button" onClick={() => saveTime(lesson._key, "departureTime")}
+                className="flex-1 py-2 rounded-xl text-sm font-semibold border transition hover:opacity-80"
+                style={rec.departureTime
+                  ? { background:"#dbeafe", color:"#1d4ed8", borderColor:"#93c5fd" }
+                  : { background:"#f1f5f9", color:"#475569", borderColor:"#e2e8f0" }}>
+                {rec.departureTime ? `✓ 하원 ${rec.departureTime}` : "하원"}
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── 메인 앱 ──────────────────────────────────────────────────────────────────
 function App() {
   const [students, setStudents] = useState([]);
@@ -629,6 +734,7 @@ function App() {
                     }
                   </div>
                   {overdueTasks.length>0&&<AlertBox className="bg-amber-50 text-amber-700">⚠️ 밀린 숙제가 있습니다. <b>전체 탭</b>에서 자동 재분배를 눌러보세요.</AlertBox>}
+                  <StudentTodayLessonSection studentId={currentStudent.id} today={today}/>
                 </div>
               )}
 
