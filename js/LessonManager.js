@@ -449,11 +449,12 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
   const [confirmDone, setConfirmDone] = React.useState(false);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [autoHwModal, setAutoHwModal] = React.useState(null);
+  const [reportModal, setReportModal] = React.useState(null); // { student, rec, assessmentInfo }
   // { studentId, studentName, materials:[{nodeId,materialName,totalProblems,startNum}], selectedIdx, days, minPerProb, coeff }
   const fullscreenRef = React.useRef(null);
   const containerRef = React.useRef(null);
-  const COL_KEYS = ["학생", "지난숙제", "숙제", "평가", "행동태그", "데일리코멘트", "등원", "하원", "XP", "CP"];
-  const COL_DEFAULTS = [170, 220, 220, 180, 220, 220, 80, 80, 80, 80];
+  const COL_KEYS = ["학생", "지난숙제", "숙제", "평가", "행동태그", "데일리코멘트", "등원", "하원", "XP", "CP", "보고서"];
+  const COL_DEFAULTS = [170, 220, 220, 180, 220, 220, 80, 80, 80, 80, 70];
   const [colWidths, setColWidths] = React.useState(COL_DEFAULTS);
   const resizingRef = React.useRef(null); // { colIdx, startX, startW }
 
@@ -1169,7 +1170,7 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
             </colgroup>
             <thead>
               <tr className="bg-slate-50">
-                {[["학생","left","text-slate-500",true],["지난 숙제","left","text-slate-400",false],["숙제","left","text-slate-600",false],["평가","left","text-slate-600",false],["행동태그","left","text-slate-600",false],["데일리코멘트","left","text-slate-600",false],["등원","center","text-slate-600",false],["하원","center","text-slate-600",false],["획득 XP","center","text-slate-600",false],["획득 CP","center","text-slate-600",false]].map(([label, align, color, sticky], ci) => (
+                {[["학생","left","text-slate-500",true],["지난 숙제","left","text-slate-400",false],["숙제","left","text-slate-600",false],["평가","left","text-slate-600",false],["행동태그","left","text-slate-600",false],["데일리코멘트","left","text-slate-600",false],["등원","center","text-slate-600",false],["하원","center","text-slate-600",false],["획득 XP","center","text-slate-600",false],["획득 CP","center","text-slate-600",false],["보고서","center","text-slate-600",false]].map(([label, align, color, sticky], ci) => (
                   <th key={ci} className={`${sticky?"sticky left-0 z-10 bg-slate-50 ":""}px-4 py-3 text-${align} text-xs font-bold ${color} border-b border-r border-slate-200 select-none overflow-hidden`}
                     style={{position: sticky ? "sticky" : "relative", width: colWidths[ci]}}>
                     <span className="truncate block">{label}</span>
@@ -1378,8 +1379,16 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
                     <td className="border-b border-r border-slate-100 text-center py-2.5 px-3">
                       {tags.length > 0 ? <span className={`text-sm font-bold ${xp >= 0 ? "text-emerald-600" : "text-red-600"}`}>{xp >= 0 ? "+" : ""}{xp}</span> : <span className="text-slate-300 text-xs">—</span>}
                     </td>
-                    <td className="border-b border-slate-100 text-center py-2.5 px-3">
+                    <td className="border-b border-r border-slate-100 text-center py-2.5 px-3">
                       {tags.length > 0 ? <span className="text-sm font-bold text-blue-600">+{cp}</span> : <span className="text-slate-300 text-xs">—</span>}
+                    </td>
+                    <td className="border-b border-slate-100 text-center py-2 px-2">
+                      <button type="button"
+                        onClick={e => { e.stopPropagation(); setReportModal({ student: s, rec: sRec, lesson }); }}
+                        className="text-[11px] px-2 py-1 rounded-lg font-semibold border transition hover:opacity-80"
+                        style={{background:"#eef2ff", color:"#4a6bd6", borderColor:"#c7d2fe"}}>
+                        보고서
+                      </button>
                     </td>
                   </tr>
                 );
@@ -1389,6 +1398,108 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
         </div>
       </Card>
       )}
+
+      {reportModal && (() => {
+        const { student, rec: r, lesson: l } = reportModal;
+        const rTags = r.tags || [];
+        const hwDone = rTags.includes("숙제해옴");
+        const hwMiss = rTags.includes("숙제미이행");
+        const isAbsent = rTags.includes("결석") || rTags.includes("무단결석");
+        const isLate = rTags.includes("지각");
+        const diagTags = rTags.filter(t => t.startsWith("진단평가"));
+        const curType = r.lessonType || "현행";
+        const hwText = curType === "추가1" ? r["추가1숙제"] : curType === "추가2" ? r["추가2숙제"] : r["현행숙제"];
+        const DOW = ["일","월","화","수","목","금","토"];
+        const dateObj = l.date ? new Date(l.date) : null;
+        const dateLabel = dateObj ? `${l.date} (${DOW[dateObj.getDay()]})` : l.date;
+        const section = (title, children) => (
+          <div className="space-y-1">
+            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{title}</div>
+            <div className="bg-white rounded-xl border border-slate-100 px-4 py-3 text-sm text-slate-700">{children}</div>
+          </div>
+        );
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setReportModal(null)}>
+            <div className="bg-slate-50 rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              {/* 헤더 */}
+              <div className="p-6 pb-4 border-b border-slate-200" style={{background:"linear-gradient(135deg,#1a2340,#2d3a6b)"}}>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="text-xs text-blue-300 font-medium mb-1">수업 보고서</div>
+                    <div className="text-xl font-bold text-white">{student.name}</div>
+                    <div className="text-sm text-blue-200 mt-0.5">{student.className}</div>
+                  </div>
+                  <button onClick={() => setReportModal(null)} className="text-white/60 hover:text-white text-2xl font-bold">×</button>
+                </div>
+                <div className="mt-3 pt-3 border-t border-white/20 flex items-center gap-3">
+                  <div>
+                    <div className="text-xs text-blue-300">{l.title}</div>
+                    <div className="text-xs text-blue-200">{dateLabel}{l.time ? " · " + l.time.slice(0,5) : ""}</div>
+                  </div>
+                  {isAbsent && <span className="ml-auto text-xs font-bold px-2 py-0.5 rounded-lg bg-red-500 text-white">결석</span>}
+                  {isLate && !isAbsent && <span className="ml-auto text-xs font-bold px-2 py-0.5 rounded-lg bg-amber-400 text-white">지각</span>}
+                </div>
+              </div>
+
+              <div className="p-5 space-y-4">
+                {/* 등/하원 */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-white rounded-xl border border-slate-100 px-4 py-3 text-center">
+                    <div className="text-xs text-slate-400 font-medium mb-1">등원</div>
+                    <div className="text-lg font-bold" style={{color:"#15803d"}}>{r.arrivalTime || <span className="text-slate-300 text-sm font-normal">미기록</span>}</div>
+                  </div>
+                  <div className="bg-white rounded-xl border border-slate-100 px-4 py-3 text-center">
+                    <div className="text-xs text-slate-400 font-medium mb-1">하원</div>
+                    <div className="text-lg font-bold" style={{color:"#1d4ed8"}}>{r.departureTime || <span className="text-slate-300 text-sm font-normal">미기록</span>}</div>
+                  </div>
+                </div>
+
+                {/* 숙제 */}
+                {section("숙제",
+                  <div className="flex items-start gap-2">
+                    <span className={`shrink-0 text-xs font-bold px-2 py-0.5 rounded-lg border ${hwDone ? "bg-emerald-50 text-emerald-700 border-emerald-200" : hwMiss ? "bg-red-50 text-red-600 border-red-200" : "bg-slate-100 text-slate-400 border-slate-200"}`}>
+                      {hwDone ? "✓ 해옴" : hwMiss ? "✗ 미이행" : "미확인"}
+                    </span>
+                    <span className="text-slate-600">{hwText || <span className="text-slate-300">내용 없음</span>}</span>
+                  </div>
+                )}
+
+                {/* 평가 통과 */}
+                {diagTags.length > 0 && section("통과한 평가",
+                  <div className="flex flex-wrap gap-1.5">
+                    {diagTags.map(t => (
+                      <span key={t} className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200">{t}</span>
+                    ))}
+                  </div>
+                )}
+
+                {/* 행동태그 전체 */}
+                {rTags.length > 0 && section("행동태그",
+                  <div className="flex flex-wrap gap-1">
+                    {rTags.map(name => {
+                      const def = BEHAVIOR_TAGS.find(b => b.name === name);
+                      const isNeg = def && def.xp < 0;
+                      return <span key={name} className={`text-[10px] px-1.5 py-0.5 rounded-lg border font-medium ${isNeg ? "bg-red-50 text-red-600 border-red-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>{name}</span>;
+                    })}
+                  </div>
+                )}
+
+                {/* 결석 사유 */}
+                {isAbsent && r.absenceReason && section("결석 사유",
+                  <span className="text-red-600">{r.absenceReason}</span>
+                )}
+
+                {/* 데일리 코멘트 */}
+                {section("강사 코멘트",
+                  r.dailyComment
+                    ? <span className="leading-relaxed">{r.dailyComment}</span>
+                    : <span className="text-slate-300">코멘트 없음</span>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {tagModal && tagModalStudent && (
         <TagSelectorModal
