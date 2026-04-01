@@ -57,7 +57,7 @@ function HomeworkStatsSection({ students, homeworks, today }) {
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
         {classRates.map(c => (
           <Card key={c.cls} className="p-4">
             <div className="flex items-center justify-between">
@@ -184,7 +184,7 @@ function AttendanceStatsSection({ students }) {
   return (
     <div className="space-y-5">
       {/* 반별 카드 */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
         {classStats.map(c => (
           <Card key={c.cls} className="p-4 space-y-2">
             <div className="flex items-center justify-between">
