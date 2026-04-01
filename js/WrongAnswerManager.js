@@ -194,7 +194,8 @@ function WrongAnswerManager({ students = [], materials = [] }) {
 
   React.useEffect(() => {
     if (!selectedStudentId) { setStudentMaterials([]); return; }
-    db.ref("curriculumNodes").once("value", snap => {
+    const ref = db.ref("curriculumNodes");
+    ref.on("value", snap => {
       const allBoards = snap.val() || {};
       const mats = [];
       for (const boardId of Object.keys(allBoards)) {
@@ -220,6 +221,7 @@ function WrongAnswerManager({ students = [], materials = [] }) {
       setStudentMaterials(mats);
       setPicked({});
     });
+    return () => ref.off();
   }, [selectedStudentId]);
 
   React.useEffect(() => {
