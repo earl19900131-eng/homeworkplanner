@@ -452,8 +452,8 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
   // { studentId, studentName, materials:[{nodeId,materialName,totalProblems,startNum}], selectedIdx, days, minPerProb, coeff }
   const fullscreenRef = React.useRef(null);
   const containerRef = React.useRef(null);
-  const COL_KEYS = ["학생", "지난숙제", "숙제", "평가", "행동태그", "XP", "CP"];
-  const COL_DEFAULTS = [170, 220, 220, 180, 220, 80, 80];
+  const COL_KEYS = ["학생", "지난숙제", "숙제", "평가", "행동태그", "데일리코멘트", "XP", "CP"];
+  const COL_DEFAULTS = [170, 220, 220, 180, 220, 220, 80, 80];
   const [colWidths, setColWidths] = React.useState(COL_DEFAULTS);
   const resizingRef = React.useRef(null); // { colIdx, startX, startW }
 
@@ -620,6 +620,11 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
     if (val === "") await db.ref(`lessonAttendance/${lesson._key}/${studentId}/현행평가`).remove();
     else await db.ref(`lessonAttendance/${lesson._key}/${studentId}/현행평가`).set(val);
   };
+  const saveDailyComment = async (studentId, val) => {
+    if (val.trim()) await db.ref(`lessonAttendance/${lesson._key}/${studentId}/dailyComment`).set(val.trim());
+    else await db.ref(`lessonAttendance/${lesson._key}/${studentId}/dailyComment`).remove();
+  };
+
   const rawSaveTags = async (studentId, tags) => {
     const { xp: newXp, cp: newCp } = calcPoints(tags);
 
@@ -1149,7 +1154,7 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
             </colgroup>
             <thead>
               <tr className="bg-slate-50">
-                {[["학생","left","text-slate-500",true],["지난 숙제","left","text-slate-400",false],["숙제","left","text-slate-600",false],["평가","left","text-slate-600",false],["행동태그","left","text-slate-600",false],["획득 XP","center","text-slate-600",false],["획득 CP","center","text-slate-600",false]].map(([label, align, color, sticky], ci) => (
+                {[["학생","left","text-slate-500",true],["지난 숙제","left","text-slate-400",false],["숙제","left","text-slate-600",false],["평가","left","text-slate-600",false],["행동태그","left","text-slate-600",false],["데일리코멘트","left","text-slate-600",false],["획득 XP","center","text-slate-600",false],["획득 CP","center","text-slate-600",false]].map(([label, align, color, sticky], ci) => (
                   <th key={ci} className={`${sticky?"sticky left-0 z-10 bg-slate-50 ":""}px-4 py-3 text-${align} text-xs font-bold ${color} border-b border-r border-slate-200 select-none overflow-hidden`}
                     style={{position: sticky ? "sticky" : "relative", width: colWidths[ci]}}>
                     <span className="truncate block">{label}</span>
@@ -1317,6 +1322,18 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
                       ) : (
                         <span className="text-[11px] text-slate-300">태그 선택</span>
                       )}
+                    </td>
+
+                    <td className="border-b border-r border-slate-100 px-3 py-2">
+                      <textarea
+                        defaultValue={sRec.dailyComment || ""}
+                        onBlur={e => saveDailyComment(s.id, e.target.value)}
+                        placeholder="코멘트 입력..."
+                        rows={2}
+                        className="w-full text-xs text-slate-700 resize-none outline-none bg-transparent placeholder-slate-300 leading-relaxed"
+                        style={{minWidth:0}}
+                        onClick={e => e.stopPropagation()}
+                      />
                     </td>
 
                     <td className="border-b border-r border-slate-100 text-center py-2.5 px-3">
