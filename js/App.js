@@ -245,7 +245,7 @@ function StudentTodayLessonSection({ studentId, today }) {
                     {asm.type === "누적테스트"
                       ? <div className="text-xs text-slate-400">남은 문제: {remaining ?? "-"}문제</div>
                       : unitName
-                        ? <div className="text-xs text-slate-400">소단원: {unitName}</div>
+                        ? <div className="text-xs text-slate-400">소단원: {curUnitNum} {unitName}</div>
                         : <div className="text-xs text-slate-300">소단원 미지정</div>
                     }
                   </div>
