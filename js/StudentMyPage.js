@@ -593,7 +593,7 @@ function StudentExamTab({ studentId }) {
     }
     const total = activeExam.totalScore || 100;
     const qCount = activeExam.questionCount || 20;
-    return Math.round(correct.length * (total / qCount));
+    return Math.round(correct.length * (total / qCount) * 100) / 100;
   };
 
   const handleSubmit = async () => {
@@ -645,7 +645,7 @@ function StudentExamTab({ studentId }) {
           <div className="space-y-0.5">
             {score !== null && (
               <div className="text-sm text-slate-600">
-                점수 <span className="font-bold text-xl text-indigo-600">{score}점</span>
+                점수 <span className="font-bold text-xl text-indigo-600">{Math.round(score * 100) / 100}점</span>
               </div>
             )}
             <div className="text-xs text-slate-400">
@@ -731,7 +731,7 @@ function StudentExamTab({ studentId }) {
                     <span className="text-xs bg-indigo-100 text-indigo-600 rounded-lg px-2 py-0.5 shrink-0">{exam.round}차</span>
                   </div>
                   {hasResult && score !== undefined && score !== null && (
-                    <span className="text-lg font-bold shrink-0" style={{color:"#4338ca"}}>{score}점</span>
+                    <span className="text-lg font-bold shrink-0" style={{color:"#4338ca"}}>{Math.round(score * 100) / 100}점</span>
                   )}
                   {hasResult && (score === undefined || score === null) && (
                     <span className="text-xs text-emerald-600 font-semibold shrink-0">✓ 제출완료</span>
