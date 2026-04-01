@@ -1,5 +1,5 @@
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { onValueCreated } = require("firebase-functions/v2/database");
+const { onValueWritten } = require("firebase-functions/v2/database");
 const admin = require("firebase-admin");
 
 admin.initializeApp();
@@ -91,28 +91,36 @@ exports.dailyIncompleteAlert = onSchedule(
   });
 
 // ── 보고서 발송 시 학부모 FCM 알림 ─────────────────────────────────────────────
-exports.sendReportNotification = onValueCreated(
+exports.sendReportNotification = onValueWritten(
   {
     ref: "parentReportIndex/{studentId}/{lessonKey}",
     region: "us-central1",
     instance: "homeworkplanner-e90a3-default-rtdb",
   },
   async (event) => {
+    if (!event.data.after.exists()) return null; // 삭제 시 무시
     const { studentId } = event.params;
-    const report = event.data.val();
+    const report = event.data.after.val();
     if (!report) return null;
 
     const parentUserId = studentId + "PA";
     const tokensSnap = await db.ref("fcmTokens").get();
     const tokens = tokensSnap.val() || {};
+    const allTokens = Object.values(tokens);
+    console.log(`전체 토큰 수: ${allTokens.length}, 학부모ID: ${parentUserId}`);
+    console.log(`학부모 토큰:`, allTokens.filter(t => t.role === "parent"));
 
-    const messages = Object.values(tokens)
+    const messages = allTokens
       .filter(t => t.role === "parent" && t.userId === parentUserId)
       .map(t => ({
         token: t.token,
         notification: {
           title: "📋 수업 보고서 도착",
-          body: `${report.date} ${report.lessonTitle} 수업 보고서가 발송되었습니다.`,
+          body: `${report.date} ${report.lessonTitle} 수업 내용을 확인해주세요.`,
+        },
+        webpush: {
+          notification: { icon: "/icon-192.png", badge: "/icon-192.png" },
+          fcmOptions: { link: "/" },
         },
       }));
 
@@ -121,8 +129,11 @@ exports.sendReportNotification = onValueCreated(
       return null;
     }
 
-    await admin.messaging().sendEach(messages);
-    console.log(`보고서 알림 발송: ${messages.length}건 (studentId: ${studentId})`);
+    const result = await admin.messaging().sendEach(messages);
+    console.log(`보고서 알림: ${result.successCount}성공 ${result.failureCount}실패`);
+    result.responses.forEach((r, i) => {
+      if (!r.success) console.error(`토큰 ${i} 실패:`, r.error);
+    });
     return null;
   }
 );

@@ -50,7 +50,7 @@ function ParentReportsSection({ studentId, studentName, studentClass }) {
               {isAbsent && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-lg bg-red-100 text-red-600">결석</span>}
               {isLate && !isAbsent && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-lg bg-amber-100 text-amber-600">지각</span>}
             </div>
-            <span className="text-[10px] text-slate-400 shrink-0">발송 {fmtSentTime(r.sentAt)} →</span>
+            <span className="text-[10px] text-slate-400 shrink-0">수신 {fmtSentTime(r.sentAt)} →</span>
           </button>
         );
       })}
