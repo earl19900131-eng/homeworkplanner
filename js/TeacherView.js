@@ -92,16 +92,18 @@ function HomeworkStatsSection({ students, homeworks, today }) {
         </div>
         {studentRates.length === 0
           ? <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-400 text-center">데이터가 없습니다.</div>
-          : <div className="space-y-2">
+          : <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {studentRates.map(s => (
-                <div key={s.id} className="flex items-center gap-3 rounded-2xl border px-4 py-2.5">
-                  <div className="w-16 text-sm font-semibold shrink-0">{s.name}</div>
-                  <Badge variant="secondary" className="shrink-0">{s.className}</Badge>
-                  <div className="flex-1 min-w-0"><ProgressBar value={s.rate??0}/></div>
-                  <div className={`shrink-0 rounded-xl px-2.5 py-0.5 text-xs font-bold ${rateColor(s.rate)}`}>
-                    {s.rate !== null ? s.rate+"%" : "-"}
+                <div key={s.id} className="rounded-2xl border p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-1">
+                    <div className="text-sm font-semibold truncate">{s.name}</div>
+                    <div className={`rounded-xl px-2 py-0.5 text-xs font-bold ${rateColor(s.rate)}`}>
+                      {s.rate !== null ? s.rate+"%" : "-"}
+                    </div>
                   </div>
-                  <div className="text-xs text-slate-400 shrink-0 text-right">
+                  <Badge variant="secondary" className="text-xs">{s.className}</Badge>
+                  <ProgressBar value={s.rate??0}/>
+                  <div className="text-xs text-slate-400">
                     <span className="text-emerald-600">이행 {s.verified}</span> / <span className="text-red-500">미이행 {s.unverified}</span>
                     {s.pending > 0 && <span className="text-slate-400"> · 미판정 {s.pending}</span>}
                   </div>
@@ -223,23 +225,23 @@ function AttendanceStatsSection({ students }) {
         </div>
         {studentStats.length === 0
           ? <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-400 text-center">데이터가 없습니다.</div>
-          : <div className="space-y-2">
+          : <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {studentStats.map(s => (
-                <div key={s.id} className="rounded-2xl border px-4 py-3 space-y-2">
-                  <div className="flex items-center gap-3">
-                    <div className="w-16 text-sm font-semibold shrink-0">{s.name}</div>
-                    <Badge variant="secondary" className="shrink-0">{s.className}</Badge>
-                    <div className="flex-1 min-w-0"><ProgressBar value={s.출석률??0}/></div>
-                    <div className={`shrink-0 rounded-xl px-2.5 py-0.5 text-xs font-bold ${rateColor(s.출석률)}`}>
+                <div key={s.id} className="rounded-2xl border p-3 space-y-2">
+                  <div className="flex items-center justify-between gap-1">
+                    <div className="text-sm font-semibold truncate">{s.name}</div>
+                    <div className={`rounded-xl px-2 py-0.5 text-xs font-bold ${rateColor(s.출석률)}`}>
                       {s.출석률 !== null ? s.출석률+"%" : "-"}
                     </div>
                   </div>
-                  <div className="flex gap-4 text-xs pl-1">
+                  <Badge variant="secondary" className="text-xs">{s.className}</Badge>
+                  <ProgressBar value={s.출석률??0}/>
+                  <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs">
                     <span>총 <b>{s.총수업}</b>회</span>
                     <span className="text-emerald-600">출석 <b>{s.출석}</b></span>
                     <span className="text-amber-600">지각 <b>{s.지각}</b></span>
                     <span className="text-red-500">결석 <b>{s.결석}</b></span>
-                    {s.무단결석 > 0 && <span className="text-pink-600">무단결석 <b>{s.무단결석}</b></span>}
+                    {s.무단결석 > 0 && <span className="text-pink-600">무단 <b>{s.무단결석}</b></span>}
                   </div>
                 </div>
               ))}
