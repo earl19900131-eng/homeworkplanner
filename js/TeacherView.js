@@ -1,22 +1,19 @@
 // ── 학생 달력 모달 (숙제현황 / 출결현황 공용) ─────────────────────────────────
-function StudentCalendarModal({ type, student, hws, lessons, attendance, onClose }) {
+// lessonEntries = [{ date, status("이행"|"미이행"), lessonType("현행"|"추가1"|"추가2") }]
+// lessons/attendance = 출결달력용
+function StudentCalendarModal({ type, student, lessonEntries, lessons, attendance, onClose }) {
   const now = new Date();
   const [year, setYear] = React.useState(now.getFullYear());
   const [month, setMonth] = React.useState(now.getMonth());
 
-  // 날짜별 상태 맵 계산
+  // 날짜별 배열 맵
   const dayMap = React.useMemo(() => {
     const map = {};
     if (type === "homework") {
-      (hws || []).forEach(hw => {
-        if (!hw.dueDate) return;
-        const prev = map[hw.dueDate];
-        const v = hw.teacherVerified;
-        // 우선순위: 미이행 > 미판정 > 이행
-        if (!prev) { map[hw.dueDate] = v || "미판정"; return; }
-        if (prev === "미이행") return;
-        if (v === "미이행") { map[hw.dueDate] = "미이행"; return; }
-        if (!v || !prev || prev === "미판정") { map[hw.dueDate] = v || "미판정"; }
+      (lessonEntries || []).forEach(({ date, status, lessonType }) => {
+        if (!date) return;
+        if (!map[date]) map[date] = [];
+        map[date].push({ status, lessonType });
       });
     } else {
       (lessons || []).forEach(l => {
@@ -27,13 +24,15 @@ function StudentCalendarModal({ type, student, hws, lessons, attendance, onClose
         else if (tags.includes("결석")) status = "결석";
         else if (tags.includes("지각")) status = "지각";
         else if (tags.includes("출석")) status = "출석";
-        if (status) map[l.date] = status;
+        if (status) {
+          if (!map[l.date]) map[l.date] = [];
+          map[l.date].push({ status });
+        }
       });
     }
     return map;
-  }, [type, hws, lessons, attendance, student]);
+  }, [type, lessonEntries, lessons, attendance, student]);
 
-  // 달력 셀 생성
   const cells = React.useMemo(() => {
     const first = new Date(year, month, 1);
     const startDow = first.getDay();
@@ -48,31 +47,27 @@ function StudentCalendarModal({ type, student, hws, lessons, attendance, onClose
     return result;
   }, [year, month]);
 
-  const dotColor = (status) => {
-    if (type === "homework") {
-      if (status === "이행") return "bg-emerald-400";
-      if (status === "미이행") return "bg-red-400";
-      return "bg-slate-300";
-    } else {
-      if (status === "출석") return "bg-emerald-400";
-      if (status === "지각") return "bg-amber-400";
-      if (status === "결석") return "bg-red-400";
-      if (status === "무단결석") return "bg-pink-500";
-      return "bg-slate-300";
-    }
-  };
+  const hwDotColor = (status) => status === "이행" ? "bg-emerald-400" : "bg-red-400";
+  const hwTypeLabel = (lt) => lt === "추가1" ? "추1" : lt === "추가2" ? "추2" : "현";
+  const hwTypeColor = (lt) => lt === "추가1" ? "text-violet-500" : lt === "추가2" ? "text-rose-500" : "text-sky-500";
 
-  const bgColor = (status) => {
-    if (!status) return "";
+  const attDotColor = (status) => {
+    if (status === "출석") return "bg-emerald-400";
+    if (status === "지각") return "bg-amber-400";
+    if (status === "결석") return "bg-red-400";
+    if (status === "무단결석") return "bg-pink-500";
+    return "bg-slate-300";
+  };
+  const cellBg = (entries) => {
+    if (!entries || entries.length === 0) return "";
     if (type === "homework") {
-      if (status === "이행") return "bg-emerald-50";
-      if (status === "미이행") return "bg-red-50";
-      return "bg-slate-50";
+      return entries.some(e=>e.status==="미이행") ? "bg-red-50" : "bg-emerald-50";
     } else {
-      if (status === "출석") return "bg-emerald-50";
-      if (status === "지각") return "bg-amber-50";
-      if (status === "결석") return "bg-red-50";
-      if (status === "무단결석") return "bg-pink-50";
+      const s = entries[0].status;
+      if (s==="출석") return "bg-emerald-50";
+      if (s==="지각") return "bg-amber-50";
+      if (s==="결석") return "bg-red-50";
+      if (s==="무단결석") return "bg-pink-50";
       return "";
     }
   };
@@ -80,14 +75,12 @@ function StudentCalendarModal({ type, student, hws, lessons, attendance, onClose
   const prevMonth = () => { if (month === 0) { setYear(y=>y-1); setMonth(11); } else setMonth(m=>m-1); };
   const nextMonth = () => { if (month === 11) { setYear(y=>y+1); setMonth(0); } else setMonth(m=>m+1); };
 
-  const legends = type === "homework"
-    ? [["bg-emerald-400","이행"],["bg-red-400","미이행"],["bg-slate-300","미판정"]]
-    : [["bg-emerald-400","출석"],["bg-amber-400","지각"],["bg-red-400","결석"],["bg-pink-500","무단결석"]];
+  const hwLegends = [["bg-emerald-400","이행"],["bg-red-400","미이행"]];
+  const attLegends = [["bg-emerald-400","출석"],["bg-amber-400","지각"],["bg-red-400","결석"],["bg-pink-500","무단결석"]];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e=>e.stopPropagation()}>
-        {/* 헤더 */}
         <div className="p-5 pb-3 border-b" style={{background:"linear-gradient(135deg,#1a2340,#2d3a6b)"}}>
           <div className="flex items-start justify-between">
             <div>
@@ -100,44 +93,59 @@ function StudentCalendarModal({ type, student, hws, lessons, attendance, onClose
         </div>
 
         <div className="p-4 space-y-3">
-          {/* 월 네비게이션 */}
           <div className="flex items-center justify-between">
             <button onClick={prevMonth} className="w-8 h-8 rounded-lg border flex items-center justify-center text-slate-500 hover:bg-slate-50">‹</button>
             <div className="font-bold text-slate-800">{year}년 {month+1}월</div>
             <button onClick={nextMonth} className="w-8 h-8 rounded-lg border flex items-center justify-center text-slate-500 hover:bg-slate-50">›</button>
           </div>
 
-          {/* 요일 헤더 */}
           <div className="grid grid-cols-7 text-center">
             {["일","월","화","수","목","금","토"].map((d,i) => (
               <div key={d} className={`text-xs font-bold py-1 ${i===0?"text-red-400":i===6?"text-blue-400":"text-slate-400"}`}>{d}</div>
             ))}
           </div>
 
-          {/* 날짜 칸 */}
           <div className="grid grid-cols-7 gap-0.5">
             {cells.map((cell, i) => {
               if (!cell) return <div key={i}/>;
-              const status = dayMap[cell.dateStr];
-              const dow = (i) % 7;
+              const entries = dayMap[cell.dateStr] || [];
+              const dow = i % 7;
               return (
-                <div key={cell.dateStr} className={`rounded-lg p-1 min-h-[44px] flex flex-col items-center gap-0.5 ${bgColor(status)}`}>
+                <div key={cell.dateStr} className={`rounded-lg p-1 min-h-[48px] flex flex-col items-center gap-0.5 ${cellBg(entries)}`}>
                   <div className={`text-xs font-medium ${dow===0?"text-red-400":dow===6?"text-blue-400":"text-slate-600"}`}>{cell.d}</div>
-                  {status && <div className={`w-2.5 h-2.5 rounded-full ${dotColor(status)}`}/>}
-                  {status && <div className="text-[8px] text-slate-500 leading-tight text-center">{status}</div>}
+                  {type === "homework"
+                    ? entries.map((e, ei) => (
+                        <div key={ei} className="flex flex-col items-center gap-0">
+                          <div className={`w-2 h-2 rounded-full ${hwDotColor(e.status)}`}/>
+                          <span className={`text-[7px] font-bold leading-none ${hwTypeColor(e.lessonType)}`}>{hwTypeLabel(e.lessonType)}</span>
+                        </div>
+                      ))
+                    : entries.map((e, ei) => (
+                        <div key={ei} className="flex flex-col items-center gap-0">
+                          <div className={`w-2 h-2 rounded-full ${attDotColor(e.status)}`}/>
+                          <span className="text-[7px] text-slate-400 leading-none">{e.status==="무단결석"?"무단":e.status}</span>
+                        </div>
+                      ))
+                  }
                 </div>
               );
             })}
           </div>
 
-          {/* 범례 */}
           <div className="flex flex-wrap gap-3 pt-1 border-t">
-            {legends.map(([cls, label]) => (
+            {(type === "homework" ? hwLegends : attLegends).map(([cls, label]) => (
               <div key={label} className="flex items-center gap-1.5">
                 <div className={`w-2.5 h-2.5 rounded-full ${cls}`}/>
                 <span className="text-xs text-slate-500">{label}</span>
               </div>
             ))}
+            {type === "homework" && (
+              <>
+                <div className="flex items-center gap-1"><span className="text-[9px] font-bold text-sky-500">현</span><span className="text-xs text-slate-400">현행</span></div>
+                <div className="flex items-center gap-1"><span className="text-[9px] font-bold text-violet-500">추1</span><span className="text-xs text-slate-400">추가1</span></div>
+                <div className="flex items-center gap-1"><span className="text-[9px] font-bold text-rose-500">추2</span><span className="text-xs text-slate-400">추가2</span></div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -160,41 +168,69 @@ function TeacherStatsTab({ students, homeworks, today }) {
           </button>
         ))}
       </div>
-      {statsTab==="homework" && <HomeworkStatsSection students={students} homeworks={homeworks} today={today}/>}
+      {statsTab==="homework" && <HomeworkStatsSection students={students}/>}
       {statsTab==="attendance" && <AttendanceStatsSection students={students}/>}
     </div>
   );
 }
 
-function HomeworkStatsSection({ students, homeworks, today }) {
-  const hwByStudent = useMemo(() => homeworks.reduce((acc,hw)=>{ (acc[hw.studentId]||(acc[hw.studentId]=[])).push(hw); return acc; },{}), [homeworks]);
+function HomeworkStatsSection({ students }) {
+  const [allAttendance, setAllAttendance] = React.useState({});
+  const [allLessons, setAllLessons] = React.useState([]);
   const classes = [...new Set(students.map(s=>s.className))].sort();
   const [selectedClass, setSelectedClass] = useState("all");
-  const [calendarModal, setCalendarModal] = useState(null); // { student, hws }
+  const [calendarModal, setCalendarModal] = useState(null);
+
+  React.useEffect(() => {
+    const r1 = db.ref("lessonAttendance");
+    const r2 = db.ref("lessons");
+    const h1 = r1.on("value", snap => setAllAttendance(snap.val() || {}));
+    const h2 = r2.on("value", snap => {
+      const val = snap.val() || {};
+      setAllLessons(Object.entries(val).map(([k,v])=>({...v,_key:k})));
+    });
+    return () => { r1.off("value",h1); r2.off("value",h2); };
+  }, []);
 
   const filteredStudents = selectedClass === "all" ? students : students.filter(s=>s.className===selectedClass);
 
-  const studentRates = useMemo(() => filteredStudents.map(s => {
-    const hws = (hwByStudent[s.id] ?? []).filter(hw => hw.dueDate <= today);
-    const verified = hws.filter(hw=>hw.teacherVerified==="이행").length;
-    const unverified = hws.filter(hw=>hw.teacherVerified==="미이행").length;
-    const pending = hws.filter(hw=>!hw.teacherVerified).length;
-    const judged = verified + unverified;
-    const rate = judged > 0 ? Math.round(verified / judged * 100) : null;
-    return { ...s, rate, verified, unverified, pending, judged };
-  }).sort((a,b) => (b.rate??-1) - (a.rate??-1)), [filteredStudents, hwByStudent, today]);
+  // 학생별: 타입별 이행/미이행 집계
+  const studentStats = useMemo(() => {
+    return filteredStudents.map(s => {
+      const typeMap = { 현행:{이행:0,미이행:0}, 추가1:{이행:0,미이행:0}, 추가2:{이행:0,미이행:0} };
+      allLessons.forEach(l => {
+        if (!(l.studentIds||[]).includes(s.id)) return;
+        const rec = allAttendance[l._key]?.[s.id] || {};
+        const tags = rec.tags || [];
+        const lt = rec.lessonType || "현행";
+        const bucket = typeMap[lt] || typeMap["현행"];
+        if (tags.includes("숙제해옴")) bucket.이행++;
+        else if (tags.includes("숙제미이행")) bucket.미이행++;
+      });
+      const types = Object.entries(typeMap)
+        .map(([t, stat]) => { const total=stat.이행+stat.미이행; return { type:t, ...stat, total, rate: total>0?Math.round(stat.이행/total*100):null }; })
+        .filter(t => t.total > 0);
+      const totalAll = types.reduce((a,t)=>a+t.total,0);
+      const doneAll = types.reduce((a,t)=>a+t.이행,0);
+      const overallRate = totalAll > 0 ? Math.round(doneAll/totalAll*100) : null;
+      return { ...s, types, overallRate, totalAll, doneAll };
+    }).sort((a,b) => (b.overallRate??-1)-(a.overallRate??-1));
+  }, [filteredStudents, allLessons, allAttendance]);
 
-  const classRates = useMemo(() => classes.map(cls => {
+  // 반별 집계
+  const classStats = useMemo(() => classes.map(cls => {
     const group = students.filter(s=>s.className===cls);
-    const rates = group.map(s => {
-      const hws = (hwByStudent[s.id]??[]).filter(hw=>hw.dueDate<=today);
-      const v = hws.filter(hw=>hw.teacherVerified==="이행").length;
-      const u = hws.filter(hw=>hw.teacherVerified==="미이행").length;
-      const j = v + u;
-      return j > 0 ? Math.round(v/j*100) : null;
-    }).filter(r=>r!==null);
-    return { cls, avg: rates.length>0?Math.round(rates.reduce((a,b)=>a+b,0)/rates.length):0, count: group.length, active: rates.length };
-  }), [classes, students, hwByStudent, today]);
+    let done=0, total=0;
+    group.forEach(s => {
+      allLessons.forEach(l => {
+        if (!(l.studentIds||[]).includes(s.id)) return;
+        const tags = allAttendance[l._key]?.[s.id]?.tags || [];
+        if (tags.includes("숙제해옴")) { done++; total++; }
+        else if (tags.includes("숙제미이행")) total++;
+      });
+    });
+    return { cls, avg: total>0?Math.round(done/total*100):0, count: group.length, total };
+  }), [classes, students, allLessons, allAttendance]);
 
   const rateColor = (r) => {
     if (r===null) return "bg-slate-100 text-slate-400";
@@ -203,25 +239,43 @@ function HomeworkStatsSection({ students, homeworks, today }) {
     return "bg-red-100 text-red-700";
   };
 
+  const typeColor = (t) => t==="추가1"?"text-violet-600":t==="추가2"?"text-rose-600":"text-sky-600";
+
+  // 달력 모달용 lessonEntries 생성
+  const getLessonEntries = (studentId) => {
+    const entries = [];
+    allLessons.forEach(l => {
+      if (!(l.studentIds||[]).includes(studentId)) return;
+      const rec = allAttendance[l._key]?.[studentId] || {};
+      const tags = rec.tags || [];
+      const lt = rec.lessonType || "현행";
+      let status = null;
+      if (tags.includes("숙제해옴")) status = "이행";
+      else if (tags.includes("숙제미이행")) status = "미이행";
+      if (status) entries.push({ date: l.date, status, lessonType: lt });
+    });
+    return entries;
+  };
+
   return (
     <div className="space-y-5">
       {calendarModal && (
         <StudentCalendarModal
           type="homework"
           student={calendarModal.student}
-          hws={calendarModal.hws}
+          lessonEntries={calendarModal.entries}
           onClose={() => setCalendarModal(null)}
         />
       )}
       <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
-        {classRates.map(c => (
+        {classStats.map(c => (
           <Card key={c.cls} className="p-4">
             <div className="flex items-center justify-between">
               <div>
                 <div className="font-bold">{c.cls}</div>
-                <div className="text-xs text-slate-400 mt-0.5">{c.count}명 중 {c.active}명 판정 있음</div>
+                <div className="text-xs text-slate-400 mt-0.5">총 {c.total}회 판정</div>
               </div>
-              <div className="text-2xl font-bold">{c.avg > 0 ? c.avg+"%" : "-"}</div>
+              <div className="text-2xl font-bold">{c.total>0?c.avg+"%":"-"}</div>
             </div>
             <div className="mt-2"><ProgressBar value={c.avg}/></div>
           </Card>
@@ -244,25 +298,35 @@ function HomeworkStatsSection({ students, homeworks, today }) {
       <Card className="p-5 space-y-3">
         <div>
           <h2 className="text-lg font-bold">학생별 숙제 이행률</h2>
-          <p className="text-xs text-slate-400 mt-0.5">마감일이 지난 숙제 중 관리자가 이행/미이행 판정한 항목 기준</p>
+          <p className="text-xs text-slate-400 mt-0.5">수업일지 행동태그(숙제해옴/숙제미이행) 기준 · 현행/추가1/추가2 구분</p>
         </div>
-        {studentRates.length === 0
+        {studentStats.length === 0
           ? <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-400 text-center">데이터가 없습니다.</div>
           : <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {studentRates.map(s => (
+              {studentStats.map(s => (
                 <div key={s.id} className="rounded-2xl border p-3 space-y-2 cursor-pointer hover:bg-slate-50 transition"
-                  onClick={() => setCalendarModal({ student: s, hws: (hwByStudent[s.id]||[]).filter(hw=>hw.dueDate<=today) })}>
+                  onClick={() => setCalendarModal({ student: s, entries: getLessonEntries(s.id) })}>
                   <div className="flex items-center justify-between gap-1">
                     <div className="text-sm font-semibold truncate">{s.name}</div>
-                    <div className={`rounded-xl px-2 py-0.5 text-xs font-bold ${rateColor(s.rate)}`}>
-                      {s.rate !== null ? s.rate+"%" : "-"}
+                    <div className={`rounded-xl px-2 py-0.5 text-xs font-bold ${rateColor(s.overallRate)}`}>
+                      {s.overallRate !== null ? s.overallRate+"%" : "-"}
                     </div>
                   </div>
                   <Badge variant="secondary" className="text-xs">{s.className}</Badge>
-                  <ProgressBar value={s.rate??0}/>
-                  <div className="text-xs text-slate-400">
-                    <span className="text-emerald-600">이행 {s.verified}</span> / <span className="text-red-500">미이행 {s.unverified}</span>
-                    {s.pending > 0 && <span className="text-slate-400"> · 미판정 {s.pending}</span>}
+                  <ProgressBar value={s.overallRate??0}/>
+                  <div className="space-y-0.5">
+                    {s.types.map(t => (
+                      <div key={t.type} className="flex items-center justify-between text-xs">
+                        <span className={`font-bold ${typeColor(t.type)}`}>{t.type}</span>
+                        <span>
+                          <span className="text-emerald-600">{t.이행}</span>
+                          <span className="text-slate-300 mx-0.5">/</span>
+                          <span className="text-red-500">{t.미이행}</span>
+                          <span className={`ml-1 font-bold ${rateColor(t.rate).split(" ")[1]}`}>{t.rate!==null?t.rate+"%":"-"}</span>
+                        </span>
+                      </div>
+                    ))}
+                    {s.types.length===0 && <div className="text-xs text-slate-300">기록 없음</div>}
                   </div>
                 </div>
               ))}
