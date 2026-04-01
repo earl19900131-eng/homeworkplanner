@@ -620,6 +620,11 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
     if (val === "") await db.ref(`lessonAttendance/${lesson._key}/${studentId}/현행평가`).remove();
     else await db.ref(`lessonAttendance/${lesson._key}/${studentId}/현행평가`).set(val);
   };
+  const saveAbsenceReason = async (studentId, val) => {
+    if (val.trim()) await db.ref(`lessonAttendance/${lesson._key}/${studentId}/absenceReason`).set(val.trim());
+    else await db.ref(`lessonAttendance/${lesson._key}/${studentId}/absenceReason`).remove();
+  };
+
   const saveDailyComment = async (studentId, val) => {
     if (val.trim()) await db.ref(`lessonAttendance/${lesson._key}/${studentId}/dailyComment`).set(val.trim());
     else await db.ref(`lessonAttendance/${lesson._key}/${studentId}/dailyComment`).remove();
@@ -1318,16 +1323,27 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
                     <td className={`border-b border-r border-slate-100 px-3 py-2 cursor-pointer transition ${isFocused(si, 2) ? focusRing : ""}`}
                       onClick={() => { selectCell(si, 2); openTagModal(s.id); }}>
                       {tags.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {tags.map(name => {
-                            const t = BEHAVIOR_TAGS.find(b => b.name === name);
-                            const neg = t && t.xp < 0;
-                            return (
-                              <span key={name} className={`text-[10px] px-1.5 py-0.5 rounded-lg border font-medium ${neg ? "bg-red-50 text-red-600 border-red-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>
-                                {name}
-                              </span>
-                            );
-                          })}
+                        <div className="space-y-1.5">
+                          <div className="flex flex-wrap gap-1">
+                            {tags.map(name => {
+                              const t = BEHAVIOR_TAGS.find(b => b.name === name);
+                              const neg = t && t.xp < 0;
+                              return (
+                                <span key={name} className={`text-[10px] px-1.5 py-0.5 rounded-lg border font-medium ${neg ? "bg-red-50 text-red-600 border-red-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>
+                                  {name}
+                                </span>
+                              );
+                            })}
+                          </div>
+                          {(tags.includes("결석") || tags.includes("무단결석")) && (
+                            <input
+                              defaultValue={sRec.absenceReason || ""}
+                              onBlur={e => saveAbsenceReason(s.id, e.target.value)}
+                              placeholder="결석 사유..."
+                              onClick={e => e.stopPropagation()}
+                              className="w-full text-[11px] text-slate-600 outline-none bg-red-50 border border-red-200 rounded-lg px-2 py-1 placeholder-red-300"
+                            />
+                          )}
                         </div>
                       ) : (
                         <span className="text-[11px] text-slate-300">태그 선택</span>
