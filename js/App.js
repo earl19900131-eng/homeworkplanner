@@ -153,12 +153,15 @@ function StudentTodayLessonSection({ studentId, today }) {
     // 지각/출석 자동 태그
     const lessonTime = lesson.time ? lesson.time.slice(0,5) : null;
     const isLate = lessonTime && arrTime > lessonTime;
-    const autoTag = isLate ? "지각" : "출석";
-    const removeTag = isLate ? "출석" : "지각";
 
     const prevTags = currentRec.tags || [];
-    const newTags = prevTags.filter(t => t !== removeTag && t !== "지각안함");
-    if (!newTags.includes(autoTag)) newTags.unshift(autoTag);
+    let newTags = prevTags.filter(t => t !== "지각안함" && t !== "지각" && t !== "출석");
+    if (isLate) {
+      newTags.unshift("출석");
+      newTags.unshift("지각");
+    } else {
+      newTags.unshift("출석");
+    }
 
     const { xp, cp } = calcXpCp(newTags);
     await db.ref(`lessonAttendance/${lesson._key}/${studentId}`).update({
