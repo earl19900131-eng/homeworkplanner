@@ -651,42 +651,34 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
 
   // 자동 숙제 계산 모달 열기
   const openAutoHwModal = async (studentId, studentName, lessonType = "현행") => {
-    // 커리큘럼 + 학생 프로필(계수+진행현황) + 오답상태 병렬 로드
-    const [nodesSnap, profileSnap, statusSnap] = await Promise.all([
+    // 커리큘럼 + studentPaths + 학생 프로필(계수+진행현황) + 오답상태 병렬 로드
+    const [nodesSnap, pathsSnap, profileSnap, statusSnap] = await Promise.all([
       db.ref("curriculumNodes").once("value"),
+      db.ref("studentPaths").once("value"),
       db.ref(`studentProfiles/${studentId}`).once("value"),
       db.ref(`problemStatus/${studentId}`).once("value"),
     ]);
     const allBoards = nodesSnap.val() || {};
+    const allPaths = pathsSnap.val() || {};
     const profile = profileSnap.val() || {};
     const allStatus = statusSnap.val() || {};
     const mats = [];
-    for (const boardId of Object.keys(allBoards)) {
-      const board = allBoards[boardId];
-      const startNode = board[`start_${studentId}`];
+    for (const [boardId, board] of Object.entries(allBoards)) {
+      const startNodeId = `start_${studentId}`;
+      const startNode = board[startNodeId];
       if (!startNode) continue;
-      // BFS로 이 보드의 모든 교재 노드 탐색
+      const customEdges = allPaths[boardId]?.[studentId];
+      const hasCustom = customEdges && Object.keys(customEdges).length > 0;
       const visited = new Set();
-      const queue = [...(startNode.nextNodes || [])];
-      while (queue.length) {
-        const toId = queue.shift();
-        if (visited.has(toId)) continue;
-        visited.add(toId);
-        const matNode = board[toId];
-        if (!matNode) continue;
-        if (matNode.type !== "material") {
-          for (const nid of (matNode.nextNodes || [])) queue.push(nid);
-          continue;
-        }
-        const edgeStartNum = startNode.edgeMeta?.[toId]?.startNum || 1;
+
+      const processMat = (matNode, fromId) => {
+        const edgeStartNum = startNode.edgeMeta?.[matNode.id]?.startNum || 1;
         const matStatus = allStatus[matNode.materialId] || {};
         const matSrc = materials.find(m => m.id === matNode.materialId);
         const totalProblems = matNode.totalProblems || matSrc?.totalProblems || 0;
-        // 교재 등록 시 입력한 문제 범위 (예: 61-131)
         const problemStart = matSrc?.problemStart || edgeStartNum;
         const problemEnd = matSrc?.problemEnd || (problemStart + totalProblems - 1);
         const floorNum = Math.max(problemStart, edgeStartNum);
-        // 오답 제출된 문제 기준으로 시작번호 계산
         const checkedNums = Object.keys(matStatus).map(Number).filter(n => n >= floorNum);
         let startNum;
         if (checkedNums.length === 0) {
@@ -705,10 +697,8 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
           ? [correct && `맞음 ${correct}`, wrong && `틀림 ${wrong}`, unknown && `모름 ${unknown}`].filter(Boolean).join(" / ")
           : null;
         const matData = materials.find(m => m.id === matNode.materialId);
-        const matSubject = matData?.subject || "공통수학1";
-        const minutesPerProblem = matData?.minutesPerProblem || 3;
         mats.push({
-          nodeId: toId,
+          nodeId: matNode.id,
           materialNodeId: matNode.materialId,
           materialName: matNode.materialName,
           totalProblems,
@@ -716,12 +706,39 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
           startNum,
           lastDone,
           hwType: startNode.hwType || "현행",
-          subject: matSubject,
-          minutesPerProblem,
+          subject: matData?.subject || "공통수학1",
+          minutesPerProblem: matData?.minutesPerProblem || 3,
         });
-        // 다음 노드도 BFS 큐에 추가
-        for (const nid of (matNode.nextNodes || [])) queue.push(nid);
-      } // end while
+      };
+
+      if (hasCustom) {
+        // 커스텀 경로: 지정된 엣지만 따라가며 순서대로 탐색
+        let curId = startNodeId;
+        while (curId && !visited.has(curId)) {
+          visited.add(curId);
+          const node = board[curId];
+          if (!node) break;
+          if (node.type === "material") processMat(node, curId);
+          const nextId = (node.nextNodes || []).find(nid => customEdges[`${curId}__${nid}`]);
+          curId = nextId || null;
+        }
+      } else {
+        // 커스텀 경로 없으면 BFS
+        const queue = [...(startNode.nextNodes || [])];
+        while (queue.length) {
+          const toId = queue.shift();
+          if (visited.has(toId)) continue;
+          visited.add(toId);
+          const matNode = board[toId];
+          if (!matNode) continue;
+          if (matNode.type !== "material") {
+            for (const nid of (matNode.nextNodes || [])) queue.push(nid);
+            continue;
+          }
+          processMat(matNode, toId);
+          for (const nid of (matNode.nextNodes || [])) queue.push(nid);
+        }
+      }
     }
     // 완료된 교재 건너뛰고 첫 번째 미완료 교재 선택
     const firstActiveIdx = mats.findIndex(m => m.startNum <= m.problemEnd);
