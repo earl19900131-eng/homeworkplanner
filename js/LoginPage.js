@@ -148,6 +148,7 @@ function ParentLoginFormLight({ students, onLogin, loginError, setLoginError }) 
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [showSugg, setShowSugg] = useState(false);
   const [highlightIdx, setHighlightIdx] = useState(-1);
+  const [remember, setRemember] = useState(true);
 
   const inp = { width:"100%", background:"#ffffff", border:"1.5px solid #e2e8f0", borderRadius:10, padding:"12px 16px", fontSize:14, color:"#1a2340", outline:"none", boxSizing:"border-box", transition:"border-color 0.2s" };
 
@@ -168,7 +169,7 @@ function ParentLoginFormLight({ students, onLogin, loginError, setLoginError }) 
   const handleLogin = () => {
     if (!selectedStudent) { setLoginError("자녀 이름을 선택해 주세요."); return; }
     if (password !== "1234") { setLoginError("비밀번호가 올바르지 않습니다."); return; }
-    onLogin(selectedStudent.id + "PA");
+    onLogin(selectedStudent.id + "PA", remember);
   };
 
   return (
@@ -203,6 +204,11 @@ function ParentLoginFormLight({ students, onLogin, loginError, setLoginError }) 
         <input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="비밀번호 입력" onKeyDown={e=>e.key==="Enter"&&handleLogin()} style={inp}/>
       )}
       {loginError && <div style={{ fontSize:13, color:"#ef4444" }}>{loginError}</div>}
+      <label style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", userSelect:"none" }}>
+        <input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)}
+          style={{ width:16, height:16, accentColor:"#4a6bd6", cursor:"pointer" }}/>
+        <span style={{ fontSize:13, color:"#64748b" }}>이 기기 기억하기</span>
+      </label>
       <button onClick={handleLogin} disabled={!selectedStudent}
         style={{ width:"100%", padding:"13px 0", borderRadius:10, border:"none", background: selectedStudent ? "#4a6bd6" : "#e2e8f0", color: selectedStudent ? "white" : "#94a3b8", fontSize:14, fontWeight:700, cursor: selectedStudent ? "pointer" : "default", letterSpacing:0.5, transition:"background 0.2s" }}>
         학부모 로그인

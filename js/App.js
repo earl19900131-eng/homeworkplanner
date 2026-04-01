@@ -448,7 +448,8 @@ function App() {
   const [homeworks, setHomeworks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [authReady, setAuthReady] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState(() => sessionStorage.getItem(SESSION_KEY));
+  const REMEMBER_KEY = "hwp-parent-remember-v1";
+  const [currentUserId, setCurrentUserId] = useState(() => sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(REMEMBER_KEY));
   const [loginRole, setLoginRole] = useState("student");
   const [studentLoginId, setStudentLoginId] = useState("");
   const [loginId, setLoginId] = useState("");
@@ -514,8 +515,12 @@ function App() {
   }, [authReady]);
 
   useEffect(() => {
-    if (currentUserId) sessionStorage.setItem(SESSION_KEY, currentUserId);
-    else sessionStorage.removeItem(SESSION_KEY);
+    if (currentUserId) {
+      sessionStorage.setItem(SESSION_KEY, currentUserId);
+    } else {
+      sessionStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(REMEMBER_KEY);
+    }
   }, [currentUserId]);
 
   useEffect(() => {
@@ -779,7 +784,7 @@ function App() {
             <div>
               {students.length===0
                 ? <div style={{ fontSize:13, color:"#92400e", background:"#fffbeb", border:"1px solid #fde68a", borderRadius:10, padding:"12px 16px" }}>⚠️ 등록된 학생이 없습니다.</div>
-                : <ParentLoginFormLight students={students} onLogin={(id)=>{setCurrentUserId(id);setLoginError("");registerFCMToken(id,"parent");}} loginError={loginError} setLoginError={setLoginError}/>
+                : <ParentLoginFormLight students={students} onLogin={(id, remember)=>{setCurrentUserId(id);setLoginError("");registerFCMToken(id,"parent");if(remember)localStorage.setItem(REMEMBER_KEY,id);}} loginError={loginError} setLoginError={setLoginError}/>
               }
             </div>
           ) : (
