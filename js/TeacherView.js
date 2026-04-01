@@ -1,12 +1,31 @@
 // ── 선생님 통계 탭 ────────────────────────────────────────────────────────────
 function TeacherStatsTab({ students, homeworks, today }) {
+  const [statsTab, setStatsTab] = useState("homework"); // "homework" | "attendance"
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2 bg-white rounded-2xl p-1" style={{boxShadow:"0px 0px 0px 1px rgba(74,107,214,0.08), 0px 2px 8px rgba(74,107,214,0.06)"}}>
+        {[["homework","숙제현황"],["attendance","출결현황"]].map(([k,l])=>(
+          <button key={k} onClick={()=>setStatsTab(k)}
+            className={`flex-1 py-2 text-sm font-bold rounded-xl transition ${statsTab===k?"text-white":"text-slate-500"}`}
+            style={statsTab===k?{background:"#1a2340"}:{}}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {statsTab==="homework" && <HomeworkStatsSection students={students} homeworks={homeworks} today={today}/>}
+      {statsTab==="attendance" && <AttendanceStatsSection students={students}/>}
+    </div>
+  );
+}
+
+function HomeworkStatsSection({ students, homeworks, today }) {
   const hwByStudent = useMemo(() => homeworks.reduce((acc,hw)=>{ (acc[hw.studentId]||(acc[hw.studentId]=[])).push(hw); return acc; },{}), [homeworks]);
   const classes = [...new Set(students.map(s=>s.className))].sort();
   const [selectedClass, setSelectedClass] = useState("all");
 
   const filteredStudents = selectedClass === "all" ? students : students.filter(s=>s.className===selectedClass);
 
-  // 이행/미이행 기반 통계 (마감일이 지난 숙제만)
   const studentRates = useMemo(() => filteredStudents.map(s => {
     const hws = (hwByStudent[s.id] ?? []).filter(hw => hw.dueDate <= today);
     const verified = hws.filter(hw=>hw.teacherVerified==="이행").length;
@@ -21,10 +40,10 @@ function TeacherStatsTab({ students, homeworks, today }) {
     const group = students.filter(s=>s.className===cls);
     const rates = group.map(s => {
       const hws = (hwByStudent[s.id]??[]).filter(hw=>hw.dueDate<=today);
-      const verified = hws.filter(hw=>hw.teacherVerified==="이행").length;
-      const unverified = hws.filter(hw=>hw.teacherVerified==="미이행").length;
-      const judged = verified + unverified;
-      return judged > 0 ? Math.round(verified/judged*100) : null;
+      const v = hws.filter(hw=>hw.teacherVerified==="이행").length;
+      const u = hws.filter(hw=>hw.teacherVerified==="미이행").length;
+      const j = v + u;
+      return j > 0 ? Math.round(v/j*100) : null;
     }).filter(r=>r!==null);
     return { cls, avg: rates.length>0?Math.round(rates.reduce((a,b)=>a+b,0)/rates.length):0, count: group.length, active: rates.length };
   }), [classes, students, hwByStudent, today]);
@@ -78,15 +97,149 @@ function TeacherStatsTab({ students, homeworks, today }) {
                 <div key={s.id} className="flex items-center gap-3 rounded-2xl border px-4 py-2.5">
                   <div className="w-16 text-sm font-semibold shrink-0">{s.name}</div>
                   <Badge variant="secondary" className="shrink-0">{s.className}</Badge>
-                  <div className="flex-1 min-w-0">
-                    <ProgressBar value={s.rate??0}/>
-                  </div>
+                  <div className="flex-1 min-w-0"><ProgressBar value={s.rate??0}/></div>
                   <div className={`shrink-0 rounded-xl px-2.5 py-0.5 text-xs font-bold ${rateColor(s.rate)}`}>
                     {s.rate !== null ? s.rate+"%" : "-"}
                   </div>
                   <div className="text-xs text-slate-400 shrink-0 text-right">
                     <span className="text-emerald-600">이행 {s.verified}</span> / <span className="text-red-500">미이행 {s.unverified}</span>
                     {s.pending > 0 && <span className="text-slate-400"> · 미판정 {s.pending}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+        }
+      </Card>
+    </div>
+  );
+}
+
+function AttendanceStatsSection({ students }) {
+  const [allAttendance, setAllAttendance] = React.useState({});
+  const [allLessons, setAllLessons] = React.useState([]);
+  const [selectedClass, setSelectedClass] = useState("all");
+  const classes = [...new Set(students.map(s=>s.className))].sort();
+
+  React.useEffect(() => {
+    const ref = db.ref("lessonAttendance");
+    ref.on("value", snap => setAllAttendance(snap.val() || {}));
+    return () => ref.off();
+  }, []);
+
+  React.useEffect(() => {
+    const ref = db.ref("lessons");
+    ref.on("value", snap => {
+      const data = snap.val() || {};
+      setAllLessons(Object.entries(data).map(([k,v])=>({...v,_key:k})));
+    });
+    return () => ref.off();
+  }, []);
+
+  // 학생별 출결 집계
+  const studentStats = useMemo(() => {
+    const filtered = selectedClass === "all" ? students : students.filter(s=>s.className===selectedClass);
+    return filtered.map(s => {
+      let 출석=0, 지각=0, 결석=0, 무단결석=0, 총수업=0;
+      allLessons.forEach(l => {
+        if (!(l.studentIds||[]).includes(s.id)) return;
+        총수업++;
+        const rec = allAttendance[l._key]?.[s.id] || {};
+        const tags = rec.tags || [];
+        if (tags.includes("무단결석")) 무단결석++;
+        else if (tags.includes("결석")) 결석++;
+        else if (tags.includes("지각")) 지각++;
+        else if (tags.includes("출석")) 출석++;
+      });
+      const 출석률 = 총수업 > 0 ? Math.round((출석+지각) / 총수업 * 100) : null;
+      return { ...s, 출석, 지각, 결석, 무단결석, 총수업, 출석률 };
+    }).sort((a,b) => (b.출석률??-1) - (a.출석률??-1));
+  }, [students, allLessons, allAttendance, selectedClass]);
+
+  // 반별 집계
+  const classStats = useMemo(() => classes.map(cls => {
+    const group = students.filter(s=>s.className===cls);
+    let 출석=0, 지각=0, 결석=0, 무단결석=0, 총수업=0;
+    group.forEach(s => {
+      allLessons.forEach(l => {
+        if (!(l.studentIds||[]).includes(s.id)) return;
+        총수업++;
+        const tags = (allAttendance[l._key]?.[s.id]?.tags) || [];
+        if (tags.includes("무단결석")) 무단결석++;
+        else if (tags.includes("결석")) 결석++;
+        else if (tags.includes("지각")) 지각++;
+        else if (tags.includes("출석")) 출석++;
+      });
+    });
+    const 출석률 = 총수업 > 0 ? Math.round((출석+지각) / 총수업 * 100) : 0;
+    return { cls, 출석, 지각, 결석, 무단결석, 총수업, 출석률, count: group.length };
+  }), [classes, students, allLessons, allAttendance]);
+
+  const rateColor = (r) => {
+    if (r===null) return "bg-slate-100 text-slate-400";
+    if (r>=90) return "bg-emerald-100 text-emerald-700";
+    if (r>=70) return "bg-amber-100 text-amber-700";
+    return "bg-red-100 text-red-700";
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* 반별 카드 */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {classStats.map(c => (
+          <Card key={c.cls} className="p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-bold">{c.cls}</div>
+                <div className="text-xs text-slate-400 mt-0.5">총 {c.총수업}회 수업</div>
+              </div>
+              <div className="text-2xl font-bold">{c.총수업>0?c.출석률+"%":"-"}</div>
+            </div>
+            <ProgressBar value={c.출석률}/>
+            <div className="flex gap-3 text-xs">
+              <span className="text-emerald-600">출석 {c.출석}</span>
+              <span className="text-amber-600">지각 {c.지각}</span>
+              <span className="text-red-500">결석 {c.결석}</span>
+              <span className="text-pink-600">무단 {c.무단결석}</span>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      {/* 반 필터 */}
+      <div className="flex gap-2 flex-wrap">
+        {["all",...classes].map(cls=>(
+          <button key={cls} type="button" onClick={()=>setSelectedClass(cls)}
+            className={"px-3 py-1.5 rounded-xl text-sm font-medium transition border " + (selectedClass===cls?"bg-slate-900 text-white border-slate-900":"bg-white text-slate-600 border-slate-200 hover:bg-slate-50")}>
+            {cls==="all"?"전체":cls}
+          </button>
+        ))}
+      </div>
+
+      {/* 학생별 출결 */}
+      <Card className="p-5 space-y-3">
+        <div>
+          <h2 className="text-lg font-bold">학생별 출결 현황</h2>
+          <p className="text-xs text-slate-400 mt-0.5">수업일지에 행동태그가 입력된 수업 기준</p>
+        </div>
+        {studentStats.length === 0
+          ? <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-400 text-center">데이터가 없습니다.</div>
+          : <div className="space-y-2">
+              {studentStats.map(s => (
+                <div key={s.id} className="rounded-2xl border px-4 py-3 space-y-2">
+                  <div className="flex items-center gap-3">
+                    <div className="w-16 text-sm font-semibold shrink-0">{s.name}</div>
+                    <Badge variant="secondary" className="shrink-0">{s.className}</Badge>
+                    <div className="flex-1 min-w-0"><ProgressBar value={s.출석률??0}/></div>
+                    <div className={`shrink-0 rounded-xl px-2.5 py-0.5 text-xs font-bold ${rateColor(s.출석률)}`}>
+                      {s.출석률 !== null ? s.출석률+"%" : "-"}
+                    </div>
+                  </div>
+                  <div className="flex gap-4 text-xs pl-1">
+                    <span>총 <b>{s.총수업}</b>회</span>
+                    <span className="text-emerald-600">출석 <b>{s.출석}</b></span>
+                    <span className="text-amber-600">지각 <b>{s.지각}</b></span>
+                    <span className="text-red-500">결석 <b>{s.결석}</b></span>
+                    {s.무단결석 > 0 && <span className="text-pink-600">무단결석 <b>{s.무단결석}</b></span>}
                   </div>
                 </div>
               ))}
