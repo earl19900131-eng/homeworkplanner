@@ -580,7 +580,7 @@ function App() {
   if (loading) return <Spinner />;
 
   // ── 로그인 화면 ─────────────────────────────────────────────────────────────
-  if (!currentUser) return (
+  if (!currentUser && !isParent) return (
     <div style={{ minHeight:"100vh", background:"linear-gradient(145deg, #f8fafc 0%, #f0f4ff 50%, #e8f0fe 100%)", display:"flex", alignItems:"center", justifyContent:"center", position:"relative", overflow:"hidden", fontFamily:"'Segoe UI', sans-serif" }}>
 
       {/* 배경 기하 도형 */}
