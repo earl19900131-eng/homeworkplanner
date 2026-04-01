@@ -534,7 +534,16 @@ function App() {
                         <h2 className="text-lg font-bold">상세 보기</h2>
                         <p className="text-sm text-slate-500">{selectedTeacherStudent?`${selectedTeacherStudent.name} 학생의 숙제 목록`:"학생을 선택하세요"}</p>
                       </div>
-                      <Btn variant={teacherViewId==="all"?"default":"outline"} size="sm" onClick={()=>setTeacherViewId("all")}>전체</Btn>
+                      <div className="flex items-center gap-2">
+                        {selectedTeacherStudent && (
+                          <button type="button" onClick={()=>setCurrentUserId(selectedTeacherStudent.id)}
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold transition hover:opacity-80"
+                            style={{background:"#eef2ff", color:"#4a6bd6", border:"1px solid #c7d2fe"}}>
+                            👤 학생화면
+                          </button>
+                        )}
+                        <Btn variant={teacherViewId==="all"?"default":"outline"} size="sm" onClick={()=>setTeacherViewId("all")}>전체</Btn>
+                      </div>
                     </div>
                     {selectedTeacherHW.length > 0 && (
                       <div className="flex gap-1 p-1 bg-slate-100 rounded-xl w-fit">
