@@ -2458,6 +2458,66 @@ function CurriculumManager({ students, materials }) {
   );
 }
 
+// ── 학생/학부모용 간단 교재 카드 (이미지/편집 없음) ──────────────────────────
+function StudentMatCard({ node, allStatuses }) {
+  const totalProblems = Number(node.totalProblems) || 0;
+  const startNum = Number(node.problemStart) || 1;
+  const endNum = node.problemEnd ? Number(node.problemEnd) : startNum + totalProblems - 1;
+  const statuses = allStatuses[node.materialId] || {};
+
+  const counts = { correct: 0, wrong: 0, unknown: 0, null: 0 };
+  for (let i = startNum; i <= endNum; i++) counts[statuses[i] || "null"]++;
+
+  const CARD_COLS = 20;
+  const rows = [];
+  for (let r = 0; r < Math.ceil(totalProblems / CARD_COLS); r++) {
+    const rowStart = startNum + r * CARD_COLS;
+    const rowEnd = Math.min(endNum, rowStart + CARD_COLS - 1);
+    rows.push(Array.from({ length: rowEnd - rowStart + 1 }, (_, c) => rowStart + c));
+  }
+
+  if (totalProblems === 0) return null;
+
+  const doneCount = counts.correct + counts.wrong + counts.unknown;
+  const pct = totalProblems ? Math.round(doneCount / totalProblems * 100) : 0;
+
+  return (
+    <Card className="p-4 space-y-3">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-sm">{node.materialName}</h3>
+          <span className="text-xs text-slate-400">{doneCount}/{totalProblems} ({pct}%)</span>
+        </div>
+        <div className="flex gap-3">
+          {[["correct","맞음"],["wrong","틀림"],["unknown","모름"],["null","미체크"]].map(([k,label]) => (
+            <div key={k} className="flex items-center gap-1 text-xs text-slate-500">
+              <div className="w-3 h-3 rounded" style={{ background: STATUS_STYLE[k].bg }}/>
+              <span>{label} {counts[k]}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-1 overflow-x-auto">
+        {rows.map((row, ri) => (
+          <div key={ri} className="flex gap-1">
+            <div className="w-10 text-right text-[10px] text-slate-400 shrink-0 self-center pr-1">{row[0]}~</div>
+            {row.map(num => {
+              const st = statuses[num] || null;
+              const sty = STATUS_STYLE[st];
+              return (
+                <div key={num}
+                  style={{ background: sty.bg, color: sty.text, width:24, height:24, borderRadius:4, fontSize:9, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                  {num}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 // ── 학생용 커리큘럼 뷰 ───────────────────────────────────────────────────────
 function StudentCurriculumView({ studentId, materials = [] }) {
   const [allNodes, setAllNodes] = React.useState({});
@@ -2545,15 +2605,12 @@ function StudentCurriculumView({ studentId, materials = [] }) {
       <div className="text-sm font-medium text-slate-600">총 {path.length}개 교재</div>
       {path.map((node) => {
         const fullMat = materials.find(m => m.id === node.materialId) || {};
+        const mergedNode = { ...fullMat, ...node, materialName: node.materialName || fullMat.name };
         return (
-          <MaterialStatusCard
+          <StudentMatCard
             key={node.id}
-            mat={{ ...fullMat, id: node.materialId, name: node.materialName, totalProblems: node.totalProblems }}
+            node={mergedNode}
             allStatuses={allStatuses}
-            studentId={studentId}
-            picked={{}}
-            togglePick={() => {}}
-            bulkSelect={() => {}}
           />
         );
       })}
