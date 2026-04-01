@@ -184,12 +184,20 @@ function TagSelectorModal({ studentName, currentTags, onToggle, onClose }) {
 }
 
 // ── 수업 등록/편집 모달 ────────────────────────────────────────────────────
+const SESSION_DEFAULT_COLORS = { "수업": "#1e293b", "평가": "#f59e0b", "보강": "#059669" };
+const COLOR_PALETTE = [
+  "#1e293b","#3b82f6","#6366f1","#8b5cf6","#ec4899",
+  "#ef4444","#f59e0b","#10b981","#059669","#0891b2",
+  "#7c3aed","#dc2626","#d97706","#16a34a","#0284c7",
+];
+
 function LessonModal({ lesson, students, onClose, onSave }) {
   const isNew = !lesson._key;
   const [title, setTitle] = React.useState(lesson.title || "");
   const [date, setDate] = React.useState(lesson.date || "");
   const [time, setTime] = React.useState(lesson.time || "");
   const [sessionType, setSessionType] = React.useState(lesson.sessionType || "수업");
+  const [color, setColor] = React.useState(lesson.color || SESSION_DEFAULT_COLORS[lesson.sessionType || "수업"]);
   const [selectedIds, setSelectedIds] = React.useState(lesson.studentIds || []);
   const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState("");
@@ -223,7 +231,7 @@ function LessonModal({ lesson, students, onClose, onSave }) {
     if (!date) { setErr("날짜를 선택해 주세요."); return; }
     if (selectedIds.length === 0) { setErr("학생을 최소 1명 선택해 주세요."); return; }
     setSaving(true);
-    try { await onSave({ title: title.trim(), date, time, sessionType, studentIds: selectedIds }); onClose(); }
+    try { await onSave({ title: title.trim(), date, time, sessionType, color, studentIds: selectedIds }); onClose(); }
     catch (e) { setErr("저장 실패: " + e.message); }
     setSaving(false);
   };
@@ -240,20 +248,30 @@ function LessonModal({ lesson, students, onClose, onSave }) {
           <div className="space-y-1.5">
             <Lbl>수업 유형</Lbl>
             <div className="flex gap-2">
-              {[["수업","🎓","blue"],["평가","📝","amber"],["보강","🔧","emerald"]].map(([type, icon, color]) => {
+              {[["수업","🎓"],["평가","📝"],["보강","🔧"]].map(([type, icon]) => {
                 const sel = sessionType === type;
-                const cls = sel
-                  ? color === "blue"    ? "bg-blue-600 text-white border-blue-600"
-                  : color === "amber"   ? "bg-amber-500 text-white border-amber-500"
-                  :                      "bg-emerald-600 text-white border-emerald-600"
-                  : "bg-white text-slate-600 border-slate-200 hover:border-slate-400";
                 return (
-                  <button key={type} type="button" onClick={() => setSessionType(type)}
-                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-2xl text-sm font-medium border transition ${cls}`}>
+                  <button key={type} type="button" onClick={() => { setSessionType(type); setColor(SESSION_DEFAULT_COLORS[type]); }}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-2xl text-sm font-medium border transition ${sel ? "text-white border-transparent" : "bg-white text-slate-600 border-slate-200 hover:border-slate-400"}`}
+                    style={sel ? { background: SESSION_DEFAULT_COLORS[type] } : {}}>
                     <span>{icon}</span><span>{type}</span>
                   </button>
                 );
               })}
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Lbl>달력 색상</Lbl>
+            <div className="flex items-center gap-2 flex-wrap">
+              {COLOR_PALETTE.map(c => (
+                <button key={c} type="button" onClick={() => setColor(c)}
+                  className="w-6 h-6 rounded-full transition hover:scale-110 border-2"
+                  style={{ background: c, borderColor: color === c ? "#1a2340" : "transparent", boxShadow: color === c ? "0 0 0 2px white, 0 0 0 4px " + c : "none" }}/>
+              ))}
+              <label className="flex items-center gap-1 text-xs text-slate-500 cursor-pointer ml-1">
+                <input type="color" value={color} onChange={e => setColor(e.target.value)} className="w-6 h-6 rounded cursor-pointer border-0 p-0" style={{background:"none"}}/>
+                직접입력
+              </label>
             </div>
           </div>
           <div className="space-y-1.5"><Lbl>수업명</Lbl><input ref={titleRef} value={title} onChange={e => setTitle(e.target.value)} placeholder="예: 수학 특강" className="w-full border border-slate-200 rounded-2xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-300 transition" /></div>
@@ -1544,7 +1562,12 @@ function LessonCalendar({ lessons, today, focusDateOverride, focusTrigger, onDay
         >
           {days.map((cell, idx) => {
             const { date: dateStr, current } = cell;
-            const dayLessons = lessonsByDate[dateStr] || [];
+            const SESSION_ORDER = { "수업": 0, "평가": 1, "보강": 2 };
+            const dayLessons = (lessonsByDate[dateStr] || []).slice().sort((a, b) => {
+              const od = (SESSION_ORDER[a.sessionType] ?? 3) - (SESSION_ORDER[b.sessionType] ?? 3);
+              if (od !== 0) return od;
+              return (a.time || "").localeCompare(b.time || "");
+            });
             const isToday = dateStr === today;
             const isFocused = dateStr === focusedDate;
             const dow = idx % 7;
@@ -1564,14 +1587,13 @@ function LessonCalendar({ lessons, today, focusDateOverride, focusTrigger, onDay
                 </div>
                 <div className="space-y-0.5">
                   {dayLessons.map(l => {
-                    const typeBg = !current ? "bg-slate-300 hover:bg-slate-400"
-                      : l.sessionType === "평가" ? "bg-amber-500 hover:bg-amber-400"
-                      : l.sessionType === "보강" ? "bg-emerald-600 hover:bg-emerald-500"
-                      : "bg-slate-800 hover:bg-slate-600";
+                    const defaultColor = SESSION_DEFAULT_COLORS[l.sessionType] || "#1e293b";
+                    const bg = !current ? "#94a3b8" : (l.color || defaultColor);
                     return (
                       <div key={l._key}
                         onClick={e => { e.stopPropagation(); setFocusedDate(dateStr); containerRef.current?.focus(); onLessonClick(l); }}
-                        className={`rounded-lg px-1.5 py-0.5 text-[10px] font-medium truncate transition cursor-pointer text-white ${typeBg}`}>
+                        className="rounded-lg px-1.5 py-0.5 text-[10px] font-medium truncate transition cursor-pointer text-white hover:opacity-80"
+                        style={{ background: bg }}>
                         {l.time ? l.time.slice(0, 5) + " " : ""}{l.title} ({(l.studentIds || []).length}명)
                       </div>
                     );
