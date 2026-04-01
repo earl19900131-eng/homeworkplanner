@@ -453,9 +453,11 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
   // { studentId, studentName, materials:[{nodeId,materialName,totalProblems,startNum}], selectedIdx, days, minPerProb, coeff }
   const fullscreenRef = React.useRef(null);
   const containerRef = React.useRef(null);
+  const isMockSession = lesson.sessionType === "평가";
   const COL_KEYS = ["학생", "지난숙제", "숙제", "평가", "행동태그", "데일리코멘트", "등원", "하원", "XP", "CP", "보고서", "발송"];
   const COL_DEFAULTS = [170, 220, 220, 180, 220, 220, 80, 80, 80, 80, 70, 130];
-  const [colWidths, setColWidths] = React.useState(COL_DEFAULTS);
+  const MOCK_COL_DEFAULTS = [170, 220, 200, 80, 80, 80, 80];
+  const [colWidths, setColWidths] = React.useState(isMockSession ? MOCK_COL_DEFAULTS : COL_DEFAULTS);
   const resizingRef = React.useRef(null); // { colIdx, startX, startW }
 
   const onResizeStart = (colIdx, e) => {
@@ -639,6 +641,10 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
   const saveDepartureTime = async (studentId, val) => {
     if (val) await db.ref(`lessonAttendance/${lesson._key}/${studentId}/departureTime`).set(val);
     else await db.ref(`lessonAttendance/${lesson._key}/${studentId}/departureTime`).remove();
+  };
+
+  const saveMockExamType = async (studentId, val) => {
+    await db.ref(`lessonAttendance/${lesson._key}/${studentId}/mockExamType`).set(val);
   };
 
   const sendReport = async (student, rec) => {
@@ -1193,7 +1199,10 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
             </colgroup>
             <thead>
               <tr className="bg-slate-50">
-                {[["학생","left","text-slate-500",true],["지난 숙제","left","text-slate-400",false],["숙제","left","text-slate-600",false],["평가","left","text-slate-600",false],["행동태그","left","text-slate-600",false],["데일리코멘트","left","text-slate-600",false],["등원","center","text-slate-600",false],["하원","center","text-slate-600",false],["획득 XP","center","text-slate-600",false],["획득 CP","center","text-slate-600",false],["보고서","center","text-slate-600",false]].map(([label, align, color, sticky], ci) => (
+                {(isMockSession
+                  ? [["학생","left","text-slate-500",true],["행동태그","left","text-slate-600",false],["모의평가 내용","left","text-slate-600",false],["등원","center","text-slate-600",false],["하원","center","text-slate-600",false],["획득 XP","center","text-slate-600",false],["획득 CP","center","text-slate-600",false]]
+                  : [["학생","left","text-slate-500",true],["지난 숙제","left","text-slate-400",false],["숙제","left","text-slate-600",false],["평가","left","text-slate-600",false],["행동태그","left","text-slate-600",false],["데일리코멘트","left","text-slate-600",false],["등원","center","text-slate-600",false],["하원","center","text-slate-600",false],["획득 XP","center","text-slate-600",false],["획득 CP","center","text-slate-600",false],["보고서","center","text-slate-600",false]]
+                ).map(([label, align, color, sticky], ci) => (
                   <th key={ci} className={`${sticky?"sticky left-0 z-10 bg-slate-50 ":""}px-4 py-3 text-${align} text-xs font-bold ${color} border-b border-r border-slate-200 select-none overflow-hidden`}
                     style={{position: sticky ? "sticky" : "relative", width: colWidths[ci]}}>
                     <span className="truncate block">{label}</span>
@@ -1210,6 +1219,102 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
                 const tags = sRec.tags || [];
                 const { xp, cp } = calcPoints(tags);
                 const total = cumulativeTotals[s.id] || { xp: 0, cp: 0 };
+
+                if (isMockSession) {
+                  return (
+                    <tr key={s.id} className={si % 2 === 0 ? "bg-white" : "bg-slate-50/30"}>
+                      {/* 학생 */}
+                      <td className="sticky left-0 z-10 bg-inherit px-4 py-3 border-b border-r border-slate-200 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-slate-800 text-white flex items-center justify-center text-xs font-bold shrink-0">{s.name[0]}</div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-semibold text-sm">{s.name}</span>
+                              {onViewStudent && (
+                                <button type="button" onClick={e => { e.stopPropagation(); onViewStudent(s.id); }}
+                                  className="text-[10px] px-1.5 py-0.5 rounded-md font-bold border transition shrink-0"
+                                  style={{background:"#eef2ff", color:"#4a6bd6", borderColor:"#c7d2fe"}}>
+                                  👤
+                                </button>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-slate-400 flex gap-2">
+                              <span>{s.className}</span>
+                              <span className="text-slate-300">|</span>
+                              <span>누적 <span className="text-emerald-600 font-medium">{total.xp >= 0 ? "+" : ""}{total.xp}XP</span></span>
+                              <span className="text-blue-600 font-medium">+{total.cp}CP</span>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      {/* 행동태그 */}
+                      <td className={`border-b border-r border-slate-100 px-3 py-2 cursor-pointer transition ${isFocused(si, 0) ? focusRing : ""}`}
+                        onClick={() => { selectCell(si, 0); openTagModal(s.id); }}>
+                        {tags.length > 0 ? (
+                          <div className="space-y-1.5">
+                            <div className="flex flex-wrap gap-1">
+                              {tags.map(name => {
+                                const t = BEHAVIOR_TAGS.find(b => b.name === name);
+                                const neg = t && t.xp < 0;
+                                return (
+                                  <span key={name} className={`text-[10px] px-1.5 py-0.5 rounded-lg border font-medium ${neg ? "bg-red-50 text-red-600 border-red-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>
+                                    {name}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                            {(tags.includes("결석") || tags.includes("무단결석")) && (
+                              <input
+                                defaultValue={sRec.absenceReason || ""}
+                                onBlur={e => saveAbsenceReason(s.id, e.target.value)}
+                                placeholder="결석 사유..."
+                                onClick={e => e.stopPropagation()}
+                                className="w-full text-[11px] text-slate-600 outline-none bg-red-50 border border-red-200 rounded-lg px-2 py-1 placeholder-red-300"
+                              />
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-slate-300">태그 선택</span>
+                        )}
+                      </td>
+                      {/* 모의평가 내용 */}
+                      <td className="border-b border-r border-slate-100 px-3 py-2">
+                        <select
+                          value={sRec.mockExamType || ""}
+                          onChange={e => { e.stopPropagation(); saveMockExamType(s.id, e.target.value); }}
+                          onClick={e => e.stopPropagation()}
+                          className="w-full text-xs rounded-lg border border-slate-200 bg-white px-2 py-1.5 outline-none focus:ring-2 focus:ring-slate-300">
+                          <option value="">선택</option>
+                          <option value="내신">내신</option>
+                          <option value="기출">기출</option>
+                          <option value="모의평가">모의평가</option>
+                        </select>
+                      </td>
+                      {/* 등원 */}
+                      <td className="border-b border-r border-slate-100 text-center py-1.5 px-2">
+                        <input type="time" defaultValue={sRec.arrivalTime || ""}
+                          onBlur={e => saveArrivalTime(s.id, e.target.value)}
+                          className="w-full text-xs text-center outline-none bg-transparent text-slate-600"
+                          onClick={e => e.stopPropagation()}/>
+                      </td>
+                      {/* 하원 */}
+                      <td className="border-b border-r border-slate-100 text-center py-1.5 px-2">
+                        <input type="time" defaultValue={sRec.departureTime || ""}
+                          onBlur={e => saveDepartureTime(s.id, e.target.value)}
+                          className="w-full text-xs text-center outline-none bg-transparent text-slate-600"
+                          onClick={e => e.stopPropagation()}/>
+                      </td>
+                      {/* XP */}
+                      <td className="border-b border-r border-slate-100 text-center py-2.5 px-3">
+                        {tags.length > 0 ? <span className={`text-sm font-bold ${xp >= 0 ? "text-emerald-600" : "text-red-600"}`}>{xp >= 0 ? "+" : ""}{xp}</span> : <span className="text-slate-300 text-xs">—</span>}
+                      </td>
+                      {/* CP */}
+                      <td className="border-b border-r border-slate-100 text-center py-2.5 px-3">
+                        {tags.length > 0 ? <span className="text-sm font-bold text-blue-600">+{cp}</span> : <span className="text-slate-300 text-xs">—</span>}
+                      </td>
+                    </tr>
+                  );
+                }
 
                 return (
                   <tr key={s.id} className={si % 2 === 0 ? "bg-white" : "bg-slate-50/30"}>
