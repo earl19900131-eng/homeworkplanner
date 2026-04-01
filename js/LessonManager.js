@@ -433,7 +433,7 @@ function RemainingPickerModal({ studentName, assessmentName, totalProblems, curr
   );
 }
 
-function LessonDetailView({ lesson, lessons = [], students, materials = [], attendance, allAttendance, isViewer = false, onBack, onEdit, onViewStudent }) {
+function LessonDetailView({ lesson, lessons = [], students, materials = [], attendance, allAttendance, isViewer = false, onBack, onEdit, onDelete, onViewStudent }) {
   const [editingHW, setEditingHW] = React.useState(null);
   const [hwValue, setHwValue] = React.useState("");
   const [unitModal, setUnitModal] = React.useState(null); // studentId
@@ -1151,6 +1151,12 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
               {confirmDone ? "✅ 확정 완료" : "📌 숙제 확정"}
             </button>}
             {!isViewer && !isFullscreen && <Btn variant="outline" size="sm" onClick={onEdit}>✏️ 수업 편집</Btn>}
+            {!isViewer && !isFullscreen && onDelete && (
+              <button onClick={() => { if (confirm("수업을 삭제하시겠습니까? 출결 기록도 함께 삭제됩니다.")) onDelete(); }}
+                className="text-xs px-3 py-1.5 rounded-lg font-bold border transition bg-red-50 text-red-600 border-red-200 hover:bg-red-100">
+                🗑 수업 삭제
+              </button>
+            )}
             <button onClick={toggleFullscreen}
               className="text-xs px-3 py-1.5 rounded-lg font-bold border bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200 transition">
               {isFullscreen ? "⛶ 전체화면 종료" : "⛶ 전체화면"}
@@ -2079,6 +2085,7 @@ function LessonManager({ students, materials = [], isViewer = false, onViewStude
           isViewer={isViewer}
           onBack={handleBack}
           onEdit={() => setAddModal({ date: currentLesson.date, lesson: currentLesson })}
+          onDelete={async () => { await handleDeleteLesson(currentLesson._key); handleBack(); }}
           onViewStudent={onViewStudent}
         />
         {addModal && (
