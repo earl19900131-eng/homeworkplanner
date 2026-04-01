@@ -453,8 +453,8 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
   // { studentId, studentName, materials:[{nodeId,materialName,totalProblems,startNum}], selectedIdx, days, minPerProb, coeff }
   const fullscreenRef = React.useRef(null);
   const containerRef = React.useRef(null);
-  const COL_KEYS = ["학생", "지난숙제", "숙제", "평가", "행동태그", "데일리코멘트", "등원", "하원", "XP", "CP", "보고서"];
-  const COL_DEFAULTS = [170, 220, 220, 180, 220, 220, 80, 80, 80, 80, 70];
+  const COL_KEYS = ["학생", "지난숙제", "숙제", "평가", "행동태그", "데일리코멘트", "등원", "하원", "XP", "CP", "보고서", "발송"];
+  const COL_DEFAULTS = [170, 220, 220, 180, 220, 220, 80, 80, 80, 80, 70, 130];
   const [colWidths, setColWidths] = React.useState(COL_DEFAULTS);
   const resizingRef = React.useRef(null); // { colIdx, startX, startW }
 
@@ -639,6 +639,29 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
   const saveDepartureTime = async (studentId, val) => {
     if (val) await db.ref(`lessonAttendance/${lesson._key}/${studentId}/departureTime`).set(val);
     else await db.ref(`lessonAttendance/${lesson._key}/${studentId}/departureTime`).remove();
+  };
+
+  const sendReport = async (student, rec) => {
+    const sentAt = new Date().toISOString();
+    const curType = rec.lessonType || "현행";
+    const hwText = curType === "추가1" ? rec["추가1숙제"] : curType === "추가2" ? rec["추가2숙제"] : rec["현행숙제"];
+    const reportData = {
+      lessonTitle: lesson.title || "",
+      date: lesson.date || "",
+      time: lesson.time || "",
+      sentAt,
+      arrivalTime: rec.arrivalTime || null,
+      departureTime: rec.departureTime || null,
+      tags: rec.tags || [],
+      dailyComment: rec.dailyComment || "",
+      absenceReason: rec.absenceReason || "",
+      hwText: hwText || "",
+      lessonType: curType,
+    };
+    await db.ref().update({
+      [`lessonAttendance/${lesson._key}/${student.id}/reportSentAt`]: sentAt,
+      [`parentReportIndex/${student.id}/${lesson._key}`]: reportData,
+    });
   };
 
   const rawSaveTags = async (studentId, tags) => {
@@ -1382,13 +1405,28 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
                     <td className="border-b border-r border-slate-100 text-center py-2.5 px-3">
                       {tags.length > 0 ? <span className="text-sm font-bold text-blue-600">+{cp}</span> : <span className="text-slate-300 text-xs">—</span>}
                     </td>
-                    <td className="border-b border-slate-100 text-center py-2 px-2">
+                    <td className="border-b border-r border-slate-100 text-center py-2 px-2">
                       <button type="button"
                         onClick={e => { e.stopPropagation(); setReportModal({ student: s, rec: sRec, lesson }); }}
                         className="text-[11px] px-2 py-1 rounded-lg font-semibold border transition hover:opacity-80"
                         style={{background:"#eef2ff", color:"#4a6bd6", borderColor:"#c7d2fe"}}>
                         보고서
                       </button>
+                    </td>
+                    <td className="border-b border-slate-100 text-center py-2 px-2">
+                      <div className="flex flex-col items-center gap-1">
+                        <button type="button"
+                          onClick={e => { e.stopPropagation(); sendReport(s, sRec); }}
+                          className="text-[11px] px-2 py-1 rounded-lg font-semibold border transition hover:opacity-80"
+                          style={{background:"#f0fdf4", color:"#15803d", borderColor:"#86efac"}}>
+                          발송
+                        </button>
+                        {sRec.reportSentAt && (
+                          <span className="text-[9px] text-slate-400">
+                            {(() => { const d = new Date(sRec.reportSentAt); return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`; })()}
+                          </span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
