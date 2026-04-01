@@ -99,7 +99,7 @@ const _BEHAVIOR_TAGS_MAP = (() => {
   return m;
 })();
 
-function StudentTodayLessonSection({ studentId, today }) {
+function StudentTodayLessonSection({ studentId, today, isParent }) {
   const [todayLessons, setTodayLessons] = React.useState([]);
   const [attendance, setAttendance] = React.useState({});
   const [profile, setProfile] = React.useState({});
@@ -277,16 +277,16 @@ function StudentTodayLessonSection({ studentId, today }) {
               </div>
             )}
 
-            {/* 등원/하원 버튼 */}
+            {/* 등원/하원 버튼 - 학부모 화면에서는 시간만 표시 */}
             <div className="flex gap-2 pt-1">
-              <button type="button" onClick={() => handleArrival(lesson, rec)}
+              <button type="button" onClick={() => !isParent && handleArrival(lesson, rec)} disabled={isParent}
                 className="flex-1 py-2 rounded-xl text-sm font-semibold border transition hover:opacity-80"
                 style={rec.arrivalTime
                   ? { background:"#dcfce7", color:"#15803d", borderColor:"#86efac" }
                   : { background:"#f1f5f9", color:"#475569", borderColor:"#e2e8f0" }}>
                 {rec.arrivalTime ? `✓ 등원 ${rec.arrivalTime}` : "등원"}
               </button>
-              <button type="button" onClick={() => handleDeparture(lesson._key)}
+              <button type="button" onClick={() => !isParent && handleDeparture(lesson._key)} disabled={isParent}
                 className="flex-1 py-2 rounded-xl text-sm font-semibold border transition hover:opacity-80"
                 style={rec.departureTime
                   ? { background:"#dbeafe", color:"#1d4ed8", borderColor:"#93c5fd" }
@@ -384,16 +384,25 @@ function App() {
 
   useEffect(() => { if (students.length>0 && !studentLoginId) setStudentLoginId(students[0].id); }, [students]);
 
+  const isParent = !!(currentUserId?.endsWith("PA"));
+  const parentStudentId = isParent ? currentUserId.slice(0, -2) : null;
+  const currentUser = currentUserId===TEACHER.id ? TEACHER : currentUserId===VIEWER.id ? VIEWER : students.find(s=>s.id===currentUserId)??null;
+  const currentStudent = isParent
+    ? (students.find(s=>s.id===parentStudentId) ?? null)
+    : (currentUser && currentUser.role!=="teacher" && currentUser.role!=="viewer" ? currentUser : null);
+  const currentTeacher = currentUser?.id===TEACHER.id ? TEACHER : null;
+  const currentViewer  = currentUser?.id===VIEWER.id  ? VIEWER  : null;
+
   useEffect(() => {
     if (!currentStudent) return;
     const saved = localStorage.getItem('lastSubject_' + currentStudent.id);
     if (saved) setForm(f => ({...f, subject: saved}));
   }, [currentStudent?.id]);
 
-  const currentUser = currentUserId===TEACHER.id ? TEACHER : currentUserId===VIEWER.id ? VIEWER : students.find(s=>s.id===currentUserId)??null;
-  const currentStudent = currentUser && currentUser.role!=="teacher" && currentUser.role!=="viewer" ? currentUser : null;
-  const currentTeacher = currentUser?.id===TEACHER.id ? TEACHER : null;
-  const currentViewer  = currentUser?.id===VIEWER.id  ? VIEWER  : null;
+  // 학부모는 접근 불가 탭으로 이동 시 오늘 탭으로 리셋
+  useEffect(() => {
+    if (isParent && ["create","exam","mypage"].includes(activeTab)) setActiveTab("today");
+  }, [isParent, activeTab]);
 
   useEffect(() => {
     if (!currentStudent) { setConfirmedHw(null); return; }
@@ -607,13 +616,13 @@ function App() {
         <div style={{ background:"rgba(255,255,255,0.75)", backdropFilter:"blur(24px)", WebkitBackdropFilter:"blur(24px)", border:"1px solid rgba(100,130,220,0.15)", borderRadius:20, padding:"32px 32px 28px", boxShadow:"0 8px 40px rgba(100,130,220,0.1)" }}>
           {/* 탭 */}
           <div style={{ display:"flex", gap:6, background:"rgba(100,130,220,0.07)", borderRadius:12, padding:5, marginBottom:28 }}>
-            {["student","teacher"].map(r=>(
+            {["student","parent","teacher"].map(r=>(
               <button key={r} onClick={()=>{setLoginRole(r);setLoginSecret("");setLoginError("");}}
                 style={{ flex:1, padding:"9px 0", fontSize:13, fontWeight:600, borderRadius:9, border:"none", cursor:"pointer", transition:"all 0.2s",
                   background: loginRole===r ? "#ffffff" : "transparent",
                   color: loginRole===r ? "#1a2340" : "#94a3b8",
                   boxShadow: loginRole===r ? "0 1px 4px rgba(0,0,0,0.08)" : "none" }}>
-                {r==="student" ? "학생" : "선생님"}
+                {r==="student" ? "학생" : r==="parent" ? "학부모" : "선생님"}
               </button>
             ))}
           </div>
@@ -623,6 +632,13 @@ function App() {
               {students.length===0
                 ? <div style={{ fontSize:13, color:"#92400e", background:"#fffbeb", border:"1px solid #fde68a", borderRadius:10, padding:"12px 16px" }}>⚠️ 등록된 학생이 없습니다. 선생님 계정으로 먼저 학생을 추가해 주세요.</div>
                 : <StudentLoginFormLight students={students} onLogin={(id)=>{setCurrentUserId(id);setLoginError("");registerFCMToken(id,"student");}} loginError={loginError} setLoginError={setLoginError}/>
+              }
+            </div>
+          ) : loginRole==="parent" ? (
+            <div>
+              {students.length===0
+                ? <div style={{ fontSize:13, color:"#92400e", background:"#fffbeb", border:"1px solid #fde68a", borderRadius:10, padding:"12px 16px" }}>⚠️ 등록된 학생이 없습니다.</div>
+                : <ParentLoginFormLight students={students} onLogin={(id)=>{setCurrentUserId(id);setLoginError("");}} loginError={loginError} setLoginError={setLoginError}/>
               }
             </div>
           ) : (
@@ -652,11 +668,11 @@ function App() {
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-2xl font-bold tracking-tight" style={{color:"#1a2340"}}>Beyond The Line Math</h1>
-                <Badge>{currentTeacher?"선생님":"학생"}</Badge>
+                <Badge>{currentTeacher?"선생님":isParent?"학부모":"학생"}</Badge>
                 {saving&&<span className="text-xs text-slate-400 animate-pulse">저장 중...</span>}
               </div>
               <p className="mt-1 text-sm text-slate-500">
-                {currentTeacher?`${TEACHER.name} 선생님 · 관리자`:currentViewer?`${VIEWER.name} · 뷰어`:`${currentStudent?.name} (${currentStudent?.className})`}
+                {currentTeacher?`${TEACHER.name} 선생님 · 관리자`:currentViewer?`${VIEWER.name} · 뷰어`:isParent?`${currentStudent?.name} 학부모님`:`${currentStudent?.name} (${currentStudent?.className})`}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -803,7 +819,10 @@ function App() {
 
             <Card className="p-3">
               <div className="flex gap-2 bg-slate-100 rounded-2xl p-1 mb-4">
-                {[["today","오늘"],["create","등록"],["all","전체"],["curriculum","커리큘럼"],["exam","평가"],["mypage","마이페이지"]].map(([tab,label])=>(
+                {(isParent
+                  ? [["today","오늘"],["all","전체"],["curriculum","커리큘럼"]]
+                  : [["today","오늘"],["create","등록"],["all","전체"],["curriculum","커리큘럼"],["exam","평가"],["mypage","마이페이지"]]
+                ).map(([tab,label])=>(
                   <button key={tab} onClick={()=>setActiveTab(tab)}
                     className={`flex-1 py-2 text-sm font-medium rounded-xl transition ${activeTab===tab?"bg-white shadow-sm":"text-slate-500 hover:text-slate-700"}`}>
                     {label}
@@ -841,7 +860,7 @@ function App() {
                     }
                   </div>
                   {overdueTasks.length>0&&<AlertBox className="bg-amber-50 text-amber-700">⚠️ 밀린 숙제가 있습니다. <b>전체 탭</b>에서 자동 재분배를 눌러보세요.</AlertBox>}
-                  <StudentTodayLessonSection studentId={currentStudent.id} today={today}/>
+                  <StudentTodayLessonSection studentId={currentStudent.id} today={today} isParent={isParent}/>
                 </div>
               )}
 
