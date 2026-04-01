@@ -1406,7 +1406,11 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
         const hwMiss = rTags.includes("숙제미이행");
         const isAbsent = rTags.includes("결석") || rTags.includes("무단결석");
         const isLate = rTags.includes("지각");
-        const diagTags = rTags.filter(t => t.startsWith("진단평가"));
+        const profile = profiles[student.id] || {};
+        const { name: asmName, type: asmType, units } = getStudentAssessmentInfo(student.id, curType);
+        const curUnitNum = profile.currentUnit || null;
+        const unitObj = units?.find(u => u.num === String(curUnitNum));
+        const remaining = profile.remainingProblems != null ? profile.remainingProblems : null;
         const curType = r.lessonType || "현행";
         const hwText = curType === "추가1" ? r["추가1숙제"] : curType === "추가2" ? r["추가2숙제"] : r["현행숙제"];
         const DOW = ["일","월","화","수","목","금","토"];
@@ -1464,12 +1468,16 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
                   </div>
                 )}
 
-                {/* 평가 통과 */}
-                {diagTags.length > 0 && section("통과한 평가",
-                  <div className="flex flex-wrap gap-1.5">
-                    {diagTags.map(t => (
-                      <span key={t} className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200">{t}</span>
-                    ))}
+                {/* 평가 */}
+                {asmName && section("평가",
+                  <div className="space-y-1">
+                    <div className="font-medium text-slate-800">{asmName}</div>
+                    {asmType === "누적테스트"
+                      ? <div className="text-xs text-slate-500">남은 문제: <span className="font-semibold text-slate-700">{remaining ?? "-"}문제</span></div>
+                      : curUnitNum
+                        ? <div className="text-xs text-slate-500">현재 소단원: <span className="font-semibold text-slate-700">{curUnitNum}{unitObj ? ` ${unitObj.minor}` : ""}</span></div>
+                        : <div className="text-xs text-slate-400">소단원 미지정</div>
+                    }
                   </div>
                 )}
 
