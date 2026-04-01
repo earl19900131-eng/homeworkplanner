@@ -378,7 +378,7 @@ function App() {
   }, [currentUserId]);
 
   useEffect(() => {
-    if (!currentUserId || currentUserId===TEACHER.id || currentUserId===VIEWER.id) return;
+    if (!currentUserId || currentUserId===TEACHER.id || currentUserId===VIEWER.id || currentUserId.endsWith("PA")) return;
     if (students.length>0 && !students.find(s=>s.id===currentUserId)) setCurrentUserId(null);
   }, [students, currentUserId]);
 
