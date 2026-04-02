@@ -1217,7 +1217,7 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
       /* 일반 표 */
       <Card className="p-0 overflow-hidden">
         <div ref={containerRef} tabIndex={0} className="overflow-x-auto outline-none">
-          <table className="text-sm border-collapse" style={{tableLayout:"fixed"}}>
+          <table className="text-sm border-collapse" style={{tableLayout:"fixed", minWidth: colWidths.reduce((a,b)=>a+b,0)}}>
             <colgroup>
               {colWidths.map((w, i) => <col key={i} style={{width: w}}/>)}
             </colgroup>
