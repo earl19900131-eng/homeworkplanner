@@ -2174,8 +2174,8 @@ function AssessmentsTab({ students = [] }) {
                 );
 
                 // 그래프 데이터
-                const PAD = { top:24, right:20, bottom:32, left:44 };
-                const W = 520, H = 260;
+                const PAD = { top:24, right:60, bottom:32, left:44 };
+                const W = 416, H = 208;
                 const innerW = W - PAD.left - PAD.right;
                 const innerH = H - PAD.top - PAD.bottom;
 
@@ -2256,6 +2256,7 @@ function AssessmentsTab({ students = [] }) {
                           // polyline
                           const pathD = validPoints.map((p,pi) => `${pi===0?"M":"L"} ${p.x} ${p.y}`).join(" ");
 
+                          const lastPt = validPoints[validPoints.length - 1];
                           return (
                             <g key={s.id}>
                               <path d={pathD} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round"/>
@@ -2265,6 +2266,9 @@ function AssessmentsTab({ students = [] }) {
                                   onMouseEnter={() => setHovered({examIdx:p.examIdx, studentId:s.id, x:p.x, y:p.y, score:p.score, name:s.name, color})}
                                   onMouseLeave={() => setHovered(null)}/>
                               ))}
+                              {lastPt && (
+                                <text x={lastPt.x + 7} y={lastPt.y + 4} fontSize="9" fill={color} fontWeight="700">{s.name}</text>
+                              )}
                             </g>
                           );
                         })}
