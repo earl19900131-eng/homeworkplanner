@@ -322,24 +322,21 @@ function MaterialsTab({ materials }) {
             onDragLeave={draggingMatId ? (() => setDragOverTarget(null)) : undefined}
             onDrop={draggingMatId ? (e => { e.preventDefault(); dropMaterial(folder.id); }) : undefined}>
             {editingFolderId === folder.id ? (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 border-blue-200 bg-blue-50">
-                <span className="text-base leading-none">📁</span>
+              <div className="flex flex-col items-center justify-center gap-1 rounded-2xl border-2 border-blue-200 bg-blue-50" style={{width:130,height:130}}>
+                <span className="text-3xl leading-none">📁</span>
                 <input autoFocus value={editingFolderName} onChange={e=>setEditingFolderName(e.target.value)}
                   onKeyDown={e=>{ if(e.key==="Enter") saveEditFolder(); if(e.key==="Escape") setEditingFolderId(null); }}
                   onBlur={saveEditFolder}
-                  className="text-xs border-b border-blue-400 bg-transparent outline-none w-24"/>
+                  className="text-xs border-b border-blue-400 bg-transparent outline-none text-center w-24"/>
               </div>
             ) : (
               <button type="button" onClick={() => !draggingMatId && openFolder(folder)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border-2 transition
-                  ${isDragOver ? "border-blue-400 bg-blue-50 shadow" : "border-amber-200 bg-amber-50 hover:bg-amber-100"}`}>
-                <span className="text-base leading-none">{isDragOver ? "📂" : "📁"}</span>
-                <div className="text-left">
-                  <div className="text-xs font-semibold text-amber-900 leading-tight">{folder.name}</div>
-                  <div className="text-[10px] text-amber-600 leading-tight">
-                    {isDragOver ? "여기에 놓기" : countLabel}
-                  </div>
-                </div>
+                className={`flex flex-col items-center justify-center gap-1.5 rounded-2xl border-2 transition
+                  ${isDragOver ? "border-blue-400 bg-blue-50 shadow" : "border-amber-200 bg-amber-50 hover:bg-amber-100"}`}
+                style={{width:130,height:130}}>
+                <span className="text-3xl leading-none">{isDragOver ? "📂" : "📁"}</span>
+                <span className="text-xs font-semibold text-amber-900 text-center leading-tight line-clamp-2 px-2">{folder.name}</span>
+                <span className="text-[10px] text-amber-600">{isDragOver ? "여기에 놓기" : countLabel}</span>
               </button>
             )}
             {!draggingMatId && (
@@ -2203,13 +2200,12 @@ function AssessmentsTab({ students = [] }) {
                     onDragLeave={draggingAssessmentId ? (()=>setDragOverAssessmentFolder(null)) : undefined}
                     onDrop={draggingAssessmentId ? (e=>{e.preventDefault();dropAssessment(folder.id);}) : undefined}>
                     <button type="button" onClick={() => !draggingAssessmentId && openAssessmentFolder(folder)}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border-2 transition
-                        ${isDragOver ? "border-blue-500 bg-blue-200 shadow" : "border-blue-200 bg-blue-50 hover:bg-blue-100"}`}>
-                      <span className="text-base leading-none">📁</span>
-                      <div className="text-left">
-                        <div className="text-xs font-semibold text-blue-900 leading-tight">{folder.name}</div>
-                        <div className="text-[10px] text-blue-600 leading-tight">{isDragOver ? "여기에 놓기" : `${count}개`}</div>
-                      </div>
+                      className={`flex flex-col items-center justify-center gap-1.5 rounded-2xl border-2 transition
+                        ${isDragOver ? "border-blue-500 bg-blue-200 shadow" : "border-blue-200 bg-blue-50 hover:bg-blue-100"}`}
+                      style={{width:130,height:130}}>
+                      <span className="text-3xl leading-none">📁</span>
+                      <span className="text-xs font-semibold text-blue-900 text-center leading-tight line-clamp-2 px-2">{folder.name}</span>
+                      <span className="text-[10px] text-blue-600">{isDragOver ? "여기에 놓기" : `${count}개`}</span>
                     </button>
                     {!draggingAssessmentId && (
                       <button type="button"
@@ -2282,20 +2278,21 @@ function AssessmentsTab({ students = [] }) {
         </div>
         {mockFolders.length === 0
           ? <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-400 text-center">폴더를 추가해 주세요.</div>
-          : <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+          : <div className="flex flex-wrap gap-2">
               {mockFolders.map(folder => {
                 const examCount = mockExams.filter(e => e.folderId === folder.id).length;
                 return (
                   <div key={folder.id} className="group relative">
                     <button type="button" onClick={() => openFolder(folder)}
-                      className="w-full aspect-square rounded-2xl border-2 border-amber-200 bg-amber-50 hover:bg-amber-100 transition flex flex-col items-center justify-center gap-2 p-3">
-                      <span className="text-4xl leading-none">📁</span>
-                      <span className="text-xs font-semibold text-amber-900 text-center leading-tight line-clamp-2">{folder.name}</span>
+                      className="flex flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-amber-200 bg-amber-50 hover:bg-amber-100 transition"
+                      style={{width:130,height:130}}>
+                      <span className="text-3xl leading-none">📁</span>
+                      <span className="text-xs font-semibold text-amber-900 text-center leading-tight line-clamp-2 px-2">{folder.name}</span>
                       <span className="text-[10px] text-amber-600">{examCount}개</span>
                     </button>
                     <button type="button"
                       onClick={e=>{e.stopPropagation(); deleteFolder(folder.id);}}
-                      className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-300 text-xs leading-none opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                      className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-red-500 text-[9px] leading-none opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
                       ×
                     </button>
                   </div>
