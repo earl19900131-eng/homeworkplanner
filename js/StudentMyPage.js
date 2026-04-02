@@ -529,16 +529,26 @@ function StudentExamTab({ studentId }) {
   const [submitDone, setSubmitDone] = useState(false);
   const [profile, setProfile] = useState({});
   const [assessments, setAssessments] = useState([]);
+  const [examFolders, setExamFolders] = useState([]);
 
   useEffect(() => {
     const ref = db.ref("mockExams");
     ref.on("value", snap => {
       const data = snap.val() || {};
-      const list = Object.values(data).filter(e => Object.values(e.students||{}).includes(studentId));
+      const list = Object.values(data).filter(e => (e.students||[]).includes(studentId));
       setExams(list.sort((a,b) => (a.round||0) - (b.round||0)));
     });
     return () => ref.off();
   }, [studentId]);
+
+  useEffect(() => {
+    const ref = db.ref("mockExamFolders");
+    ref.on("value", snap => {
+      const data = snap.val() || {};
+      setExamFolders(Object.values(data).sort((a,b) => (a.createdAt||0)-(b.createdAt||0)));
+    });
+    return () => ref.off();
+  }, []);
 
   useEffect(() => {
     const ref = db.ref(`mockExamResults`);
@@ -672,9 +682,21 @@ function StudentExamTab({ studentId }) {
     { key: "추가2", label: "추가2 진단평가", assessmentId: profile.advanceAssessment, color: "#db2777", bg: "#fdf2f8" },
   ];
 
+  // 폴더별 시험 그룹핑
+  const examGroups = React.useMemo(() => {
+    const folderIds = [...new Set(exams.map(e => e.folderId).filter(Boolean))];
+    const groups = folderIds.map(fid => ({
+      folder: examFolders.find(f => f.id === fid) || { id: fid, name: fid },
+      items: exams.filter(e => e.folderId === fid),
+    }));
+    const noFolder = exams.filter(e => !e.folderId);
+    if (noFolder.length > 0) groups.push({ folder: null, items: noFolder });
+    return groups;
+  }, [exams, examFolders]);
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-      {/* ── 왼쪽: 진단평가 ── */}
+    <div className="grid gap-4 items-start" style={{gridTemplateColumns:"1fr 2fr"}}>
+      {/* ── 왼쪽 1: 진단평가 ── */}
       <div className="space-y-3">
         <div className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">진단평가</div>
         {diagTypes.map(({ key, label, assessmentId, color, bg }) => {
@@ -709,41 +731,50 @@ function StudentExamTab({ studentId }) {
         })}
       </div>
 
-      {/* ── 오른쪽: 내신기출 ── */}
-      <div className="space-y-3">
+      {/* ── 오른쪽 2: 내신기출 모의평가 ── */}
+      <div className="space-y-4">
         <div className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">내신기출 모의평가</div>
         {exams.length === 0 ? (
           <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-slate-400">
             배정된 시험이 없습니다.
           </div>
         ) : (
-          exams.map(exam => {
-            const result = examResults[exam.id];
-            const hasResult = !!result;
-            const score = result?.score;
-            return (
-              <button key={exam.id} onClick={() => openExam(exam)}
-                className="w-full text-left rounded-2xl border px-4 py-3.5 hover:bg-slate-50 transition"
-                style={hasResult ? {borderColor:"#a5b4fc", background:"#f8f7ff"} : {}}>
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="font-semibold truncate">{exam.name}</span>
-                    <span className="text-xs bg-indigo-100 text-indigo-600 rounded-lg px-2 py-0.5 shrink-0">{exam.round}차</span>
-                  </div>
-                  {hasResult && score !== undefined && score !== null && (
-                    <span className="text-lg font-bold shrink-0" style={{color:"#4338ca"}}>{Math.round(score * 100) / 100}점</span>
-                  )}
-                  {hasResult && (score === undefined || score === null) && (
-                    <span className="text-xs text-emerald-600 font-semibold shrink-0">✓ 제출완료</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs text-slate-400">{exam.questionCount}문항 · 총 {exam.totalScore ? Math.round(exam.totalScore*100)/100 : "-"}점</span>
-                  {hasResult && <span className="text-xs text-slate-400">· {result.submittedAt}</span>}
-                </div>
-              </button>
-            );
-          })
+          examGroups.map(({ folder, items }) => (
+            <div key={folder?.id || "none"} className="space-y-2">
+              {examGroups.length > 1 && folder && (
+                <div className="text-xs font-semibold text-slate-500 px-1">📁 {folder.name}</div>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                {items.map(exam => {
+                  const result = examResults[exam.id];
+                  const hasResult = !!result;
+                  const score = result?.score;
+                  return (
+                    <button key={exam.id} onClick={() => openExam(exam)}
+                      className="text-left rounded-2xl border px-3 py-3 hover:bg-slate-50 transition"
+                      style={hasResult ? {borderColor:"#a5b4fc", background:"#f8f7ff"} : {}}>
+                      <div className="flex items-center justify-between gap-1 flex-wrap">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="font-semibold text-sm truncate">{exam.name}</span>
+                          <span className="text-xs bg-indigo-100 text-indigo-600 rounded-lg px-1.5 py-0.5 shrink-0">{exam.round}차</span>
+                        </div>
+                        {hasResult && score !== undefined && score !== null && (
+                          <span className="text-base font-bold shrink-0" style={{color:"#4338ca"}}>{Math.round(score*100)/100}점</span>
+                        )}
+                        {hasResult && (score === undefined || score === null) && (
+                          <span className="text-xs text-emerald-600 font-semibold shrink-0">✓ 제출</span>
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-400 mt-0.5">
+                        {exam.questionCount}문항{exam.totalScore ? ` · ${Math.round(exam.totalScore*100)/100}점` : ""}
+                        {hasResult && result.submittedAt ? ` · ${result.submittedAt}` : ""}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))
         )}
       </div>
     </div>
