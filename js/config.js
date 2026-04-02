@@ -35,14 +35,7 @@ async function registerFCMToken(userId, role) {
     if (permission !== "granted") return;
     const token = await messaging.getToken({ vapidKey: VAPID_KEY });
     if (!token) return;
-    // 같은 userId의 기존 토큰 모두 삭제 (중복 알림 방지)
-    const snap = await db.ref("fcmTokens").once("value");
-    const all = snap.val() || {};
-    const deletes = {};
-    Object.entries(all).forEach(([k, v]) => {
-      if (v.userId === userId && k !== token) deletes[`fcmTokens/${k}`] = null;
-    });
-    if (Object.keys(deletes).length > 0) await db.ref().update(deletes);
+    // 토큰은 기기별로 고유하므로 그냥 저장 (다른 기기 토큰 유지)
     await db.ref(`fcmTokens/${token}`).set({ token, userId, role, updatedAt: new Date().toISOString() });
   } catch(e) {
     console.warn("FCM 토큰 등록 실패:", e);
