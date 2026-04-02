@@ -308,49 +308,48 @@ function MaterialsTab({ materials }) {
 
   // ── 폴더 그리드 (루트 or 하위 폴더 공통) ────────────────────────────────────
   const renderFolderGrid = (folderList) => (
-    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+    <div className="flex flex-wrap gap-2">
       {folderList.map(folder => {
         const directMats = materials.filter(m => m.folderId === folder.id).length;
         const subCount = folders.filter(f => f.parentId === folder.id).length;
         const isDragOver = draggingMatId && dragOverTarget === folder.id;
+        const countLabel = directMats > 0 || subCount > 0
+          ? [(directMats > 0 ? `교재 ${directMats}` : ""), (subCount > 0 ? `폴더 ${subCount}` : "")].filter(Boolean).join(" · ")
+          : "비어있음";
         return (
           <div key={folder.id} className="group relative"
             onDragOver={draggingMatId ? (e => { e.preventDefault(); setDragOverTarget(folder.id); }) : undefined}
             onDragLeave={draggingMatId ? (() => setDragOverTarget(null)) : undefined}
             onDrop={draggingMatId ? (e => { e.preventDefault(); dropMaterial(folder.id); }) : undefined}>
             {editingFolderId === folder.id ? (
-              <div className="w-full aspect-square rounded-2xl border-2 border-blue-200 bg-blue-50 flex flex-col items-center justify-center gap-2 p-3">
-                <span className="text-3xl leading-none">📁</span>
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 border-blue-200 bg-blue-50">
+                <span className="text-base leading-none">📁</span>
                 <input autoFocus value={editingFolderName} onChange={e=>setEditingFolderName(e.target.value)}
                   onKeyDown={e=>{ if(e.key==="Enter") saveEditFolder(); if(e.key==="Escape") setEditingFolderId(null); }}
                   onBlur={saveEditFolder}
-                  className="w-full text-center text-xs border-b border-blue-400 bg-transparent outline-none"/>
+                  className="text-xs border-b border-blue-400 bg-transparent outline-none w-24"/>
               </div>
             ) : (
               <button type="button" onClick={() => !draggingMatId && openFolder(folder)}
-                className={`w-full aspect-square rounded-2xl border-2 transition flex flex-col items-center justify-center gap-2 p-3
-                  ${isDragOver ? "border-blue-400 bg-blue-50 scale-105 shadow-lg" : "border-amber-200 bg-amber-50 hover:bg-amber-100"}`}>
-                <span className="text-4xl leading-none">{isDragOver ? "📂" : "📁"}</span>
-                <span className="text-xs font-semibold text-amber-900 text-center leading-tight line-clamp-2">{folder.name}</span>
-                {isDragOver
-                  ? <span className="text-[10px] text-blue-500 font-bold">여기에 놓기</span>
-                  : <span className="text-[10px] text-amber-600">
-                      {directMats > 0 ? `교재 ${directMats}` : ""}
-                      {directMats > 0 && subCount > 0 ? " · " : ""}
-                      {subCount > 0 ? `폴더 ${subCount}` : ""}
-                      {directMats === 0 && subCount === 0 ? "비어있음" : ""}
-                    </span>
-                }
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border-2 transition
+                  ${isDragOver ? "border-blue-400 bg-blue-50 shadow" : "border-amber-200 bg-amber-50 hover:bg-amber-100"}`}>
+                <span className="text-base leading-none">{isDragOver ? "📂" : "📁"}</span>
+                <div className="text-left">
+                  <div className="text-xs font-semibold text-amber-900 leading-tight">{folder.name}</div>
+                  <div className="text-[10px] text-amber-600 leading-tight">
+                    {isDragOver ? "여기에 놓기" : countLabel}
+                  </div>
+                </div>
               </button>
             )}
             {!draggingMatId && (
-              <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+              <div className="absolute -top-1.5 -right-1.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition">
                 <button type="button"
                   onClick={e=>{ e.stopPropagation(); setEditingFolderId(folder.id); setEditingFolderName(folder.name); }}
-                  className="w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-blue-500 hover:border-blue-300 text-xs leading-none flex items-center justify-center">✎</button>
+                  className="w-4 h-4 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-blue-500 text-[9px] leading-none flex items-center justify-center">✎</button>
                 <button type="button"
                   onClick={e=>{ e.stopPropagation(); deleteFolder(folder.id); }}
-                  className="w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-300 text-xs leading-none flex items-center justify-center">×</button>
+                  className="w-4 h-4 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-red-500 text-[9px] leading-none flex items-center justify-center">×</button>
               </div>
             )}
           </div>
@@ -2194,7 +2193,7 @@ function AssessmentsTab({ students = [] }) {
             <Btn onClick={addAssessmentFolder}>+ 폴더 추가</Btn>
           </div>
           {assessmentFolders.length > 0 && (
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 mb-4">
+            <div className="flex flex-wrap gap-2 mb-4">
               {assessmentFolders.map(folder => {
                 const count = assessments.filter(a => a.folderId === folder.id).length;
                 const isDragOver = draggingAssessmentId && dragOverAssessmentFolder === folder.id;
@@ -2204,16 +2203,18 @@ function AssessmentsTab({ students = [] }) {
                     onDragLeave={draggingAssessmentId ? (()=>setDragOverAssessmentFolder(null)) : undefined}
                     onDrop={draggingAssessmentId ? (e=>{e.preventDefault();dropAssessment(folder.id);}) : undefined}>
                     <button type="button" onClick={() => !draggingAssessmentId && openAssessmentFolder(folder)}
-                      className={`w-full aspect-square rounded-2xl border-2 transition flex flex-col items-center justify-center gap-2 p-3
-                        ${isDragOver ? "border-blue-500 bg-blue-200 scale-105" : "border-blue-200 bg-blue-50 hover:bg-blue-100"}`}>
-                      <span className="text-4xl leading-none">📁</span>
-                      <span className="text-xs font-semibold text-blue-900 text-center leading-tight line-clamp-2">{folder.name}</span>
-                      <span className="text-[10px] text-blue-600">{count}개</span>
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border-2 transition
+                        ${isDragOver ? "border-blue-500 bg-blue-200 shadow" : "border-blue-200 bg-blue-50 hover:bg-blue-100"}`}>
+                      <span className="text-base leading-none">📁</span>
+                      <div className="text-left">
+                        <div className="text-xs font-semibold text-blue-900 leading-tight">{folder.name}</div>
+                        <div className="text-[10px] text-blue-600 leading-tight">{isDragOver ? "여기에 놓기" : `${count}개`}</div>
+                      </div>
                     </button>
                     {!draggingAssessmentId && (
                       <button type="button"
                         onClick={e=>{e.stopPropagation(); deleteAssessmentFolder(folder.id);}}
-                        className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-red-500 hover:border-red-300 text-xs leading-none opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                        className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-red-500 text-[9px] leading-none opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
                         ×
                       </button>
                     )}
