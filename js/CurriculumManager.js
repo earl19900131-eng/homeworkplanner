@@ -1500,6 +1500,7 @@ function AssessmentsTab({ students = [] }) {
   const [mockScoring, setMockScoring] = React.useState({});  // {1:4, 2:4, ...} for manual
   const [mockResultExam, setMockResultExam] = React.useState(null);
   const [mockResults, setMockResults] = React.useState({});
+  const [allMockResults, setAllMockResults] = React.useState({}); // examId → { studentId → result }
   const [scoreInputs, setScoreInputs] = React.useState({});
   const [mockFolders, setMockFolders] = React.useState([]);
   const [activeFolderId, setActiveFolderId] = React.useState(null);
@@ -1538,6 +1539,12 @@ function AssessmentsTab({ students = [] }) {
       const data = snap.val();
       setMockFolders(data ? Object.values(data).sort((a,b) => a.createdAt - b.createdAt) : []);
     });
+    return () => ref.off();
+  }, []);
+
+  React.useEffect(() => {
+    const ref = db.ref("mockExamResults");
+    ref.on("value", snap => setAllMockResults(snap.val() || {}));
     return () => ref.off();
   }, []);
 
@@ -2134,8 +2141,10 @@ function AssessmentsTab({ students = [] }) {
   if (step === "folder_view") {
     const folder = mockFolders.find(f => f.id === activeFolderId);
     const folderExams = mockExams.filter(e => e.folderId === activeFolderId).sort((a,b) => a.round - b.round);
+
     return (
       <div className="space-y-4">
+        {/* 헤더 */}
         <div className="flex items-center gap-3">
           <button type="button" onClick={()=>setStep("select")} className="text-sm text-slate-500 hover:text-slate-800">← 뒤로</button>
           {editingFolderId === activeFolderId
@@ -2148,29 +2157,89 @@ function AssessmentsTab({ students = [] }) {
           }
           <Btn onClick={startCreateMock} className="ml-auto">+ 시험 등록</Btn>
         </div>
-        <Card className="p-5 space-y-3">
-          {folderExams.length === 0
-            ? <div className="rounded-2xl border border-dashed p-8 text-sm text-slate-400 text-center">시험을 등록해 주세요.</div>
-            : <div className="space-y-2">
+
+        {folderExams.length === 0
+          ? <Card className="p-8 text-center text-sm text-slate-400">시험을 등록해 주세요.</Card>
+          : <div className="grid gap-4" style={{gridTemplateColumns:"2fr 1fr"}}>
+
+              {/* ── 왼쪽: 점수 대시보드 ── */}
+              <div className="space-y-3">
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">점수 대시보드</div>
+                {folderExams.map(exam => {
+                  const examRes = allMockResults[exam.id] || {};
+                  const assignedIds = exam.students || [];
+                  const assignedStudents = assignedIds.map(sid => students.find(s=>s.id===sid)).filter(Boolean);
+                  const totalScore = exam.totalScore ? Math.round(exam.totalScore*100)/100 : null;
+                  const submitted = assignedStudents.filter(s => examRes[s.id]?.submittedAt);
+                  return (
+                    <Card key={exam.id} className="p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-sm">{exam.name}</span>
+                          <Badge variant="secondary">{exam.round}차</Badge>
+                        </div>
+                        <span className="text-xs text-slate-400">{submitted.length}/{assignedStudents.length}명 제출</span>
+                      </div>
+                      {assignedStudents.length === 0
+                        ? <div className="text-xs text-slate-300 text-center py-2">배정된 학생 없음</div>
+                        : <div className="space-y-1.5">
+                            {assignedStudents.map(s => {
+                              const res = examRes[s.id];
+                              const score = res?.score;
+                              const pct = (totalScore && score != null) ? Math.round(score/totalScore*100) : null;
+                              return (
+                                <div key={s.id} className="flex items-center gap-2">
+                                  <div className="w-14 text-xs font-medium text-slate-700 shrink-0 truncate">{s.name}</div>
+                                  <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
+                                    {pct !== null && (
+                                      <div className="h-full rounded-full transition-all"
+                                        style={{width:`${pct}%`, background: pct>=80?"#22c55e":pct>=60?"#f59e0b":"#ef4444"}}/>
+                                    )}
+                                  </div>
+                                  {score != null
+                                    ? <span className="text-xs font-bold w-16 text-right shrink-0" style={{color:pct>=80?"#16a34a":pct>=60?"#d97706":"#dc2626"}}>
+                                        {Math.round(score*100)/100}{totalScore?`/${totalScore}`:""}점
+                                      </span>
+                                    : <span className="text-xs text-slate-300 w-16 text-right shrink-0">
+                                        {res?.submittedAt ? "제출완료" : "미제출"}
+                                      </span>
+                                  }
+                                </div>
+                              );
+                            })}
+                          </div>
+                      }
+                    </Card>
+                  );
+                })}
+              </div>
+
+              {/* ── 오른쪽: 시험 카드 목록 ── */}
+              <div className="space-y-3">
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">시험 목록</div>
                 {folderExams.map(e => (
-                  <div key={e.id} className="flex items-center gap-3 rounded-2xl border px-4 py-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-medium">{e.name}</span>
-                        <Badge variant="secondary">{e.round}차</Badge>
-                      </div>
-                      <div className="text-xs text-slate-500 mt-0.5">
-                        {e.questionCount}문항 · {e.totalScore ? Math.round(e.totalScore*100)/100 : "-"}점 · 학생 {Object.values(e.students||{}).length}명
-                      </div>
+                  <Card key={e.id} className="p-3 space-y-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-sm flex-1 min-w-0 truncate">{e.name}</span>
+                      <Badge variant="secondary">{e.round}차</Badge>
                     </div>
-                    <Btn variant="outline" size="sm" onClick={()=>openMockResults(e)}>결과</Btn>
-                    <Btn variant="outline" size="sm" onClick={()=>startEditMock(e)}>수정</Btn>
-                    <Btn variant="outline" size="sm" onClick={async()=>{ if(!confirm("삭제?")) return; await db.ref(`mockExams/${e.id}`).remove(); }}>삭제</Btn>
-                  </div>
+                    <div className="text-xs text-slate-500">
+                      {e.questionCount}문항 · {e.totalScore ? Math.round(e.totalScore*100)/100 : "-"}점 · {(e.students||[]).length}명
+                    </div>
+                    <div className="flex gap-1.5 flex-wrap">
+                      <button onClick={()=>openMockResults(e)}
+                        className="text-xs px-2 py-1 rounded-lg bg-indigo-50 text-indigo-600 font-medium hover:bg-indigo-100 border border-indigo-100">결과입력</button>
+                      <button onClick={()=>startEditMock(e)}
+                        className="text-xs px-2 py-1 rounded-lg bg-slate-50 text-slate-600 font-medium hover:bg-slate-100 border border-slate-200">수정</button>
+                      <button onClick={async()=>{ if(!confirm("삭제?")) return; await db.ref(`mockExams/${e.id}`).remove(); }}
+                        className="text-xs px-2 py-1 rounded-lg bg-red-50 text-red-500 font-medium hover:bg-red-100 border border-red-100">삭제</button>
+                    </div>
+                  </Card>
                 ))}
               </div>
-          }
-        </Card>
+
+            </div>
+        }
       </div>
     );
   }
