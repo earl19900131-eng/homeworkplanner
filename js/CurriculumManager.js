@@ -2160,59 +2160,161 @@ function AssessmentsTab({ students = [] }) {
 
         {folderExams.length === 0
           ? <Card className="p-8 text-center text-sm text-slate-400">시험을 등록해 주세요.</Card>
-          : <div className="grid gap-4" style={{gridTemplateColumns:"2fr 1fr"}}>
+          : (() => {
+              // 폴더 내 모든 학생 집합
+              const allStudentIds = [...new Set(folderExams.flatMap(e => e.students||[]))];
+              const allFolderStudents = allStudentIds.map(sid => students.find(s=>s.id===sid)).filter(Boolean);
+              const COLORS = ["#4a6bd6","#22c55e","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#ec4899","#f97316","#14b8a6","#6366f1"];
 
-              {/* ── 왼쪽: 점수 대시보드 ── */}
-              <div className="space-y-3">
-                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">점수 대시보드</div>
-                {folderExams.map(exam => {
-                  const examRes = allMockResults[exam.id] || {};
-                  const assignedIds = exam.students || [];
-                  const assignedStudents = assignedIds.map(sid => students.find(s=>s.id===sid)).filter(Boolean);
-                  const totalScore = exam.totalScore ? Math.round(exam.totalScore*100)/100 : null;
-                  const submitted = assignedStudents.filter(s => examRes[s.id]?.submittedAt);
-                  return (
-                    <Card key={exam.id} className="p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-sm">{exam.name}</span>
-                          <Badge variant="secondary">{exam.round}차</Badge>
-                        </div>
-                        <span className="text-xs text-slate-400">{submitted.length}/{assignedStudents.length}명 제출</span>
-                      </div>
-                      {assignedStudents.length === 0
-                        ? <div className="text-xs text-slate-300 text-center py-2">배정된 학생 없음</div>
-                        : <div className="space-y-1.5">
-                            {assignedStudents.map(s => {
-                              const res = examRes[s.id];
-                              const score = res?.score;
-                              const pct = (totalScore && score != null) ? Math.round(score/totalScore*100) : null;
-                              return (
-                                <div key={s.id} className="flex items-center gap-2">
-                                  <div className="w-14 text-xs font-medium text-slate-700 shrink-0 truncate">{s.name}</div>
-                                  <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
-                                    {pct !== null && (
-                                      <div className="h-full rounded-full transition-all"
-                                        style={{width:`${pct}%`, background: pct>=80?"#22c55e":pct>=60?"#f59e0b":"#ef4444"}}/>
-                                    )}
-                                  </div>
-                                  {score != null
-                                    ? <span className="text-xs font-bold w-16 text-right shrink-0" style={{color:pct>=80?"#16a34a":pct>=60?"#d97706":"#dc2626"}}>
-                                        {Math.round(score*100)/100}{totalScore?`/${totalScore}`:""}점
-                                      </span>
-                                    : <span className="text-xs text-slate-300 w-16 text-right shrink-0">
-                                        {res?.submittedAt ? "제출완료" : "미제출"}
-                                      </span>
-                                  }
-                                </div>
-                              );
-                            })}
+              // 그래프 내부 컴포넌트 (useState 사용 위해 별도 함수)
+              const FolderChart = () => {
+                const [selectedIds, setSelectedIds] = React.useState(allStudentIds);
+                const toggleStudent = (sid) => setSelectedIds(prev =>
+                  prev.includes(sid) ? prev.filter(id=>id!==sid) : [...prev, sid]
+                );
+
+                // 그래프 데이터
+                const PAD = { top:24, right:20, bottom:32, left:44 };
+                const W = 520, H = 260;
+                const innerW = W - PAD.left - PAD.right;
+                const innerH = H - PAD.top - PAD.bottom;
+
+                const xCount = folderExams.length;
+                const xStep = xCount > 1 ? innerW / (xCount - 1) : innerW / 2;
+                const xPos = (i) => xCount > 1 ? PAD.left + i * xStep : PAD.left + innerW / 2;
+
+                // y축 범위
+                const allScores = folderExams.flatMap(exam =>
+                  (exam.students||[]).filter(sid=>selectedIds.includes(sid)).map(sid => allMockResults[exam.id]?.[sid]?.score).filter(v=>v!=null)
+                );
+                const maxTotal = Math.max(...folderExams.map(e=>e.totalScore||100), 100);
+                const yMax = allScores.length > 0 ? Math.max(...allScores, maxTotal * 0.1) : maxTotal;
+                const yMin = 0;
+                const yRange = yMax - yMin || 1;
+                const yPos = (val) => PAD.top + innerH - ((val - yMin) / yRange) * innerH;
+
+                // y축 눈금
+                const yTicks = [];
+                const tickStep = Math.ceil(yMax / 5 / 10) * 10 || 10;
+                for (let v = 0; v <= yMax + tickStep; v += tickStep) { if (v <= yMax + tickStep * 0.5) yTicks.push(v); }
+
+                const [hovered, setHovered] = React.useState(null); // { examIdx, studentId, x, y, score }
+
+                return (
+                  <div className="space-y-3">
+                    {/* 학생 필터 */}
+                    <div className="flex flex-wrap gap-1.5">
+                      <button onClick={() => setSelectedIds(selectedIds.length===allStudentIds.length?[]:[...allStudentIds])}
+                        className="text-xs px-2.5 py-1 rounded-lg border font-medium transition bg-slate-100 text-slate-600 hover:bg-slate-200">
+                        {selectedIds.length===allStudentIds.length?"전체 해제":"전체 선택"}
+                      </button>
+                      {allFolderStudents.map((s, i) => {
+                        const color = COLORS[i % COLORS.length];
+                        const on = selectedIds.includes(s.id);
+                        return (
+                          <button key={s.id} onClick={() => toggleStudent(s.id)}
+                            className="text-xs px-2.5 py-1 rounded-lg border font-medium transition"
+                            style={on ? {background:color+"22", color, borderColor:color+"66"} : {background:"#f8fafc",color:"#94a3b8",borderColor:"#e2e8f0"}}>
+                            {s.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* SVG 그래프 */}
+                    <div className="rounded-2xl border bg-white overflow-hidden" style={{position:"relative"}}>
+                      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{display:"block"}}>
+                        {/* 배경 가이드라인 */}
+                        {yTicks.map(v => (
+                          <g key={v}>
+                            <line x1={PAD.left} x2={W-PAD.right} y1={yPos(v)} y2={yPos(v)} stroke="#f1f5f9" strokeWidth="1"/>
+                            <text x={PAD.left-6} y={yPos(v)+4} textAnchor="end" fontSize="9" fill="#94a3b8">{v}</text>
+                          </g>
+                        ))}
+                        {/* x축 레이블 */}
+                        {folderExams.map((exam, i) => (
+                          <text key={exam.id} x={xPos(i)} y={H-PAD.bottom+14} textAnchor="middle" fontSize="10" fill="#64748b">
+                            {exam.round}차
+                          </text>
+                        ))}
+                        {/* 축 */}
+                        <line x1={PAD.left} x2={PAD.left} y1={PAD.top} y2={H-PAD.bottom} stroke="#e2e8f0" strokeWidth="1"/>
+                        <line x1={PAD.left} x2={W-PAD.right} y1={H-PAD.bottom} y2={H-PAD.bottom} stroke="#e2e8f0" strokeWidth="1"/>
+
+                        {/* 학생별 선 */}
+                        {allFolderStudents.map((s, si) => {
+                          if (!selectedIds.includes(s.id)) return null;
+                          const color = COLORS[si % COLORS.length];
+                          const points = folderExams.map((exam, i) => {
+                            const score = allMockResults[exam.id]?.[s.id]?.score;
+                            if (score == null) return null;
+                            return { x: xPos(i), y: yPos(score), score, examIdx: i };
+                          });
+                          const validPoints = points.filter(Boolean);
+                          if (validPoints.length === 0) return null;
+
+                          // polyline
+                          const pathD = validPoints.map((p,pi) => `${pi===0?"M":"L"} ${p.x} ${p.y}`).join(" ");
+
+                          return (
+                            <g key={s.id}>
+                              <path d={pathD} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round"/>
+                              {validPoints.map((p, pi) => (
+                                <circle key={pi} cx={p.x} cy={p.y} r="4" fill={color} stroke="white" strokeWidth="1.5"
+                                  style={{cursor:"pointer"}}
+                                  onMouseEnter={() => setHovered({examIdx:p.examIdx, studentId:s.id, x:p.x, y:p.y, score:p.score, name:s.name, color})}
+                                  onMouseLeave={() => setHovered(null)}/>
+                              ))}
+                            </g>
+                          );
+                        })}
+
+                        {/* 툴팁 */}
+                        {hovered && (() => {
+                          const exam = folderExams[hovered.examIdx];
+                          const total = exam?.totalScore ? Math.round(exam.totalScore*100)/100 : null;
+                          const tx = Math.min(hovered.x + 8, W - 90);
+                          const ty = Math.max(hovered.y - 36, PAD.top);
+                          return (
+                            <g>
+                              <rect x={tx} y={ty} width="88" height="34" rx="6" fill="white" stroke={hovered.color} strokeWidth="1.2" filter="drop-shadow(0 1px 3px rgba(0,0,0,0.15))"/>
+                              <text x={tx+8} y={ty+13} fontSize="10" fill="#1e293b" fontWeight="600">{hovered.name}</text>
+                              <text x={tx+8} y={ty+26} fontSize="10" fill={hovered.color} fontWeight="700">
+                                {Math.round(hovered.score*100)/100}{total?`/${total}`:""}점
+                              </text>
+                            </g>
+                          );
+                        })()}
+                      </svg>
+                    </div>
+
+                    {/* 범례 */}
+                    <div className="flex flex-wrap gap-3 px-1">
+                      {allFolderStudents.filter(s=>selectedIds.includes(s.id)).map((s,i) => {
+                        const color = COLORS[allFolderStudents.indexOf(s) % COLORS.length];
+                        return (
+                          <div key={s.id} className="flex items-center gap-1.5">
+                            <div className="w-4 h-0.5 rounded-full" style={{background:color}}/>
+                            <div className="w-2 h-2 rounded-full" style={{background:color}}/>
+                            <span className="text-xs text-slate-600">{s.name}</span>
                           </div>
-                      }
-                    </Card>
-                  );
-                })}
-              </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              };
+
+              return (
+              <div className="grid gap-4" style={{gridTemplateColumns:"2fr 1fr"}}>
+              {/* ── 왼쪽: 꺾은선 그래프 대시보드 ── */}
+              <Card className="p-4 space-y-3">
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">성적 추이</div>
+                {allFolderStudents.length === 0
+                  ? <div className="text-sm text-slate-400 text-center py-8">배정된 학생이 없습니다.</div>
+                  : <FolderChart/>
+                }
+              </Card>
 
               {/* ── 오른쪽: 시험 카드 목록 ── */}
               <div className="space-y-3">
@@ -2239,6 +2341,8 @@ function AssessmentsTab({ students = [] }) {
               </div>
 
             </div>
+              );
+            })()
         }
       </div>
     );
