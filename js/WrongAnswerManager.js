@@ -69,6 +69,17 @@ function MaterialStatusCard({ mat, allStatuses, studentId, picked, togglePick, b
     setEditMode(false);
   };
 
+  const markAllCorrect = async () => {
+    if (!confirm(`"${mat.name}" 전체 ${totalProblems}문제를 모두 맞음으로 처리할까요?`)) return;
+    setSaving(true);
+    const updates = {};
+    for (let i = startNum; i <= endNum; i++) {
+      updates[`problemStatus/${studentId}/${mat.id}/${i}`] = "correct";
+    }
+    await db.ref().update(updates);
+    setSaving(false);
+  };
+
   const handleClick = (num) => {
     if (editMode) {
       const cur = local[num] || null;
@@ -110,7 +121,10 @@ function MaterialStatusCard({ mat, allStatuses, studentId, picked, togglePick, b
             ))}
           </div>
           {!editMode
-            ? <button onClick={enterEdit} className="text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 font-medium hover:bg-slate-200">오답수정</button>
+            ? <div className="flex gap-1.5">
+                <button onClick={markAllCorrect} disabled={saving} className="text-xs px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-700 font-medium hover:bg-emerald-200 disabled:opacity-50">전부 맞음</button>
+                <button onClick={enterEdit} className="text-xs px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 font-medium hover:bg-slate-200">오답수정</button>
+              </div>
             : <div className="flex gap-1.5">
                 <button onClick={save} disabled={saving} className="text-xs px-2.5 py-1 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-700">{saving?"저장 중...":"저장"}</button>
                 <button onClick={cancel} className="text-xs px-2.5 py-1 rounded-lg border border-slate-200 text-slate-500 font-medium hover:bg-slate-50">취소</button>
