@@ -947,6 +947,10 @@ function App() {
   useEffect(() => {
     if (currentUserId) {
       sessionStorage.setItem(SESSION_KEY, currentUserId);
+      // 학부모 자동복원 시 FCM 토큰 재등록 (localStorage 복원 포함)
+      if (currentUserId.endsWith("PA")) {
+        registerFCMToken(currentUserId, "parent");
+      }
     } else {
       sessionStorage.removeItem(SESSION_KEY);
       localStorage.removeItem(REMEMBER_KEY);
