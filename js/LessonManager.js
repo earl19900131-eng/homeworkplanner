@@ -2163,10 +2163,6 @@ function AttendanceReportModal({ date, lessons, attendance, students, profiles, 
   });
   const absentList = Object.values(absentMap);
 
-  const saveResponse = async (lessonKey, studentId, val) => {
-    if (val.trim()) await db.ref(`lessonAttendance/${lessonKey}/${studentId}/absenceResponse`).set(val.trim());
-    else await db.ref(`lessonAttendance/${lessonKey}/${studentId}/absenceResponse`).remove();
-  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
@@ -2202,14 +2198,7 @@ function AttendanceReportModal({ date, lessons, attendance, students, profiles, 
                       <td className="py-2 px-3 font-medium text-slate-900">{student?.name || "-"}</td>
                       <td className="py-2 px-3 text-slate-500">{profile.teacher || "-"}</td>
                       <td className="py-2 px-3 text-slate-600">{sRec.absenceReason || <span className="text-slate-300">-</span>}</td>
-                      <td className="py-2 px-3">
-                        <input
-                          defaultValue={sRec.absenceResponse || ""}
-                          onBlur={e => saveResponse(lessonKey, student?.id, e.target.value)}
-                          placeholder="처리 내용..."
-                          className="w-full text-xs outline-none bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 placeholder-slate-300 focus:ring-2 focus:ring-blue-300"
-                        />
-                      </td>
+                      <td className="py-2 px-3 text-xs text-orange-600">{sRec.absenceResponse || <span className="text-slate-300">-</span>}</td>
                     </tr>
                   );
                 })}
