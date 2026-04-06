@@ -1649,12 +1649,14 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
                                 <input
                                   defaultValue={sRec.absenceReason || ""}
                                   onBlur={e => saveAbsenceReason(s.id, e.target.value)}
+                                  onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.nextElementSibling.focus(); } }}
                                   placeholder="결석 사유..."
                                   className="w-full text-[11px] text-slate-600 outline-none bg-red-50 border border-red-200 rounded-lg px-2 py-1 placeholder-red-300"
                                 />
                                 <input
                                   defaultValue={sRec.absenceResponse || ""}
                                   onBlur={e => saveAbsenceResponse(s.id, e.target.value)}
+                                  onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
                                   placeholder="처리 내용..."
                                   className="w-full text-[11px] text-slate-600 outline-none bg-orange-50 border border-orange-200 rounded-lg px-2 py-1 placeholder-orange-300"
                                 />
@@ -1883,12 +1885,14 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
                               <input
                                 defaultValue={sRec.absenceReason || ""}
                                 onBlur={e => saveAbsenceReason(s.id, e.target.value)}
+                                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.nextElementSibling.focus(); } }}
                                 placeholder="결석 사유..."
                                 className="w-full text-[11px] text-slate-600 outline-none bg-red-50 border border-red-200 rounded-lg px-2 py-1 placeholder-red-300"
                               />
                               <input
                                 defaultValue={sRec.absenceResponse || ""}
                                 onBlur={e => saveAbsenceResponse(s.id, e.target.value)}
+                                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
                                 placeholder="처리 내용..."
                                 className="w-full text-[11px] text-slate-600 outline-none bg-orange-50 border border-orange-200 rounded-lg px-2 py-1 placeholder-orange-300"
                               />
