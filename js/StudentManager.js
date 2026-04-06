@@ -817,6 +817,14 @@ function StudentManager({ students, homeworks }) {
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-indigo-500">문제계수</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-indigo-500">강의계수</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">담당T</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-sky-600">현행 과목</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-violet-600">추가1 과목</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-rose-600">추가2 과목</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">결제일</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-emerald-600">현행수강료</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-violet-600">추가1수강료</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-rose-600">추가2수강료</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-amber-600">특강수강료</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">현행평가</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">추가평가</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">상태</th>
@@ -902,6 +910,27 @@ function StudentManager({ students, homeworks }) {
                               {TEACHERS.map(t=><option key={t} value={t}>{t}</option>)}
                             </select>
                           </td>
+                          {["currentSubject","addSubject1","addSubject2"].map((field,fi) => (
+                            <td key={field} className="px-3 py-2">
+                              <select value={profile?.[field] || ""} onChange={e=>saveCell(s.id,field,e.target.value)}
+                                className={`text-xs border rounded-lg px-2 py-1 bg-white outline-none focus:ring-1 ${fi===0?"border-sky-200 focus:ring-sky-300":fi===1?"border-violet-200 focus:ring-violet-300":"border-rose-200 focus:ring-rose-300"}`}>
+                                <option value="">-</option>
+                                {["초5-1","초5-2","초6-1","초6-2","중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"].map(s=><option key={s} value={s}>{s}</option>)}
+                              </select>
+                            </td>
+                          ))}
+                          <td className="px-3 py-2 text-xs">
+                            <EditCell field="paymentDay" value={profile?.paymentDay||""} inputCls="w-16">
+                              {profile?.paymentDay ? <span>{profile.paymentDay}일</span> : <span className="text-slate-300">-</span>}
+                            </EditCell>
+                          </td>
+                          {["tuition","tuition1","tuition2","tutorialTuition"].map((field,fi) => (
+                            <td key={field} className="px-3 py-2 text-xs">
+                              <EditCell field={field} value={profile?.[field]||""} inputCls="w-24">
+                                {profile?.[field] ? <span className={fi===0?"text-emerald-700":fi===1?"text-violet-700":fi===2?"text-rose-700":"text-amber-700"}>{Number(profile[field]).toLocaleString()}원</span> : <span className="text-slate-300">-</span>}
+                              </EditCell>
+                            </td>
+                          ))}
                           <td className="px-3 py-2">
                             <select value={profile?.currentAssessment || ""} onChange={e=>updateCurrentAssessment(s.id,e.target.value)}
                               className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-1 focus:ring-blue-300 max-w-[160px]">
