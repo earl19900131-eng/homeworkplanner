@@ -576,7 +576,7 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
   // assessmentId → 평가 정보 반환 (lessonType: "추가1"/"추가2" 이면 advanceAssessment 사용)
   const getStudentAssessmentInfo = (studentId, lessonType) => {
     const profile = profiles[studentId] || {};
-    const assessmentId = (lessonType === "추가1" || lessonType === "추가2") ? profile.advanceAssessment : profile.currentAssessment;
+    const assessmentId = lessonType === "추가2" ? profile.advanceAssessment2 : lessonType === "추가1" ? profile.advanceAssessment : profile.currentAssessment;
     if (!assessmentId) return { name: "", type: "", units: [], totalProblems: 0 };
     const assessment = assessmentList.find(a => a.id === assessmentId);
     if (!assessment) return { name: "", type: "", units: [], totalProblems: 0 };

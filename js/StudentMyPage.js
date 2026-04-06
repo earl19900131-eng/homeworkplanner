@@ -584,8 +584,8 @@ function StudentExamTab({ studentId }) {
   const diagTypes = [
     { key: "현행", label: "현행 진단평가", assessmentId: profile.currentAssessment, color: "#4a6bd6", bg: "#eef2ff" },
     { key: "추가1", label: "추가1 진단평가", assessmentId: profile.advanceAssessment, color: "#7c3aed", bg: "#f5f3ff" },
-    { key: "추가2", label: "추가2 진단평가", assessmentId: profile.advanceAssessment, color: "#db2777", bg: "#fdf2f8" },
-  ];
+    { key: "추가2", label: "추가2 진단평가", assessmentId: profile.advanceAssessment2, color: "#db2777", bg: "#fdf2f8" },
+  ].filter(d => d.assessmentId !== "없음");
 
   const examGroups = React.useMemo(() => {
     const folderIds = [...new Set(exams.map(e => e.folderId).filter(Boolean))];

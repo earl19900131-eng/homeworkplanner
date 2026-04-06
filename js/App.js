@@ -905,7 +905,7 @@ function StudentTodayLessonSection({ studentId, today, isParent }) {
         const tags = rec.tags || [];
 
         // 평가 정보
-        const asmId = (curType === "추가1" || curType === "추가2") ? profile.advanceAssessment : profile.currentAssessment;
+        const asmId = curType === "추가2" ? profile.advanceAssessment2 : curType === "추가1" ? profile.advanceAssessment : profile.currentAssessment;
         const asm = asmId ? assessments[asmId] : null;
         // 단원번호 → 이름 변환
         const curUnitNum = profile.currentUnit || null;
