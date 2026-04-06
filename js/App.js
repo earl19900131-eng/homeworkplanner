@@ -1095,6 +1095,43 @@ function App() {
 
   useEffect(() => { if (students.length>0 && !studentLoginId) setStudentLoginId(students[0].id); }, [students]);
 
+  // ── 실시간 접속자 추적 ─────────────────────────────────────────────────────
+  const [onlineUsers, setOnlineUsers] = React.useState([]);
+  const presenceRegisteredRef = React.useRef(false);
+
+  useEffect(() => {
+    if (!currentUserId) { presenceRegisteredRef.current = false; return; }
+    const isStudent = currentUserId !== TEACHER.id && currentUserId !== VIEWER.id && !currentUserId.endsWith("PA");
+    if (!isStudent) return;
+    if (presenceRegisteredRef.current) return; // 이미 등록됨
+    const student = students.find(s => s.id === currentUserId);
+    if (!student) return; // students 아직 미로드 → students 변경 시 재시도
+    presenceRegisteredRef.current = true;
+    const presenceRef = db.ref(`presence/${currentUserId}`);
+    const connectedRef = db.ref(".info/connected");
+    const onConnected = snap => {
+      if (!snap.val()) return;
+      presenceRef.onDisconnect().remove();
+      presenceRef.set({ name: student.name, loginAt: Date.now() });
+    };
+    connectedRef.on("value", onConnected);
+    return () => {
+      connectedRef.off("value", onConnected);
+      presenceRef.remove();
+      presenceRegisteredRef.current = false;
+    };
+  }, [currentUserId, students]);
+
+  useEffect(() => {
+    if (!currentUserId || (currentUserId !== TEACHER.id && currentUserId !== VIEWER.id)) return;
+    const ref = db.ref("presence");
+    ref.on("value", snap => {
+      const data = snap.val() || {};
+      setOnlineUsers(Object.values(data).sort((a, b) => a.loginAt - b.loginAt));
+    });
+    return () => ref.off();
+  }, [currentUserId]);
+
   const isParent = !!(currentUserId?.endsWith("PA"));
   const parentStudentId = isParent ? currentUserId.slice(0, -2) : null;
   const currentUser = currentUserId===TEACHER.id ? TEACHER : currentUserId===VIEWER.id ? VIEWER : students.find(s=>s.id===currentUserId)??null;
@@ -1410,7 +1447,17 @@ function App() {
                 {currentTeacher?`${TEACHER.name} 선생님 · 관리자`:currentViewer?`${VIEWER.name} · 뷰어`:isParent?`${currentStudent?.name} 학부모님`:`${currentStudent?.name} (${currentStudent?.className})`}
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              {(currentTeacher || currentViewer) && (
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl" style={{background:"#f0fdf4", border:"1px solid #bbf7d0"}}>
+                  <span className="inline-block w-2 h-2 rounded-full bg-green-400" style={{boxShadow:"0 0 0 2px #86efac"}}></span>
+                  <span className="text-xs font-medium text-green-700">
+                    {onlineUsers.length > 0
+                      ? `접속 중 ${onlineUsers.length}명: ${onlineUsers.map(u => u.name).join(", ")}`
+                      : "접속 중인 학생 없음"}
+                  </span>
+                </div>
+              )}
               <span className="text-sm px-3 py-1.5 rounded-2xl" style={{color:"#4a6bd6", background:"#eef2ff"}}>📅 {today}</span>
               <Btn variant="outline" onClick={logout}>로그아웃</Btn>
             </div>
