@@ -551,17 +551,21 @@ function StudentExamTab({ studentId }) {
   }, []);
 
   useEffect(() => {
-    const ref = db.ref(`mockExamResults`);
-    ref.on("value", snap => {
-      const data = snap.val() || {};
+    if (exams.length === 0) { setExamResults({}); return; }
+    let cancelled = false;
+    Promise.all(
+      exams.map(e =>
+        db.ref(`mockExamResults/${e.id}/${studentId}`).once("value")
+          .then(snap => ({ examId: e.id, val: snap.val() }))
+      )
+    ).then(list => {
+      if (cancelled) return;
       const results = {};
-      Object.entries(data).forEach(([examId, studentMap]) => {
-        if (studentMap[studentId]) results[examId] = studentMap[studentId];
-      });
+      list.forEach(({ examId, val }) => { if (val) results[examId] = val; });
       setExamResults(results);
     });
-    return () => ref.off();
-  }, [studentId]);
+    return () => { cancelled = true; };
+  }, [studentId, exams.length]);
 
   useEffect(() => {
     const pRef = db.ref(`studentProfiles/${studentId}`);
@@ -576,6 +580,24 @@ function StudentExamTab({ studentId }) {
     return assessments.find(a => a.id === id) || null;
   };
 
+  // hooks는 early return 전에 모두 선언해야 함
+  const diagTypes = [
+    { key: "현행", label: "현행 진단평가", assessmentId: profile.currentAssessment, color: "#4a6bd6", bg: "#eef2ff" },
+    { key: "추가1", label: "추가1 진단평가", assessmentId: profile.advanceAssessment, color: "#7c3aed", bg: "#f5f3ff" },
+    { key: "추가2", label: "추가2 진단평가", assessmentId: profile.advanceAssessment, color: "#db2777", bg: "#fdf2f8" },
+  ];
+
+  const examGroups = React.useMemo(() => {
+    const folderIds = [...new Set(exams.map(e => e.folderId).filter(Boolean))];
+    const groups = folderIds.map(fid => ({
+      folder: examFolders.find(f => f.id === fid) || { id: fid, name: fid },
+      items: exams.filter(e => e.folderId === fid),
+    }));
+    const noFolder = exams.filter(e => !e.folderId);
+    if (noFolder.length > 0) groups.push({ folder: null, items: noFolder });
+    return groups;
+  }, [exams, examFolders]);
+
   const openExam = async (exam) => {
     setActiveExam(exam);
     const result = examResults[exam.id];
@@ -586,9 +608,11 @@ function StudentExamTab({ studentId }) {
   const toggle = (qNum) => {
     setAnswers(prev => {
       const cur = prev[qNum];
+      if (!cur) return {...prev, [qNum]: "O"};
       if (cur === "O") return {...prev, [qNum]: "X"};
-      if (cur === "X") { const next = {...prev}; delete next[qNum]; return next; }
-      return {...prev, [qNum]: "O"};
+      if (cur === "X") return {...prev, [qNum]: "R"};
+      if (cur === "R") return {...prev, [qNum]: "S"};
+      const next = {...prev}; delete next[qNum]; return next;
     });
   };
 
@@ -603,7 +627,7 @@ function StudentExamTab({ studentId }) {
     }
     const total = activeExam.totalScore || 100;
     const qCount = activeExam.questionCount || 20;
-    return Math.round(correct.length * (total / qCount) * 100) / 100;
+    return parseFloat((correct.length * total / qCount).toFixed(2));
   };
 
   const handleSubmit = async () => {
@@ -623,6 +647,8 @@ function StudentExamTab({ studentId }) {
     const qCount = activeExam.questionCount || 20;
     const correctCount = Object.values(answers).filter(v => v === "O").length;
     const wrongCount = Object.values(answers).filter(v => v === "X").length;
+    const rangeCount = Object.values(answers).filter(v => v === "R").length;
+    const solvedCount = Object.values(answers).filter(v => v === "S").length;
     const score = calcScore();
     return (
       <div className="space-y-4">
@@ -634,7 +660,7 @@ function StudentExamTab({ studentId }) {
           </div>
         </div>
         <div className="text-xs text-slate-400 bg-slate-50 rounded-xl px-3 py-2">
-          번호를 눌러 O/X 표시 · 한 번 더 누르면 취소됩니다 (미표시 → O → X → 미표시)
+          번호를 눌러 결과 표시 · 미표시 → <span className="text-emerald-600 font-bold">맞음</span> → <span className="text-red-500 font-bold">틀림</span> → <span className="text-orange-500 font-bold">범위x</span> → <span className="text-blue-500 font-bold">해결</span> → 미표시
         </div>
         <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
           {Array.from({length: qCount}, (_, i) => i+1).map(qNum => {
@@ -644,9 +670,11 @@ function StudentExamTab({ studentId }) {
                 className={`aspect-square rounded-xl border-2 flex flex-col items-center justify-center gap-0.5 transition
                   ${ans === "O" ? "bg-emerald-50 border-emerald-400 text-emerald-600"
                     : ans === "X" ? "bg-red-50 border-red-400 text-red-600"
+                    : ans === "R" ? "bg-orange-50 border-orange-400 text-orange-500"
+                    : ans === "S" ? "bg-blue-50 border-blue-400 text-blue-600"
                     : "bg-white border-slate-200 text-slate-300"}`}>
                 <span className="text-[10px] text-slate-400 font-normal leading-none">{qNum}</span>
-                <span className="text-base font-bold leading-none">{ans === "O" ? "O" : ans === "X" ? "X" : "·"}</span>
+                <span className="text-sm font-bold leading-none">{ans === "O" ? "O" : ans === "X" ? "X" : ans === "R" ? "범위" : ans === "S" ? "해결" : "·"}</span>
               </button>
             );
           })}
@@ -655,11 +683,11 @@ function StudentExamTab({ studentId }) {
           <div className="space-y-0.5">
             {score !== null && (
               <div className="text-sm text-slate-600">
-                점수 <span className="font-bold text-xl text-indigo-600">{Math.round(score * 100) / 100}점</span>
+                점수 <span className="font-bold text-xl text-indigo-600">{parseFloat(Number(score).toFixed(2))}점</span>
               </div>
             )}
             <div className="text-xs text-slate-400">
-              O: {correctCount}개 · X: {wrongCount}개 · 미표시: {qCount - correctCount - wrongCount}개
+              <span className="text-emerald-600 font-medium">맞음 {correctCount}</span> · <span className="text-red-500 font-medium">틀림 {wrongCount}</span> · <span className="text-orange-500 font-medium">범위x {rangeCount}</span> · <span className="text-blue-500 font-medium">해결 {solvedCount}</span> · 미표시 {qCount - correctCount - wrongCount - rangeCount - solvedCount}
             </div>
           </div>
           <Btn onClick={handleSubmit} disabled={saving}>{saving?"제출 중...":"제출"}</Btn>
@@ -668,31 +696,12 @@ function StudentExamTab({ studentId }) {
         {savedResult && (
           <div className="text-xs text-slate-400 text-right">
             마지막 제출: {savedResult.submittedAt}
-            {savedResult.score !== undefined && savedResult.score !== null && ` · ${savedResult.score}점`}
+            {savedResult.score !== undefined && savedResult.score !== null && ` · ${parseFloat(Number(savedResult.score).toFixed(2))}점`}
           </div>
         )}
       </div>
     );
   }
-
-  // ── 2단 레이아웃 ──
-  const diagTypes = [
-    { key: "현행", label: "현행 진단평가", assessmentId: profile.currentAssessment, color: "#4a6bd6", bg: "#eef2ff" },
-    { key: "추가1", label: "추가1 진단평가", assessmentId: profile.advanceAssessment, color: "#7c3aed", bg: "#f5f3ff" },
-    { key: "추가2", label: "추가2 진단평가", assessmentId: profile.advanceAssessment, color: "#db2777", bg: "#fdf2f8" },
-  ];
-
-  // 폴더별 시험 그룹핑
-  const examGroups = React.useMemo(() => {
-    const folderIds = [...new Set(exams.map(e => e.folderId).filter(Boolean))];
-    const groups = folderIds.map(fid => ({
-      folder: examFolders.find(f => f.id === fid) || { id: fid, name: fid },
-      items: exams.filter(e => e.folderId === fid),
-    }));
-    const noFolder = exams.filter(e => !e.folderId);
-    if (noFolder.length > 0) groups.push({ folder: null, items: noFolder });
-    return groups;
-  }, [exams, examFolders]);
 
   return (
     <div className="grid gap-4 items-start" style={{gridTemplateColumns:"1fr 2fr"}}>
@@ -759,7 +768,7 @@ function StudentExamTab({ studentId }) {
                           <span className="text-xs bg-indigo-100 text-indigo-600 rounded-lg px-1.5 py-0.5 shrink-0">{exam.round}차</span>
                         </div>
                         {hasResult && score !== undefined && score !== null && (
-                          <span className="text-base font-bold shrink-0" style={{color:"#4338ca"}}>{Math.round(score*100)/100}점</span>
+                          <span className="text-base font-bold shrink-0" style={{color:"#4338ca"}}>{parseFloat(Number(score).toFixed(2))}점</span>
                         )}
                         {hasResult && (score === undefined || score === null) && (
                           <span className="text-xs text-emerald-600 font-semibold shrink-0">✓ 제출</span>

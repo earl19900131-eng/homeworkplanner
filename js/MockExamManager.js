@@ -102,6 +102,75 @@ function TagManager({ tags }) {
   );
 }
 
+// ── 문제 뷰 모달 ─────────────────────────────────────────────────────────────
+function ProblemViewModal({ problem, tags, onEdit, onClose }) {
+  const p = problem;
+  const [variant, setVariant] = React.useState("main");
+  const [tab, setTab] = React.useState("question");
+
+  const content = variant === "main"
+    ? { question: p.question, solution: p.solution }
+    : (p.variations?.[variant] || { question: "", solution: "" });
+
+  const hasVariant = (v) => !!(p.variations?.[v]?.question || p.variations?.[v]?.solution);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col"
+        onClick={e => e.stopPropagation()}>
+        {/* 헤더 */}
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100">
+          <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
+            <span className="text-base font-bold text-slate-800">{p.num ?? "-"}번</span>
+            {p.curriculumMap && Object.entries(p.curriculumMap).map(([c,s])=>(
+              <span key={c} className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{c}{s?` ${s}`:""}</span>
+            ))}
+            {p.grade && <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{p.grade}</span>}
+            {(p.year||p.month) && <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{[p.year,p.month].filter(Boolean).join("-")}</span>}
+            {p.source && <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{p.source}</span>}
+            {p.difficulty && <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${Number(p.difficulty)>=8?"bg-red-100 text-red-600":Number(p.difficulty)<=3?"bg-blue-100 text-blue-600":"bg-yellow-100 text-yellow-600"}`}>난이도 {p.difficulty}</span>}
+          </div>
+          <button onClick={onEdit} className="shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100">편집</button>
+          <button onClick={onClose} className="shrink-0 text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+        </div>
+        {/* 태그 */}
+        {p.tags && Object.keys(p.tags).length > 0 && (
+          <div className="px-5 py-2 flex flex-wrap gap-1 border-b border-slate-100">
+            {Object.keys(p.tags).map(tid => tags[tid] && (
+              <span key={tid} className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600">{tags[tid].name}</span>
+            ))}
+          </div>
+        )}
+        {/* 변형 탭 */}
+        <div className="flex gap-1 px-5 pt-3">
+          {[["main","원문제"],["1","변형1"],["2","변형2"],["3","변형3"]].map(([key,label])=>(
+            <button key={key} onClick={()=>{ setVariant(key); setTab("question"); }}
+              className={`px-3 py-1 text-xs rounded-lg font-medium transition ${variant===key?"bg-slate-800 text-white":"bg-slate-100 text-slate-500 hover:bg-slate-200"} ${key!=="main"&&!hasVariant(key)?"opacity-40":""}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {/* 문제/해설 탭 */}
+        <div className="flex gap-1 px-5 pt-2">
+          {[["question","문제"],["solution","해설"]].map(([key,label])=>(
+            <button key={key} onClick={()=>setTab(key)}
+              className={`px-3 py-1 text-xs rounded-lg font-medium transition ${tab===key?"bg-indigo-600 text-white":"bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {/* 본문 */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {content[tab]
+            ? <MathPreview html={content[tab]} className="prose prose-sm max-w-none text-sm leading-relaxed"/>
+            : <div className="text-sm text-slate-400 text-center py-10">내용 없음</div>
+          }
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── 문제 편집 모달 ───────────────────────────────────────────────────────────
 // KaTeX 수식 렌더링 프리뷰
 function MathPreview({ html, className, style }) {
@@ -352,6 +421,7 @@ function ProblemEditModal({ tags, initial, examId, onSave, onClose }) {
 function ProblemListTab({ tags }) {
   const [problems, setProblems] = React.useState({});
   const [modal, setModal]       = React.useState(null); // null | "new" | { id, ...prob }
+  const [viewModal, setViewModal] = React.useState(null); // null | { id, ...prob }
   // filterCurr: ""|"15개정"|"22개정", filterSubject: ""| 과목명
   const [filter, setFilter]     = React.useState({ filterCurr:"", filterSubject:"", grade:"", year:"", source:"", difficulty:"", tag:"" });
 
@@ -454,7 +524,7 @@ function ProblemListTab({ tags }) {
         ? <div className="text-sm text-slate-400 text-center py-10 border border-dashed rounded-xl">조건에 맞는 문제가 없습니다.</div>
         : <div className="space-y-2">
             {filtered.map(([id, p]) => (
-              <Card key={id} className="p-4 hover:shadow-md transition cursor-pointer" onClick={()=>setModal({id,...p})}>
+              <div key={id} className="bg-white rounded-3xl p-4 hover:shadow-md transition cursor-pointer" style={{boxShadow:"var(--shadow-border)"}} onClick={()=>setViewModal({id,...p})}>
                 <div className="flex items-start gap-3">
                   <div className="shrink-0 w-12 text-center">
                     <div className="text-lg font-bold text-slate-700">{p.num ?? "-"}</div>
@@ -488,11 +558,19 @@ function ProblemListTab({ tags }) {
                   <button onClick={e=>{e.stopPropagation();del(id);}}
                     className="shrink-0 text-slate-300 hover:text-red-500 text-sm">✕</button>
                 </div>
-              </Card>
+              </div>
             ))}
           </div>
       }
 
+      {viewModal && (
+        <ProblemViewModal
+          problem={viewModal}
+          tags={tags}
+          onEdit={() => { setModal({...viewModal}); setViewModal(null); }}
+          onClose={() => setViewModal(null)}
+        />
+      )}
       {modal && (
         <ProblemEditModal
           tags={tags}

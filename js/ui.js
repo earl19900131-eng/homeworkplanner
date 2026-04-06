@@ -1,5 +1,5 @@
 // ── 공통 UI 컴포넌트 ───────────────────────────────────────────────────────────
-const Card = ({ children, className="" }) => <div className={`bg-white rounded-3xl transition-[box-shadow] duration-150 ease-out ${className}`} style={{boxShadow:"0px 0px 0px 1px rgba(74,107,214,0.08), 0px 1px 2px -1px rgba(74,107,214,0.06), 0px 2px 4px 0px rgba(74,107,214,0.04)"}}>{children}</div>;
+const Card = ({ children, className="", style={} }) => <div className={`bg-white rounded-3xl transition-[box-shadow] duration-150 ease-out ${className}`} style={{boxShadow:"0px 0px 0px 1px rgba(74,107,214,0.08), 0px 1px 2px -1px rgba(74,107,214,0.06), 0px 2px 4px 0px rgba(74,107,214,0.04)", ...style}}>{children}</div>;
 
 const Badge = ({ children, variant="default" }) => {
   const v = { secondary:"bg-slate-100 text-slate-700", outline:"border border-slate-200 text-slate-700", destructive:"bg-red-100 text-red-700", success:"bg-emerald-100 text-emerald-700" };

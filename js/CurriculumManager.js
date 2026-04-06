@@ -147,7 +147,7 @@ function parseProblemInput(raw) {
 
 // ── 교재 관리 탭 ─────────────────────────────────────────────────────────────
 function MaterialsTab({ materials }) {
-  const SUBJECTS = ["중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"];
+  const SUBJECTS = ["초5-1","초5-2","초6-1","초6-2","중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"];
   const empty = { name: "", subject: "공통수학1", totalProblems: "", minutesPerProblem: "", problemInput: "" };
 
   const [folders, setFolders] = React.useState([]);
@@ -1478,7 +1478,7 @@ function CurriculumVisualEditor({ boardId, students, materials, assessments = []
 
 // ── 평가 관리 탭 ──────────────────────────────────────────────────────────────
 function AssessmentsTab({ students = [] }) {
-  const SUBJECTS = ["중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"];
+  const SUBJECTS = ["초5-1","초5-2","초6-1","초6-2","중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"];
   const [step, setStep] = React.useState("select");
   const [testName, setTestName] = React.useState("");
   const [dbEditId, setDbEditId] = React.useState(null);
@@ -1502,6 +1502,9 @@ function AssessmentsTab({ students = [] }) {
   const [mockResults, setMockResults] = React.useState({});
   const [allMockResults, setAllMockResults] = React.useState({}); // examId → { studentId → result }
   const [scoreInputs, setScoreInputs] = React.useState({});
+  const [mockResultsTab, setMockResultsTab] = React.useState("results"); // "results" | "images"
+  const [mockPicked, setMockPicked] = React.useState({}); // { "studentId:q" → true }
+  const [mockPickMode, setMockPickMode] = React.useState(false);
   const [mockFolders, setMockFolders] = React.useState([]);
   const [activeFolderId, setActiveFolderId] = React.useState(null);
   const [folderForm, setFolderForm] = React.useState("");
@@ -1514,6 +1517,10 @@ function AssessmentsTab({ students = [] }) {
   const [editingAssessmentFolderName, setEditingAssessmentFolderName] = React.useState("");
   const [draggingAssessmentId, setDraggingAssessmentId] = React.useState(null);
   const [dragOverAssessmentFolder, setDragOverAssessmentFolder] = React.useState(null);
+  const [folderViewMode, setFolderViewMode] = React.useState("rounds"); // "rounds" | "student"
+  const [folderViewStudentId, setFolderViewStudentId] = React.useState("");
+  const [svPicked, setSvPicked] = React.useState({}); // { "examId:q" → true }
+  const [svPickMode, setSvPickMode] = React.useState(false);
 
   React.useEffect(() => {
     const ref = db.ref("assessments");
@@ -1656,7 +1663,7 @@ function AssessmentsTab({ students = [] }) {
     for (const e of mockExams.filter(e => e.folderId === id)) await db.ref(`mockExams/${e.id}`).remove();
     await db.ref(`mockExamFolders/${id}`).remove();
   };
-  const openFolder = (folder) => { setActiveFolderId(folder.id); setStep("folder_view"); };
+  const openFolder = (folder) => { setActiveFolderId(folder.id); setStep("folder_view"); setFolderViewMode("rounds"); setFolderViewStudentId(""); setSvPicked({}); setSvPickMode(false); };
 
   const dropAssessment = async (targetFolderId) => {
     if (!draggingAssessmentId) return;
@@ -1711,6 +1718,9 @@ function AssessmentsTab({ students = [] }) {
   const openMockResults = (exam) => {
     setMockResultExam(exam);
     if (exam.folderId) setActiveFolderId(exam.folderId);
+    setMockResultsTab("results");
+    setMockPicked({});
+    setMockPickMode(false);
     setStep("mock_results");
     const ref = db.ref(`mockExamResults/${exam.id}`);
     ref.once("value", snap => {
@@ -1732,7 +1742,7 @@ function AssessmentsTab({ students = [] }) {
   const toggleAnswer = async (sid, qNum) => {
     const exam = mockResultExam;
     const cur = (mockResults[sid]?.answers || {})[qNum];
-    const next = cur === "O" ? "X" : cur === "X" ? null : "O";
+    const next = !cur ? "O" : cur === "O" ? "X" : cur === "X" ? "R" : cur === "R" ? "S" : null;
     const newAnswers = { ...(mockResults[sid]?.answers || {}) };
     if (next === null) delete newAnswers[qNum]; else newAnswers[qNum] = next;
     const scoringType = exam.scoringType || "auto";
@@ -1743,7 +1753,7 @@ function AssessmentsTab({ students = [] }) {
         score = correct.reduce((sum, q) => sum + (Number(exam.scoring[q]) || 0), 0);
       } else {
         const total = exam.totalScore || 100;
-        score = Math.round(correct.length * ((total) / (exam.questionCount || 20)));
+        score = parseFloat((correct.length * total / (exam.questionCount || 20)).toFixed(2));
       }
     }
     const existing = mockResults[sid] || {};
@@ -2019,6 +2029,12 @@ function AssessmentsTab({ students = [] }) {
                 })()
             }
           </div>
+          {dbEditId && (
+            <div className="space-y-1.5 pt-2 border-t border-slate-100">
+              <Lbl>문제 이미지</Lbl>
+              <ProblemImageManager materialId={dbEditId}/>
+            </div>
+          )}
           <div className="flex gap-2 justify-end">
             <Btn variant="outline" onClick={()=>setStep(activeFolderId?"folder_view":"select")}>취소</Btn>
             <Btn onClick={handleSaveMock} disabled={saving}>{saving?"저장 중...":(dbEditId?"수정 완료":"저장")}</Btn>
@@ -2030,57 +2046,131 @@ function AssessmentsTab({ students = [] }) {
 
   if (step === "mock_results" && mockResultExam) {
     const exam = mockResultExam;
-    const assignedStudents = Object.values(exam.students||{}).map(sid => students.find(s=>s.id===sid)).filter(Boolean);
+    const assignedStudents = (exam.students||[]).map(sid => students.find(s=>s.id===sid)).filter(Boolean);
+    const qCount = exam.questionCount || 20;
+
+    const toggleMockPick = (key) => setMockPicked(prev => {
+      const copy = {...prev};
+      if (copy[key]) delete copy[key]; else copy[key] = true;
+      return copy;
+    });
+
+    const pickedList = [];
+    for (const s of assignedStudents) {
+      const result = mockResults[s.id];
+      for (let q = 1; q <= qCount; q++) {
+        const key = `${s.id}:${q}`;
+        if (mockPicked[key]) pickedList.push({ key, studentId: s.id, studentName: s.name, q, ans: (result?.answers||{})[q] });
+      }
+    }
+
+    const handleMockPrint = async () => {
+      const imgUrls = {};
+      await Promise.all(pickedList.map(async p => {
+        const snap = await db.ref(`problemImages/${exam.id}/${p.q}`).once("value");
+        imgUrls[p.key] = snap.val() || null;
+      }));
+      const groups = [];
+      for (let i = 0; i < pickedList.length; i += 4) groups.push(pickedList.slice(i, i+4));
+      const ansColor = a => a==="X"?"#ef4444":a==="O"?"#22c55e":"#94a3b8";
+      const problemBox = p => p ? `
+        <div class="problem">
+          <div class="problem-header">${p.studentName} — ${p.q}번 <span style="color:${ansColor(p.ans)};font-size:10px;margin-left:4px">${p.ans||"·"}</span></div>
+          <div class="problem-body">${imgUrls[p.key]?`<img src="${imgUrls[p.key]}" style="max-width:100%;height:auto;display:block"/>`:""}</div>
+        </div>` : `<div class="problem empty"></div>`;
+      const pages = groups.map((g,gi) => `
+        <div class="page">
+          <div class="page-header"><span class="exam-name">${exam.name} ${exam.round}차</span><span class="page-info">${gi*4+1}–${Math.min(gi*4+4,pickedList.length)}번째</span></div>
+          <div class="cols"><div class="col">${problemBox(g[0])}${problemBox(g[1])}</div><div class="col">${problemBox(g[2])}${problemBox(g[3])}</div></div>
+        </div>`).join("");
+      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+        *{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',sans-serif}
+        @page{size:A4 portrait;margin:12mm 15mm}
+        .page{width:100%;page-break-after:always}.page:last-child{page-break-after:avoid}
+        .page-header{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #1e293b;padding-bottom:4px;margin-bottom:6mm}
+        .exam-name{font-size:16px;font-weight:800;color:#0f172a}.page-info{font-size:10px;color:#94a3b8}
+        .cols{display:grid;grid-template-columns:1fr 1fr;gap:8mm;height:240mm}
+        .col{display:flex;flex-direction:column;gap:8mm}.problem{flex:1;display:flex;flex-direction:column}
+        .problem-header{padding:0 0 4px;font-size:11px;font-weight:700;color:#334155;border-bottom:1px solid #cbd5e1;flex-shrink:0;margin-bottom:4px}
+        .problem-body{flex:1}
+      </style></head><body>${pages}</body></html>`;
+      const win = window.open("","_blank");
+      win.document.write(html); win.document.close();
+      win.onload = () => { win.focus(); win.print(); };
+    };
+
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3">
           <button type="button" onClick={()=>setStep(exam.folderId ? "folder_view" : "select")} className="text-sm text-slate-500 hover:text-slate-800">← 뒤로</button>
           <h2 className="text-lg font-bold">{exam.name} — {exam.round}차 결과</h2>
         </div>
-        <Card className="p-5 space-y-3">
-          {assignedStudents.length === 0
-            ? <div className="text-sm text-slate-400 text-center py-4">배정된 학생이 없습니다.</div>
-            : assignedStudents.map(s => {
-                const result = mockResults[s.id];
-                const qCount = exam.questionCount || 20;
-                return (
-                  <div key={s.id} className="rounded-2xl border px-4 py-3 space-y-2">
-                    <div className="flex items-center gap-3">
-                      <span className="font-medium">{s.name}</span>
-                      <span className="text-xs text-slate-400">{s.className}</span>
-                      {result?.submittedAt
-                        ? <span className="text-xs bg-emerald-100 text-emerald-600 rounded-lg px-2 py-0.5">제출 {result.submittedAt}</span>
-                        : <span className="text-xs bg-slate-100 text-slate-400 rounded-lg px-2 py-0.5">미제출</span>
-                      }
-                      <div className="ml-auto flex items-center gap-2">
-                        <span className="text-sm text-slate-500">점수</span>
-                        <input type="number" min="0" value={scoreInputs[s.id]??""} onChange={e=>setScoreInputs(p=>({...p,[s.id]:e.target.value}))}
-                          onBlur={()=>saveMockScore(s.id)}
-                          onKeyDown={e=>e.key==="Enter"&&saveMockScore(s.id)}
-                          className="w-16 text-center text-sm rounded-lg border border-slate-200 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-300"/>
-                        <span className="text-sm text-slate-400">점</span>
+
+
+        {/* 결과 입력 탭 */}
+        {mockResultsTab === "results" && (
+          <>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={()=>{ setMockPickMode(p=>!p); setMockPicked({}); }}
+                className={`text-xs px-3 py-1.5 rounded-lg font-medium border transition ${mockPickMode?"bg-indigo-600 text-white border-indigo-600":"bg-white text-slate-600 border-slate-200 hover:bg-slate-50"}`}>
+                {mockPickMode ? "✓ 인쇄 선택 모드 ON" : "인쇄 선택 모드"}
+              </button>
+              {mockPickMode && pickedList.length > 0 && (
+                <>
+                  <span className="text-xs text-indigo-600 font-medium">{pickedList.length}개 선택됨</span>
+                  <button onClick={()=>setMockPicked({})} className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">선택 해제</button>
+                  <button onClick={handleMockPrint} className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">🖨️ 인쇄</button>
+                </>
+              )}
+            </div>
+            {mockPickMode && <div className="text-xs text-indigo-600 bg-indigo-50 rounded-xl px-3 py-2">인쇄 선택 모드 — 클릭으로 문제 선택/해제, O/X는 변경되지 않습니다</div>}
+            <Card className="p-5 space-y-3">
+              {assignedStudents.length === 0
+                ? <div className="text-sm text-slate-400 text-center py-4">배정된 학생이 없습니다.</div>
+                : assignedStudents.map(s => {
+                    const result = mockResults[s.id];
+                    return (
+                      <div key={s.id} className="rounded-2xl border px-4 py-3 space-y-2">
+                        <div className="flex items-center gap-3">
+                          <span className="font-medium">{s.name}</span>
+                          <span className="text-xs text-slate-400">{s.className}</span>
+                          {result?.submittedAt
+                            ? <span className="text-xs bg-emerald-100 text-emerald-600 rounded-lg px-2 py-0.5">제출 {result.submittedAt}</span>
+                            : <span className="text-xs bg-slate-100 text-slate-400 rounded-lg px-2 py-0.5">미제출</span>
+                          }
+                          <div className="ml-auto flex items-center gap-2">
+                            <span className="text-sm text-slate-500">점수</span>
+                            <input type="number" min="0" value={scoreInputs[s.id]??""} onChange={e=>setScoreInputs(p=>({...p,[s.id]:e.target.value}))}
+                              onBlur={()=>saveMockScore(s.id)} onKeyDown={e=>e.key==="Enter"&&saveMockScore(s.id)}
+                              className="w-16 text-center text-sm rounded-lg border border-slate-200 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-300"/>
+                            <span className="text-sm text-slate-400">점</span>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {Array.from({length: qCount}, (_,i)=>i+1).map(q => {
+                            const ans = (result?.answers||{})[q];
+                            const isPicked = !!mockPicked[`${s.id}:${q}`];
+                            return (
+                              <button key={q} type="button"
+                                onClick={() => mockPickMode ? toggleMockPick(`${s.id}:${q}`) : toggleAnswer(s.id, q)}
+                                className={`inline-flex flex-col items-center w-7 rounded-md border text-[10px] py-0.5 transition hover:opacity-70 cursor-pointer
+                                  ${isPicked?"ring-2 ring-indigo-500 ring-offset-1":""}
+                                  ${ans==="O"?"bg-emerald-50 border-emerald-300 text-emerald-600":ans==="X"?"bg-red-50 border-red-300 text-red-500":ans==="R"?"bg-orange-50 border-orange-300 text-orange-500":ans==="S"?"bg-blue-50 border-blue-300 text-blue-500":"bg-slate-50 border-slate-200 text-slate-300"}`}>
+                                <span className="leading-none text-slate-400">{q}</span>
+                                <span className="font-bold leading-none">{ans==="O"?"O":ans==="X"?"X":ans==="R"?"범":ans==="S"?"해":"·"}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {!mockPickMode && <div className="text-[10px] text-slate-400">클릭: · → <span className="text-emerald-600">맞음</span> → <span className="text-red-500">틀림</span> → <span className="text-orange-500">범위x</span> → <span className="text-blue-500">해결</span> → ·</div>}
                       </div>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {Array.from({length: qCount}, (_,i)=>i+1).map(q => {
-                        const ans = (result?.answers || {})[q];
-                        return (
-                          <button key={q} type="button" onClick={() => toggleAnswer(s.id, q)}
-                            title={ans==="O"?"클릭: X로 변경":ans==="X"?"클릭: 지우기":"클릭: O로 표시"}
-                            className={`inline-flex flex-col items-center w-7 rounded-md border text-[10px] py-0.5 transition hover:opacity-70 cursor-pointer
-                              ${ans==="O"?"bg-emerald-50 border-emerald-300 text-emerald-600":ans==="X"?"bg-red-50 border-red-300 text-red-500":"bg-slate-50 border-slate-200 text-slate-300"}`}>
-                            <span className="leading-none text-slate-400">{q}</span>
-                            <span className="font-bold leading-none">{ans==="O"?"O":ans==="X"?"X":"·"}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div className="text-[10px] text-slate-400">클릭: · → O → X → · 순서로 토글</div>
-                  </div>
-                );
-              })
-          }
-        </Card>
+                    );
+                  })
+              }
+            </Card>
+          </>
+        )}
+
       </div>
     );
   }
@@ -2158,9 +2248,188 @@ function AssessmentsTab({ students = [] }) {
           <Btn onClick={startCreateMock} className="ml-auto">+ 시험 등록</Btn>
         </div>
 
-        {folderExams.length === 0
+        {/* 뷰 모드 토글 */}
+        <div className="flex justify-center">
+          <div className="inline-flex bg-slate-100 rounded-xl p-1 gap-1">
+            {[["rounds","🗓️ 회차 기준"],["student","👤 학생 기준"]].map(([m,l]) => (
+              <button key={m} onClick={() => { setFolderViewMode(m); setFolderViewStudentId(""); setSvPicked({}); setSvPickMode(false); }}
+                className={`px-5 py-1.5 rounded-lg text-sm font-medium transition ${folderViewMode===m?"bg-white text-slate-900 shadow-sm":"text-slate-500 hover:text-slate-700"}`}>
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 학생 기준 뷰 */}
+        {folderViewMode === "student" && (() => {
+          const allStudentIds = [...new Set(folderExams.flatMap(e => e.students||[]))];
+          const allFolderStudents = allStudentIds.map(sid => students.find(s=>s.id===sid)).filter(Boolean).sort((a,b)=>a.className.localeCompare(b.className)||a.name.localeCompare(b.name));
+          const selectedStudent = allFolderStudents.find(s => s.id === folderViewStudentId) || null;
+          const studentExams = folderExams.filter(e => (e.students||[]).includes(folderViewStudentId));
+
+          const toggleSvPick = (key) => setSvPicked(prev => { const c={...prev}; if(c[key]) delete c[key]; else c[key]=true; return c; });
+
+          const toggleSvAnswer = async (examId, qNum) => {
+            const exam = mockExams.find(e => e.id === examId);
+            if (!exam) return;
+            const cur = ((allMockResults[examId]||{})[folderViewStudentId]?.answers||{})[qNum];
+            const next = !cur ? "O" : cur === "O" ? "X" : cur === "X" ? "R" : cur === "R" ? "S" : null;
+            const existing = (allMockResults[examId]||{})[folderViewStudentId] || {};
+            const newAnswers = { ...(existing.answers||{}) };
+            if (next === null) delete newAnswers[qNum]; else newAnswers[qNum] = next;
+            const scoringType = exam.scoringType || "auto";
+            let score = null;
+            if (scoringType !== "none") {
+              const correct = Object.entries(newAnswers).filter(([,v]) => v === "O").map(([q]) => Number(q));
+              if (scoringType === "manual" && exam.scoring) {
+                score = correct.reduce((sum, q) => sum + (Number(exam.scoring[q]) || 0), 0);
+              } else {
+                const total = exam.totalScore || 100;
+                score = parseFloat((correct.length * total / (exam.questionCount || 20)).toFixed(2));
+              }
+            }
+            const updates = { answers: newAnswers, submittedAt: existing.submittedAt || new Date().toISOString().slice(0,10) };
+            if (score !== null) updates.score = score;
+            await db.ref(`mockExamResults/${examId}/${folderViewStudentId}`).set(updates);
+          };
+
+          const handleSvPrint = async () => {
+            const keys = Object.keys(svPicked);
+            if (keys.length === 0) return;
+            const items = [];
+            for (const key of keys) {
+              const [examId, qStr] = key.split(":");
+              const q = Number(qStr);
+              const exam = mockExams.find(e => e.id === examId);
+              const result = (allMockResults[examId]||{})[folderViewStudentId];
+              const ans = (result?.answers||{})[q];
+              items.push({ key, examId, q, ans, exam });
+            }
+            const imgUrls = {};
+            await Promise.all(items.map(async p => {
+              const snap = await db.ref(`problemImages/${p.examId}/${p.q}`).once("value");
+              imgUrls[p.key] = snap.val() || null;
+            }));
+            const groups = [];
+            for (let i = 0; i < items.length; i += 4) groups.push(items.slice(i, i+4));
+            const ansColor = a => a==="X"?"#ef4444":a==="O"?"#22c55e":"#94a3b8";
+            const problemBox = p => p ? `
+              <div class="problem">
+                <div class="problem-header">${p.exam?.name||""} ${p.exam?.round||""}차 — ${p.q}번 <span style="color:${ansColor(p.ans)};font-size:10px;margin-left:4px">${p.ans||"·"}</span></div>
+                <div class="problem-body">${imgUrls[p.key]?`<img src="${imgUrls[p.key]}" style="max-width:100%;height:auto;display:block"/>`:""}</div>
+              </div>` : `<div class="problem empty"></div>`;
+            const pages = groups.map((g,gi) => `
+              <div class="page">
+                <div class="page-header"><span class="student-name">${selectedStudent?.className||""} ${selectedStudent?.name||""}</span><span class="page-info">${gi*4+1}–${Math.min(gi*4+4,items.length)}번째</span></div>
+                <div class="cols"><div class="col">${problemBox(g[0])}${problemBox(g[1])}</div><div class="col">${problemBox(g[2])}${problemBox(g[3])}</div></div>
+              </div>`).join("");
+            const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+              *{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',sans-serif}
+              @page{size:A4 portrait;margin:12mm 15mm}
+              .page{width:100%;page-break-after:always}.page:last-child{page-break-after:avoid}
+              .page-header{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #1e293b;padding-bottom:4px;margin-bottom:6mm}
+              .student-name{font-size:16px;font-weight:800;color:#0f172a}.page-info{font-size:10px;color:#94a3b8}
+              .cols{display:grid;grid-template-columns:1fr 1fr;gap:8mm;height:240mm}
+              .col{display:flex;flex-direction:column;gap:8mm}.problem{flex:1;display:flex;flex-direction:column}
+              .problem-header{padding:0 0 4px;font-size:11px;font-weight:700;color:#334155;border-bottom:1px solid #cbd5e1;flex-shrink:0;margin-bottom:4px}
+              .problem-body{flex:1}
+            </style></head><body>${pages}</body></html>`;
+            const win = window.open("","_blank");
+            win.document.write(html); win.document.close();
+            win.onload = () => { win.focus(); win.print(); };
+          };
+
+          return (
+            <div className="space-y-4">
+              {/* 학생 선택 */}
+              <Card className="p-4 flex flex-wrap gap-3 items-center">
+                <select value={folderViewStudentId} onChange={e => { setFolderViewStudentId(e.target.value); setSvPicked({}); setSvPickMode(false); }}
+                  className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 min-w-[140px]">
+                  <option value="">학생 선택</option>
+                  {allFolderStudents.map(s => <option key={s.id} value={s.id}>{s.name} ({s.className})</option>)}
+                </select>
+                {folderViewStudentId && (
+                  <>
+                    <button onClick={() => { setSvPickMode(p=>!p); setSvPicked({}); }}
+                      className={`text-xs px-3 py-1.5 rounded-lg font-medium border transition ${svPickMode?"bg-indigo-600 text-white border-indigo-600":"bg-white text-slate-600 border-slate-200 hover:bg-slate-50"}`}>
+                      {svPickMode ? "✓ 인쇄 선택 모드 ON" : "인쇄 선택 모드"}
+                    </button>
+                    {svPickMode && Object.keys(svPicked).length > 0 && (
+                      <>
+                        <span className="text-xs text-indigo-600 font-medium">{Object.keys(svPicked).length}개 선택됨</span>
+                        <button onClick={() => setSvPicked({})} className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">선택 해제</button>
+                        <button onClick={handleSvPrint} className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white font-medium hover:bg-indigo-700">🖨️ 인쇄</button>
+                      </>
+                    )}
+                  </>
+                )}
+              </Card>
+
+              {!folderViewStudentId && <Card className="p-8 text-center text-sm text-slate-400">학생을 선택해 주세요.</Card>}
+
+              {folderViewStudentId && studentExams.length === 0 && (
+                <Card className="p-8 text-center text-sm text-slate-400">이 폴더에 배정된 시험이 없습니다.</Card>
+              )}
+
+              {folderViewStudentId && studentExams.map(exam => {
+                const qCount = exam.questionCount || 20;
+                const result = (allMockResults[exam.id]||{})[folderViewStudentId];
+                const score = result?.score;
+                return (
+                  <Card key={exam.id} className="p-4 space-y-3">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <span className="font-semibold">{exam.name}</span>
+                      <Badge variant="secondary">{exam.round}차</Badge>
+                      {score != null
+                        ? <span className="text-xs bg-emerald-100 text-emerald-700 rounded-lg px-2 py-0.5 font-medium">{parseFloat(Number(score).toFixed(2))}점</span>
+                        : <span className="text-xs bg-slate-100 text-slate-400 rounded-lg px-2 py-0.5">미채점</span>
+                      }
+                      {svPickMode && (
+                        <button onClick={() => {
+                          const keys = Array.from({length:qCount},(_,i)=>`${exam.id}:${i+1}`);
+                          const allPicked = keys.every(k => svPicked[k]);
+                          setSvPicked(prev => {
+                            const c={...prev};
+                            if(allPicked) keys.forEach(k=>delete c[k]);
+                            else keys.forEach(k=>{ c[k]=true; });
+                            return c;
+                          });
+                        }} className="ml-auto text-xs px-2.5 py-1 rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50">
+                          {Array.from({length:qCount},(_,i)=>`${exam.id}:${i+1}`).every(k=>svPicked[k]) ? "전체 해제" : "전체 선택"}
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {Array.from({length:qCount},(_,i)=>i+1).map(q => {
+                        const ans = (result?.answers||{})[q];
+                        const key = `${exam.id}:${q}`;
+                        const isPicked = !!svPicked[key];
+                        return (
+                          <button key={q} type="button"
+                            onClick={() => svPickMode ? toggleSvPick(key) : toggleSvAnswer(exam.id, q)}
+                            className={`inline-flex flex-col items-center w-7 rounded-md border text-[10px] py-0.5 transition cursor-pointer hover:opacity-70
+                              ${isPicked ? "ring-2 ring-indigo-500 ring-offset-1" : ""}
+                              ${ans==="O"?"bg-emerald-50 border-emerald-300 text-emerald-600":ans==="X"?"bg-red-50 border-red-300 text-red-500":ans==="R"?"bg-orange-50 border-orange-300 text-orange-500":ans==="S"?"bg-blue-50 border-blue-300 text-blue-500":"bg-slate-50 border-slate-200 text-slate-300"}`}>
+                            <span className="leading-none text-slate-400">{q}</span>
+                            <span className="font-bold leading-none">{ans==="O"?"O":ans==="X"?"X":ans==="R"?"범":ans==="S"?"해":"·"}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {svPickMode
+                      ? <div className="text-[10px] text-indigo-500">인쇄할 문제를 클릭해서 선택</div>
+                      : <div className="text-[10px] text-slate-400">클릭: · → <span className="text-emerald-600">맞음</span> → <span className="text-red-500">틀림</span> → <span className="text-orange-500">범위x</span> → <span className="text-blue-500">해결</span> → ·</div>
+                    }
+                  </Card>
+                );
+              })}
+            </div>
+          );
+        })()}
+
+        {folderViewMode === "rounds" && folderExams.length === 0
           ? <Card className="p-8 text-center text-sm text-slate-400">시험을 등록해 주세요.</Card>
-          : (() => {
+          : folderViewMode === "rounds" && (() => {
               // 폴더 내 모든 학생 집합
               const allStudentIds = [...new Set(folderExams.flatMap(e => e.students||[]))];
               const allFolderStudents = allStudentIds.map(sid => students.find(s=>s.id===sid)).filter(Boolean);
@@ -2175,7 +2444,7 @@ function AssessmentsTab({ students = [] }) {
 
                 // 그래프 데이터
                 const PAD = { top:24, right:60, bottom:32, left:44 };
-                const W = 416, H = 208;
+                const W = 1248, H = 468;
                 const innerW = W - PAD.left - PAD.right;
                 const innerH = H - PAD.top - PAD.bottom;
 
@@ -2201,9 +2470,9 @@ function AssessmentsTab({ students = [] }) {
                 const [hovered, setHovered] = React.useState(null); // { examIdx, studentId, x, y, score }
 
                 return (
-                  <div className="space-y-3">
+                  <div style={{display:"flex", flexDirection:"column", gap:"0.5rem"}}>
                     {/* 학생 필터 */}
-                    <div className="flex flex-wrap gap-1.5">
+                    <div style={{maxHeight:"5rem", overflowY:"auto"}} className="flex flex-wrap gap-1.5">
                       <button onClick={() => setSelectedIds(selectedIds.length===allStudentIds.length?[]:[...allStudentIds])}
                         className="text-xs px-2.5 py-1 rounded-lg border font-medium transition bg-slate-100 text-slate-600 hover:bg-slate-200">
                         {selectedIds.length===allStudentIds.length?"전체 해제":"전체 선택"}
@@ -2222,18 +2491,18 @@ function AssessmentsTab({ students = [] }) {
                     </div>
 
                     {/* SVG 그래프 */}
-                    <div className="rounded-2xl border bg-white overflow-hidden" style={{position:"relative"}}>
-                      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{display:"block"}}>
+                    <div className="rounded-2xl border bg-white overflow-hidden">
+                      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{display:"block", maxWidth:"100%"}}>
                         {/* 배경 가이드라인 */}
                         {yTicks.map(v => (
                           <g key={v}>
                             <line x1={PAD.left} x2={W-PAD.right} y1={yPos(v)} y2={yPos(v)} stroke="#f1f5f9" strokeWidth="1"/>
-                            <text x={PAD.left-6} y={yPos(v)+4} textAnchor="end" fontSize="9" fill="#94a3b8">{v}</text>
+                            <text x={PAD.left-6} y={yPos(v)+4} textAnchor="end" fontSize="13.5" fill="#94a3b8">{v}</text>
                           </g>
                         ))}
                         {/* x축 레이블 */}
                         {folderExams.map((exam, i) => (
-                          <text key={exam.id} x={xPos(i)} y={H-PAD.bottom+14} textAnchor="middle" fontSize="10" fill="#64748b">
+                          <text key={exam.id} x={xPos(i)} y={H-PAD.bottom+14} textAnchor="middle" fontSize="15" fill="#64748b">
                             {exam.round}차
                           </text>
                         ))}
@@ -2267,7 +2536,7 @@ function AssessmentsTab({ students = [] }) {
                                   onMouseLeave={() => setHovered(null)}/>
                               ))}
                               {lastPt && (
-                                <text x={lastPt.x + 7} y={lastPt.y + 4} fontSize="9" fill={color} fontWeight="700">{s.name}</text>
+                                <text x={lastPt.x + 7} y={lastPt.y + 4} fontSize="13.5" fill={color} fontWeight="700">{s.name}</text>
                               )}
                             </g>
                           );
@@ -2282,8 +2551,8 @@ function AssessmentsTab({ students = [] }) {
                           return (
                             <g>
                               <rect x={tx} y={ty} width="88" height="34" rx="6" fill="white" stroke={hovered.color} strokeWidth="1.2" filter="drop-shadow(0 1px 3px rgba(0,0,0,0.15))"/>
-                              <text x={tx+8} y={ty+13} fontSize="10" fill="#1e293b" fontWeight="600">{hovered.name}</text>
-                              <text x={tx+8} y={ty+26} fontSize="10" fill={hovered.color} fontWeight="700">
+                              <text x={tx+8} y={ty+13} fontSize="15" fill="#1e293b" fontWeight="600">{hovered.name}</text>
+                              <text x={tx+8} y={ty+26} fontSize="15" fill={hovered.color} fontWeight="700">
                                 {Math.round(hovered.score*100)/100}{total?`/${total}`:""}점
                               </text>
                             </g>
@@ -2293,7 +2562,7 @@ function AssessmentsTab({ students = [] }) {
                     </div>
 
                     {/* 범례 */}
-                    <div className="flex flex-wrap gap-3 px-1">
+                    <div className="flex flex-wrap gap-3 px-1" style={{flexShrink:0}}>
                       {allFolderStudents.filter(s=>selectedIds.includes(s.id)).map((s,i) => {
                         const color = COLORS[allFolderStudents.indexOf(s) % COLORS.length];
                         return (
@@ -2310,7 +2579,7 @@ function AssessmentsTab({ students = [] }) {
               };
 
               return (
-              <div className="grid gap-4" style={{gridTemplateColumns:"2fr 1fr"}}>
+              <div className="grid gap-4" style={{gridTemplateColumns:"2fr 1fr", alignItems:"start"}}>
               {/* ── 왼쪽: 꺾은선 그래프 대시보드 ── */}
               <Card className="p-4 space-y-3">
                 <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">성적 추이</div>
@@ -2321,10 +2590,10 @@ function AssessmentsTab({ students = [] }) {
               </Card>
 
               {/* ── 오른쪽: 시험 카드 목록 ── */}
-              <div className="space-y-3">
+              <div style={{position:"sticky", top:"1rem", maxHeight:"calc(100vh - 200px)", overflowY:"auto", display:"flex", flexDirection:"column", gap:"0.75rem"}}>
                 <div className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">시험 목록</div>
                 {folderExams.map(e => (
-                  <Card key={e.id} className="p-3 space-y-2">
+                  <Card key={e.id} className="p-3 space-y-2" style={{flexShrink:0}}>
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-sm flex-1 min-w-0 truncate">{e.name}</span>
                       <Badge variant="secondary">{e.round}차</Badge>
@@ -2558,13 +2827,15 @@ function CurriculumManager({ students, materials }) {
   return (
     <div className="space-y-4">
       {/* 메인 탭 */}
-      <div className="flex gap-2 bg-white rounded-2xl shadow-sm p-1">
-        {[["editor","🗺️ 커리큘럼 편집"],["materials","📚 교재 관리"],["assessments","📝 평가 관리"]].map(([tab,label])=>(
+      <div className="flex justify-center">
+      <div className="inline-flex gap-2 bg-white rounded-2xl shadow-sm p-1">
+        {[["editor","🗺️ 커리큘럼 편집"],["materials","📚 교재 관리"]].map(([tab,label])=>(
           <button key={tab} onClick={()=>setSubTab(tab)}
-            className={`flex-1 py-2.5 text-sm font-medium rounded-xl transition ${subTab===tab?"bg-slate-900 text-white":"text-slate-500 hover:text-slate-700"}`}>
+            className={`py-2.5 px-8 text-sm font-medium rounded-xl transition ${subTab===tab?"bg-slate-900 text-white":"text-slate-500 hover:text-slate-700"}`}>
             {label}
           </button>
         ))}
+      </div>
       </div>
 
       {subTab === "editor" && (
@@ -2628,7 +2899,6 @@ function CurriculumManager({ students, materials }) {
         </div>
       )}
       {subTab === "materials" && <MaterialsTab materials={materials}/>}
-      {subTab === "assessments" && <AssessmentsTab students={students}/>}
     </div>
   );
 }

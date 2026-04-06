@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>데이터 마이그레이션</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<style>
+  body { font-family: sans-serif; max-width: 600px; margin: 60px auto; padding: 0 20px; }
+  button { padding: 12px 24px; background: #1e293b; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  #log { margin-top: 24px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 14px; line-height: 1.8; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h2>Firebase 데이터 마이그레이션</h2>
+<p>기존 데이터를 <code>academies/academy-1/</code> 경로로 이동합니다.</p>
+<button id="btn" onclick="run()">마이그레이션 시작</button>
+<div id="log">버튼을 눌러 시작하세요.</div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCirm5cPSpeRjaibpd_GiwMPqlGuJpZ69E",
+  authDomain: "homeworkplanner-e90a3.firebaseapp.com",
+  databaseURL: "https://homeworkplanner-e90a3-default-rtdb.firebaseio.com",
+  projectId: "homeworkplanner-e90a3",
+  storageBucket: "homeworkplanner-e90a3.firebasestorage.app",
+  messagingSenderId: "44265353555",
+  appId: "1:44265353555:web:076f9c824ab6c27d8031a6"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+const log = (msg) => { document.getElementById("log").textContent += msg + "\n"; };
+
+async function run() {
+  document.getElementById("btn").disabled = true;
+  document.getElementById("log").textContent = "";
+
+  // 익명 로그인 (DB 규칙 auth != null 대응)
+  await firebase.auth?.()?.signInAnonymously?.().catch(() => {});
+
+  const ACADEMY_ID = "academy-1";
+  const ROOT_PATHS = [
+    "homeworks", "materials", "materialFolders",
+    "studentProfiles", "curriculumNodes",
+    "problemStatus", "problemImages",
+    "lessonAttendance", "studentLogs"
+  ];
+
+  for (const path of ROOT_PATHS) {
+    try {
+      const snap = await db.ref(path).once("value");
+      const data = snap.val();
+      if (!data) { log(`⬜ ${path} — 데이터 없음, 건너뜀`); continue; }
+      await db.ref(`academies/${ACADEMY_ID}/${path}`).set(data);
+      log(`✅ ${path} → academies/${ACADEMY_ID}/${path}`);
+    } catch(e) {
+      log(`❌ ${path} 실패: ${e.message}`);
+    }
+  }
+
+  log("\n🎉 완료! 앱이 정상 동작하는지 확인 후 기존 경로를 Firebase 콘솔에서 삭제하세요.");
+  document.getElementById("btn").disabled = false;
+}
+</script>
+</body>
+</html>

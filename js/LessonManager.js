@@ -451,6 +451,8 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
   const [confirmDone, setConfirmDone] = React.useState(false);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
   const [autoHwModal, setAutoHwModal] = React.useState(null);
+  const [addHwExpanded, setAddHwExpanded] = React.useState({}); // { [studentId]: bool }
+  const [confirmModal, setConfirmModal] = React.useState(null); // { selectedDates: Set<string> }
   const [reportModal, setReportModal] = React.useState(null); // { student, rec, assessmentInfo }
   // { studentId, studentName, materials:[{nodeId,materialName,totalProblems,startNum}], selectedIdx, days, minPerProb, coeff }
   const fullscreenRef = React.useRef(null);
@@ -598,36 +600,46 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
     refocusContainer();
   };
 
-  // 숙제 확정: 각 학생의 hw를 studentProfiles에 저장 (Firebase에서 최신 데이터 직접 읽기)
+  // 숙제 확정 (달력 없이 바로 저장)
   const confirmHomework = async () => {
-    // 현재 편집 중인 hw가 있으면 먼저 저장
     if (editingHW && hwValue !== undefined) {
       await rawSaveHW(editingHW, hwValue);
       setEditingHW(null);
     }
-    // Firebase에서 직접 최신 데이터 읽기 (race condition 방지)
     const snap = await db.ref(`lessonAttendance/${lesson._key}`).once("value");
     const freshRec = snap.val() || {};
+    const hasHw = lessonStudents.some(s => (freshRec[s.id]?.현행숙제 || "").trim());
+    if (!hasHw) { alert("확정할 숙제가 없습니다.\n(숙제 열에 내용을 먼저 입력해 주세요)"); return; }
+    await doConfirmHomework([], freshRec);
+  };
+
+  // 검사 날짜 확정 후 실제 저장
+  const doConfirmHomework = async (dates, freshRec) => {
+    const checkDates = dates.filter(d => d.selected).map(d => d.date);
     const updates = {};
     for (const s of lessonStudents) {
       const sRec = freshRec[s.id] || {};
       const text = (sRec.현행숙제 || "").trim();
       if (!text) continue;
       const type = sRec.lessonType === "추가1" ? "추가1" : sRec.lessonType === "추가2" ? "추가2" : "현행";
-      // text/date만 갱신 — isAuto 등 자동숙제 필드는 건드리지 않음
       updates[`studentProfiles/${s.id}/confirmedHw/${type}/text`] = text;
       updates[`studentProfiles/${s.id}/confirmedHw/${type}/date`] = lesson.date;
+      updates[`studentProfiles/${s.id}/confirmedHw/${type}/checkDates`] = checkDates.length ? checkDates : null;
     }
-    if (Object.keys(updates).length === 0) { alert("확정할 숙제가 없습니다.\n(숙제 열에 내용을 먼저 입력해 주세요)"); return; }
+    if (Object.keys(updates).length === 0) return;
     try {
       await db.ref().update(updates);
       setConfirmDone(true);
       setTimeout(() => setConfirmDone(false), 2000);
     } catch(e) {
       alert("저장 실패: " + e.message);
-      console.error("[확정] 저장 실패:", e);
     }
+    setConfirmModal(null);
   };
+
+  function fmtDate(d) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  }
 
   const pushUndo = (studentId, field, prevValue) =>
     setUndoStack(prev => [...prev.slice(-29), { studentId, field, prevValue }]);
@@ -752,6 +764,8 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
       const startNodeId = `start_${studentId}`;
       const startNode = board[startNodeId];
       if (!startNode) continue;
+      // lessonType에 맞는 보드만 사용 (기본값 "현행")
+      if ((startNode.hwType || "현행") !== (lessonType || "현행")) continue;
       const customEdges = allPaths[boardId]?.[studentId];
       const hasCustom = customEdges && Object.keys(customEdges).length > 0;
       const visited = new Set();
@@ -765,14 +779,9 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
         const problemEnd = matSrc?.problemEnd || (problemStart + totalProblems - 1);
         const floorNum = Math.max(problemStart, edgeStartNum);
         const checkedNums = Object.keys(matStatus).map(Number).filter(n => n >= floorNum);
-        let startNum;
-        if (checkedNums.length === 0) {
-          startNum = floorNum;
-        } else {
-          const checkedSet = new Set(checkedNums);
-          startNum = Math.min(...checkedNums);
-          while (checkedSet.has(startNum)) startNum++;
-        }
+        const checkedSet = new Set(checkedNums);
+        let startNum = floorNum;
+        while (startNum <= problemEnd && checkedSet.has(startNum)) startNum++;
         const checked = Object.entries(matStatus).filter(([k]) => Number(k) >= floorNum);
         const correct = checked.filter(([,v]) => v === "correct").length;
         const wrong   = checked.filter(([,v]) => v === "wrong").length;
@@ -828,11 +837,20 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
     // 완료된 교재 건너뛰고 첫 번째 미완료 교재 선택
     const firstActiveIdx = mats.findIndex(m => m.startNum <= m.problemEnd);
     const selectedIdx = firstActiveIdx >= 0 ? firstActiveIdx : 0;
+    // 오답숙제용: 학생의 problemStatus 로드
+    const statusSnap2 = await db.ref(`problemStatus/${studentId}`).once("value");
+    const problemStatus = statusSnap2.val() || {};
+
     setAutoHwModal({
+      mode: "curriculum", // "curriculum" | "wronganswer"
       studentId, studentName, lessonType, materials: mats, selectedIdx,
       days: "4",
       subject: mats[selectedIdx]?.subject || "공통수학1",
       coeff: profile.problemCoeff != null ? String(profile.problemCoeff) : "1",
+      problemStatus,
+      wrongCount: "20",
+      hwDueDate: "",
+      hwRemoved: new Set(),
     });
   };
 
@@ -858,18 +876,27 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
     let needed = Math.max(1, Math.floor(totalMin / (minPerProb * coeff)));
 
     const parts = [];
+    const allUnchecked = []; // 전체 미체크 문제 번호 목록 (순서대로)
     for (let i = startIdx; i < modal.materials.length && needed > 0; i++) {
       const m = modal.materials[i];
-      const remaining = m.problemEnd - m.startNum + 1;
+      const matStatus = (modal.problemStatus || {})[m.materialNodeId] || {};
+      // 미체크 문제만 순서대로 수집
+      const unchecked = [];
+      for (let p = m.startNum; p <= m.problemEnd; p++) {
+        if (!matStatus[p]) unchecked.push(p);
+      }
+      const remaining = unchecked.length;
       if (remaining <= 0) continue;
       const take = Math.min(needed, remaining);
-      parts.push({ materialName: m.materialName, start: m.startNum, end: m.startNum + take - 1, count: take, nodeId: m.nodeId, materialNodeId: m.materialNodeId });
+      const endProblem = unchecked[take - 1];
+      parts.push({ materialName: m.materialName, start: m.startNum, end: endProblem, count: take, nodeId: m.nodeId, materialNodeId: m.materialNodeId });
+      allUnchecked.push(...unchecked.slice(0, take));
       needed -= take;
     }
 
     const numProblems = parts.reduce((s, p) => s + p.count, 0);
     const text = parts.map(p => `${p.materialName} ${p.start}~${p.end}번`).join(' + ') + ` (${numProblems}문제)`;
-    return { text, numProblems, parts };
+    return { text, numProblems, parts, uncheckedProblems: allUnchecked };
   };
 
   // 현행/추가 저장
@@ -1012,96 +1039,128 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
 
   const tagModalStudent = tagModal ? students.find(s => s.id === tagModal) : null;
 
-  // 자동 숙제 모달 렌더
-  const renderAutoHwModal = () => {
-    if (!autoHwModal) return null;
-    const m = autoHwModal;
-    const result = calcAutoHw(m);
-    const set = (patch) => setAutoHwModal(prev => ({ ...prev, ...patch }));
-    const inputCls = "w-full border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-300";
+  // 검사 날짜 지정 모달 렌더
+  const renderConfirmModal = () => {
+    if (!confirmModal) return null;
+    const { freshRec, dueDate, removed } = confirmModal;
+    // removed: Set of date strings the teacher clicked to remove
+    const set = (patch) => setConfirmModal(prev => ({ ...prev, ...patch }));
+    const startDate = lesson.date;
+    const DOW_KR = ["일","월","화","수","목","금","토"];
+
+    // 달력: startDate 기준 월 표시 (startDate 포함 3주치)
+    const startD = new Date(startDate + "T00:00:00");
+    const calYear = startD.getFullYear();
+    const calMonth = startD.getMonth();
+    // 해당 달의 1일부터 말일까지 + 앞뒤 패딩
+    const firstOfMonth = new Date(calYear, calMonth, 1);
+    const lastOfMonth = new Date(calYear, calMonth + 1, 0);
+    const padStart = firstOfMonth.getDay();
+    const calDays = [];
+    for (let i = 0; i < padStart; i++) calDays.push(null);
+    for (let d = 1; d <= lastOfMonth.getDate(); d++) calDays.push(new Date(calYear, calMonth, d));
+    // 다음달도 조금 표시 (6주 고정)
+    const nextDays = 42 - calDays.length;
+    for (let d = 1; d <= nextDays; d++) calDays.push(new Date(calYear, calMonth + 1, d));
+
+    // 선택된 날짜: startDate ~ dueDate 사이에서 removed에 없는 것
+    const checkDates = [];
+    if (dueDate && dueDate > startDate) {
+      let d = new Date(startDate + "T00:00:00");
+      const end = new Date(dueDate + "T00:00:00");
+      while (d <= end) {
+        const ymd = fmtDate(d);
+        if (!removed.has(ymd)) checkDates.push(ymd);
+        d.setDate(d.getDate() + 1);
+      }
+    }
+
+    const handleDayClick = (ymd) => {
+      if (ymd === startDate) return; // 시작일 고정
+      if (!dueDate || ymd > dueDate || ymd < startDate) {
+        // 범위 밖이면 마감일로 설정
+        if (ymd > startDate) set({ dueDate: ymd, removed: new Set() });
+        return;
+      }
+      // 범위 안이면 제거/복원 토글
+      const next = new Set(removed);
+      if (next.has(ymd)) next.delete(ymd); else next.add(ymd);
+      set({ removed: next });
+    };
+
     return (
       <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.45)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:9999 }}
-        onClick={() => setAutoHwModal(null)}>
-        <div style={{ background:"white", borderRadius:14, padding:"20px 24px", minWidth:320, maxWidth:400, boxShadow:"0 8px 32px rgba(0,0,0,0.18)" }}
+        onClick={() => setConfirmModal(null)}>
+        <div style={{ background:"white", borderRadius:16, padding:"20px 24px", minWidth:320, maxWidth:400, boxShadow:"0 8px 32px rgba(0,0,0,0.18)" }}
           onClick={e => e.stopPropagation()}>
-          <div style={{ fontWeight:700, fontSize:15, marginBottom:14, color:"#1e293b" }}>📐 자동 숙제 계산 — {m.studentName}</div>
-          {m.materials.length === 0 ? (
-            <div style={{ fontSize:13, color:"#94a3b8", marginBottom:16 }}>커리큘럼에 연결된 교재가 없습니다.<br/>커리큘럼 편집에서 학생 노드와 교재 노드를 연결하세요.</div>
-          ) : (
-            <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:16 }}>
-              <div>
-                <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>과목</div>
-                <select value={m.subject} onChange={e=>set({subject:e.target.value})} className={inputCls}>
-                  {["중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"].map(s=><option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                <div>
-                  <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>몇 일치</div>
-                  <input type="number" min="1" value={m.days} onChange={e=>set({days:e.target.value})} className={inputCls} style={{ textAlign:"center" }}/>
-                </div>
-                <div>
-                  <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>계수</div>
-                  <input type="number" min="0.1" step="0.1" value={m.coeff} onChange={e=>set({coeff:e.target.value})} onBlur={e=>saveCoeff(m.studentId, e.target.value)} className={inputCls} style={{ textAlign:"center" }}/>
-                </div>
-              </div>
-              {(() => {
-                const activeIdx = m.materials.findIndex(mat => mat.startNum <= mat.problemEnd);
-                const activeMat = activeIdx >= 0 ? m.materials[activeIdx] : null;
-                if (!activeMat) return null;
-                return (
-                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                    <div style={{ fontSize:11, color:"#64748b", whiteSpace:"nowrap" }}>시작 번호 ({activeMat.materialName})</div>
-                    <input type="number" min="1" value={activeMat.startNum}
-                      onChange={e => {
-                        const v = parseInt(e.target.value) || 1;
-                        set({ materials: m.materials.map((mat, i) => i === activeIdx ? { ...mat, startNum: v } : mat) });
-                      }}
-                      className={inputCls} style={{ textAlign:"center", width:70 }} />
-                  </div>
-                );
-              })()}
-              {result && result.parts && result.parts.length > 0 && (
-                <div style={{ fontSize:11, color:"#64748b" }}>
-                  하루 2시간 × {m.days}일 = {(parseInt(m.days)||0)*120}분 ÷ ({result.parts[0] && (m.materials.find(mat=>mat.nodeId===result.parts[0].nodeId)?.minutesPerProblem||3)}분 × {m.coeff}) = <b>{result.numProblems}문제</b>
-                </div>
-              )}
-              {result && result.numProblems > 0 && (
-                <div style={{ background:"#eef2ff", borderRadius:8, padding:"8px 12px", fontSize:13, fontWeight:600, color:"#3730a3" }}>
-                  📝 {result.text}
-                </div>
-              )}
-              {result && result.numProblems === 0 && (
-                <div style={{ fontSize:13, color:"#10b981" }}>✅ 모든 교재 완료</div>
-              )}
+          <div style={{ fontWeight:700, fontSize:15, marginBottom:4, color:"#1e293b" }}>📌 숙제 확정 — 검사 날짜 지정</div>
+          <div style={{ fontSize:12, color:"#64748b", marginBottom:14 }}>
+            시작일 <b style={{color:"#1e293b"}}>{startDate}</b> · 마감일 클릭으로 지정 후 제외할 날 클릭
+          </div>
+
+          {/* 달력 */}
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:3, marginBottom:12 }}>
+            {DOW_KR.map((d,i) => (
+              <div key={d} style={{ textAlign:"center", fontSize:10, fontWeight:700, paddingBottom:3,
+                color: i===0?"#ef4444":i===6?"#3b82f6":"#94a3b8" }}>{d}</div>
+            ))}
+            {calDays.map((d, i) => {
+              if (!d) return <div key={"e"+i}/>;
+              const ymd = fmtDate(d);
+              const dow = d.getDay();
+              const isStart = ymd === startDate;
+              const isDue = ymd === dueDate;
+              const inRange = dueDate && ymd >= startDate && ymd <= dueDate;
+              const isRemoved = removed.has(ymd);
+              const isCurrentMonth = d.getMonth() === calMonth;
+
+              let bg = "transparent";
+              let color = isCurrentMonth ? (dow===0?"#ef4444":dow===6?"#3b82f6":"#334155") : "#d1d5db";
+              let fontWeight = 500;
+
+              if (isStart) { bg="#1e293b"; color="white"; fontWeight=700; }
+              else if (isDue) { bg="#7c3aed"; color="white"; fontWeight=700; }
+              else if (inRange && !isRemoved) { bg="#dbeafe"; color="#1d4ed8"; fontWeight=600; }
+              else if (inRange && isRemoved) { bg="transparent"; color="#cbd5e1"; }
+
+              return (
+                <button key={ymd} onClick={() => isCurrentMonth && handleDayClick(ymd)}
+                  style={{ borderRadius:7, border:"none", padding:"6px 0", fontSize:12, fontWeight,
+                    background: bg, color,
+                    cursor: isStart ? "default" : isCurrentMonth ? "pointer" : "default",
+                    opacity: isCurrentMonth ? 1 : 0.35,
+                    textDecoration: inRange && isRemoved ? "line-through" : "none" }}>
+                  {d.getDate()}
+                </button>
+              );
+            })}
+          </div>
+
+          {!dueDate && (
+            <div style={{ fontSize:12, color:"#94a3b8", marginBottom:14 }}>마감일을 달력에서 클릭해 선택하세요.</div>
+          )}
+          {dueDate && (
+            <div style={{ fontSize:12, color:"#64748b", marginBottom:14 }}>
+              검사일 <b style={{color:"#1e293b"}}>{checkDates.length}일</b>
+              <span style={{ color:"#94a3b8", marginLeft:8, fontSize:11 }}>
+                {checkDates.map(d=>d.slice(5).replace("-","/")).join(", ")}
+              </span>
             </div>
           )}
+
           <div style={{ display:"flex", gap:8 }}>
-            {result && (
-              <button onClick={async () => {
-                const firstPart = result.parts[0];
-                const firstMat = m.materials.find(mat => mat.nodeId === firstPart?.nodeId) || m.materials[0];
-                const hwType = m.lessonType || firstMat.hwType || "현행";
-                await saveHW(m.studentId, result.text);
-                await db.ref(`studentProfiles/${m.studentId}/confirmedHw/${hwType}`).set({
-                  text: result.text,
-                  date: lesson.date || todayString(),
-                  isAuto: true,
-                  autoSubject: m.subject || "수학",
-                  autoHwType: hwType,
-                  autoTotalAmount: result.numProblems,
-                  autoStartProblem: firstPart?.start,
-                  autoMaterialNodeId: firstMat.nodeId,
-                  autoMaterialId: firstMat.materialNodeId,
-                });
-                setAutoHwModal(null);
-              }}
-                style={{ flex:1, padding:"8px 0", borderRadius:8, border:"none", background:"#1e293b", color:"white", fontWeight:700, fontSize:13, cursor:"pointer" }}>
-                적용
-              </button>
-            )}
-            <button onClick={() => setAutoHwModal(null)}
-              style={{ flex:1, padding:"8px 0", borderRadius:8, border:"1.5px solid #e2e8f0", background:"white", color:"#64748b", fontWeight:600, fontSize:13, cursor:"pointer" }}>
+            <button onClick={() => checkDates.length > 0 && doConfirmHomework(
+                checkDates.map(d => ({ date: d, selected: true })), freshRec
+              )}
+              disabled={checkDates.length === 0}
+              style={{ flex:1, padding:"9px 0", borderRadius:8, border:"none", fontSize:13, fontWeight:700,
+                cursor: checkDates.length > 0 ? "pointer" : "not-allowed",
+                background: checkDates.length > 0 ? "#1e293b" : "#e2e8f0",
+                color: checkDates.length > 0 ? "white" : "#94a3b8" }}>
+              확정
+            </button>
+            <button onClick={() => setConfirmModal(null)}
+              style={{ flex:1, padding:"9px 0", borderRadius:8, border:"1.5px solid #e2e8f0", background:"white", color:"#64748b", fontWeight:600, fontSize:13, cursor:"pointer" }}>
               취소
             </button>
           </div>
@@ -1110,8 +1169,283 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
     );
   };
 
+  // 자동 숙제 모달 렌더
+  const renderAutoHwModal = () => {
+    if (!autoHwModal) return null;
+    const m = autoHwModal;
+    const result = calcAutoHw(m);
+    const set = (patch) => setAutoHwModal(prev => ({ ...prev, ...patch }));
+    const inputCls = "w-full border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-300";
+
+    // 오답 기준 모드: 커리큘럼 순서대로 틀림/모름 문제 수집
+    const wrongResult = (() => {
+      if (m.mode !== "wronganswer") return null;
+      const limit = parseInt(m.wrongCount) || 0;
+      if (limit <= 0) return null;
+      const allWrong = []; // { materialName, num, status }
+      for (const mat of m.materials) {
+        const matStatus = (m.problemStatus || {})[mat.materialNodeId] || {};
+        const startNum = Number(mat.problemStart) || 1;
+        const endNum = mat.problemEnd ? Number(mat.problemEnd) : startNum + (mat.totalProblems || 0) - 1;
+        for (let n = startNum; n <= endNum; n++) {
+          const s = matStatus[n];
+          if (s === "wrong" || s === "unknown") {
+            allWrong.push({ materialName: mat.materialName, materialNodeId: mat.materialNodeId, num: n, status: s });
+          }
+        }
+      }
+      const taken = allWrong.slice(0, limit);
+      if (taken.length === 0) return { taken: [], text: null, total: 0, totalAvail: allWrong.length };
+      // 교재별로 그룹화해서 텍스트 생성
+      const grouped = {};
+      for (const p of taken) {
+        if (!grouped[p.materialName]) grouped[p.materialName] = [];
+        grouped[p.materialName].push(p.num);
+      }
+      const parts = Object.entries(grouped).map(([name, nums]) => `${name} ${nums.join(",")}번`);
+      const text = parts.join(" + ") + ` (오답 ${taken.length}문제)`;
+      return { taken, text, total: taken.length, totalAvail: allWrong.length };
+    })();
+
+    return (
+      <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.45)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:9999 }}
+        onClick={() => setAutoHwModal(null)}>
+        <div style={{ background:"white", borderRadius:14, padding:"20px 24px", minWidth:340, maxWidth:420, boxShadow:"0 8px 32px rgba(0,0,0,0.18)" }}
+          onClick={e => e.stopPropagation()}>
+          <div style={{ fontWeight:700, fontSize:15, marginBottom:12, color:"#1e293b" }}>📐 자동 숙제 계산 — {m.studentName}</div>
+
+          {/* 모드 토글 */}
+          <div style={{ display:"flex", gap:4, background:"#f1f5f9", borderRadius:10, padding:4, marginBottom:14 }}>
+            {[["curriculum","📚 커리큘럼"],["wronganswer","❌ 오답"]].map(([mode, label]) => (
+              <button key={mode} onClick={() => set({ mode, selectedMockExamId:"", mockExamResult:null, selectedMockExam:null })}
+                style={{ flex:1, padding:"6px 0", borderRadius:7, border:"none", fontSize:12, fontWeight:600, cursor:"pointer", transition:"all 0.15s",
+                  background: m.mode===mode ? "white" : "transparent",
+                  color: m.mode===mode ? "#1e293b" : "#94a3b8",
+                  boxShadow: m.mode===mode ? "0 1px 3px rgba(0,0,0,0.08)" : "none" }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* ── 커리큘럼 모드 ── */}
+          {m.mode === "curriculum" && (
+            <>
+              {m.materials.length === 0 ? (
+                <div style={{ fontSize:13, color:"#94a3b8", marginBottom:16 }}>커리큘럼에 연결된 교재가 없습니다.<br/>커리큘럼 편집에서 학생 노드와 교재 노드를 연결하세요.</div>
+              ) : (
+                <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:16 }}>
+                  <div>
+                    <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>과목</div>
+                    <select value={m.subject} onChange={e=>set({subject:e.target.value})} className={inputCls}>
+                      {["중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"].map(s=><option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                    <div>
+                      <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>몇 일치</div>
+                      <input type="number" min="1" value={m.days} onChange={e=>set({days:e.target.value})} className={inputCls} style={{ textAlign:"center" }}/>
+                    </div>
+                    <div>
+                      <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>계수</div>
+                      <input type="number" min="0.1" step="0.1" value={m.coeff} onChange={e=>set({coeff:e.target.value})} onBlur={e=>saveCoeff(m.studentId, e.target.value)} className={inputCls} style={{ textAlign:"center" }}/>
+                    </div>
+                  </div>
+                  {(() => {
+                    const activeIdx = m.materials.findIndex(mat => mat.startNum <= mat.problemEnd);
+                    const activeMat = activeIdx >= 0 ? m.materials[activeIdx] : null;
+                    if (!activeMat) return null;
+                    return (
+                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                        <div style={{ fontSize:11, color:"#64748b", whiteSpace:"nowrap" }}>시작 번호 ({activeMat.materialName})</div>
+                        <input type="number" min="1" value={activeMat.startNum}
+                          onChange={e => {
+                            const v = parseInt(e.target.value) || 1;
+                            set({ materials: m.materials.map((mat, i) => i === activeIdx ? { ...mat, startNum: v } : mat) });
+                          }}
+                          className={inputCls} style={{ textAlign:"center", width:70 }} />
+                      </div>
+                    );
+                  })()}
+                  {result && result.parts && result.parts.length > 0 && (
+                    <div style={{ fontSize:11, color:"#64748b" }}>
+                      하루 2시간 × {m.days}일 = {(parseInt(m.days)||0)*120}분 ÷ ({result.parts[0] && (m.materials.find(mat=>mat.nodeId===result.parts[0].nodeId)?.minutesPerProblem||3)}분 × {m.coeff}) = <b>{result.numProblems}문제</b>
+                    </div>
+                  )}
+                  {result && result.numProblems > 0 && (
+                    <div style={{ background:"#eef2ff", borderRadius:8, padding:"8px 12px", fontSize:13, fontWeight:600, color:"#3730a3" }}>
+                      📝 {result.text}
+                    </div>
+                  )}
+                  {result && result.numProblems === 0 && (
+                    <div style={{ fontSize:13, color:"#10b981" }}>✅ 모든 교재 완료</div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── 오답 모드 ── */}
+          {m.mode === "wronganswer" && (
+            <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:16 }}>
+              <div>
+                <div style={{ fontSize:11, color:"#64748b", marginBottom:4 }}>
+                  몇 문제 낼까요?
+                  {wrongResult && <span style={{ color:"#94a3b8", marginLeft:6 }}>(총 오답 {wrongResult.totalAvail}문제)</span>}
+                </div>
+                <input type="number" min="1" value={m.wrongCount}
+                  onChange={e => set({ wrongCount: e.target.value })}
+                  className={inputCls} style={{ textAlign:"center" }} placeholder="예: 20"/>
+              </div>
+              {wrongResult && wrongResult.totalAvail === 0 && (
+                <div style={{ fontSize:13, color:"#10b981" }}>✅ 틀림/모름 문제가 없습니다.</div>
+              )}
+              {wrongResult && wrongResult.taken.length > 0 && (
+                <>
+                  <div style={{ background:"#f8fafc", borderRadius:8, padding:"8px 12px", maxHeight:100, overflowY:"auto" }}>
+                    {Object.entries(
+                      wrongResult.taken.reduce((acc, p) => {
+                        if (!acc[p.materialName]) acc[p.materialName] = { wrong:[], unknown:[] };
+                        acc[p.materialName][p.status === "wrong" ? "wrong" : "unknown"].push(p.num);
+                        return acc;
+                      }, {})
+                    ).map(([name, { wrong, unknown }]) => (
+                      <div key={name} style={{ marginBottom:4 }}>
+                        <span style={{ fontSize:11, fontWeight:600, color:"#334155" }}>{name}</span>
+                        {wrong.length > 0 && <span style={{ fontSize:11, color:"#ef4444", marginLeft:6 }}>❌ {wrong.join(",")}번</span>}
+                        {unknown.length > 0 && <span style={{ fontSize:11, color:"#8b5cf6", marginLeft:6 }}>❓ {unknown.join(",")}번</span>}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ background:"#eef2ff", borderRadius:8, padding:"8px 12px", fontSize:13, fontWeight:600, color:"#3730a3" }}>
+                    📝 {wrongResult.text}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── 공통: 마감일 달력 ── */}
+          {(() => {
+            const hwText = m.mode === "curriculum" ? (result?.numProblems > 0 ? result.text : null) : (wrongResult?.text || null);
+            if (!hwText) return null;
+            const startDate = lesson.date;
+            const due = m.hwDueDate;
+            const removed = m.hwRemoved;
+            const DOW_KR = ["일","월","화","수","목","금","토"];
+
+            const startD = new Date(startDate + "T00:00:00");
+            const calYear = startD.getFullYear(), calMonth = startD.getMonth();
+            const firstOfMonth = new Date(calYear, calMonth, 1);
+            const lastOfMonth = new Date(calYear, calMonth + 1, 0);
+            const calDays = [];
+            for (let i = 0; i < firstOfMonth.getDay(); i++) calDays.push(null);
+            for (let d = 1; d <= lastOfMonth.getDate(); d++) calDays.push(new Date(calYear, calMonth, d));
+            const nextDays = 42 - calDays.length;
+            for (let d = 1; d <= nextDays; d++) calDays.push(new Date(calYear, calMonth + 1, d));
+
+            const checkDates = [];
+            if (due && due > startDate) {
+              let d = new Date(startDate + "T00:00:00");
+              const end = new Date(due + "T00:00:00");
+              while (d <= end) { const ymd = fmtDate(d); if (!removed.has(ymd)) checkDates.push(ymd); d.setDate(d.getDate()+1); }
+            }
+
+            const handleDay = (ymd) => {
+              if (ymd === startDate) return;
+              if (ymd === due) { set({ hwDueDate: "", hwRemoved: new Set() }); return; }
+              if (ymd > startDate) set({ hwDueDate: ymd, hwRemoved: new Set() });
+            };
+
+            const applyHw = async () => {
+              if (m.mode === "curriculum") {
+                const firstPart = result.parts[0];
+                const firstMat = m.materials.find(mat => mat.nodeId === firstPart?.nodeId) || m.materials[0];
+                const hwType = m.lessonType || firstMat.hwType || "현행";
+                await saveHW(m.studentId, result.text);
+                await db.ref(`studentProfiles/${m.studentId}/confirmedHw/${hwType}`).set({
+                  text: result.text, date: lesson.date || todayString(), isAuto: true,
+                  autoSubject: m.subject || "수학", autoHwType: hwType,
+                  autoTotalAmount: result.numProblems, autoStartProblem: firstPart?.start,
+                  autoUncheckedProblems: result.uncheckedProblems || null,
+                  autoMaterialNodeId: firstMat.nodeId, autoMaterialId: firstMat.materialNodeId,
+                  checkDates: checkDates.length ? checkDates : null,
+                  hwStartDate: lesson.date || todayString(),
+                  hwDueDate: due || null,
+                });
+              } else {
+                await saveHW(m.studentId, wrongResult.text);
+                const hwType = m.lessonType || "현행";
+                await db.ref(`studentProfiles/${m.studentId}/confirmedHw/${hwType}`).update({
+                  text: wrongResult.text, date: lesson.date || todayString(),
+                  checkDates: checkDates.length ? checkDates : null,
+                });
+              }
+              setAutoHwModal(null);
+            };
+
+            return (
+              <div style={{ borderTop:"1px solid #f1f5f9", paddingTop:12, marginTop:4 }}>
+                <div style={{ fontSize:11, color:"#64748b", marginBottom:6 }}>
+                  마감일 클릭
+                  {due && <span style={{ marginLeft:8, color:"#1e293b", fontWeight:600 }}>검사일 {checkDates.length}일</span>}
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2, marginBottom:8 }}>
+                  {DOW_KR.map((d,i) => (
+                    <div key={d} style={{ textAlign:"center", fontSize:9, fontWeight:700, paddingBottom:2, color:i===0?"#ef4444":i===6?"#3b82f6":"#94a3b8" }}>{d}</div>
+                  ))}
+                  {calDays.map((d, i) => {
+                    if (!d) return <div key={"e"+i}/>;
+                    const ymd = fmtDate(d);
+                    const dow = d.getDay();
+                    const isStart = ymd === startDate;
+                    const isDue = ymd === due;
+                    const inRange = due && ymd >= startDate && ymd <= due;
+                    const isRemoved = removed.has(ymd);
+                    const isCurrentMonth = d.getMonth() === calMonth;
+                    let bg = "transparent", color = isCurrentMonth?(dow===0?"#ef4444":dow===6?"#3b82f6":"#334155"):"#d1d5db", fw = 500;
+                    if (isStart) { bg="#1e293b"; color="white"; fw=700; }
+                    else if (isDue) { bg="#7c3aed"; color="white"; fw=700; }
+                    else if (inRange && !isRemoved) { bg="#dbeafe"; color="#1d4ed8"; fw=600; }
+                    else if (inRange && isRemoved) { color="#cbd5e1"; }
+                    return (
+                      <button key={ymd} onClick={() => isCurrentMonth && handleDay(ymd)}
+                        style={{ borderRadius:6, border:"none", padding:"4px 0", fontSize:11, fontWeight:fw, background:bg, color,
+                          cursor: isStart?"default":isCurrentMonth?"pointer":"default",
+                          opacity: isCurrentMonth?1:0.3,
+                          textDecoration: inRange&&isRemoved?"line-through":"none" }}>
+                        {d.getDate()}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ display:"flex", gap:8 }}>
+                  <button onClick={applyHw}
+                    style={{ flex:1, padding:"8px 0", borderRadius:8, border:"none", background:"#1e293b", color:"white", fontWeight:700, fontSize:13, cursor:"pointer" }}>
+                    적용
+                  </button>
+                  <button onClick={() => setAutoHwModal(null)}
+                    style={{ flex:1, padding:"8px 0", borderRadius:8, border:"1.5px solid #e2e8f0", background:"white", color:"#64748b", fontWeight:600, fontSize:13, cursor:"pointer" }}>
+                    취소
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+          {/* 아직 결과 없으면 취소만 */}
+          {(m.mode==="curriculum" ? !(result?.numProblems>0) : !(wrongResult?.text)) && (
+            <button onClick={() => setAutoHwModal(null)}
+              style={{ width:"100%", padding:"8px 0", borderRadius:8, border:"1.5px solid #e2e8f0", background:"white", color:"#64748b", fontWeight:600, fontSize:13, cursor:"pointer" }}>
+              취소
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div ref={fullscreenRef} className={isFullscreen ? "bg-white p-4 min-h-screen overflow-auto flex flex-col" : "space-y-4"}>
+      {renderConfirmModal()}
       {renderAutoHwModal()}
       {/* 헤더 */}
       <Card className="p-4">
@@ -1178,37 +1512,56 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
             const unitObj = units.find(u => u.num === curUnit);
             const rem = profile.remainingProblems != null ? profile.remainingProblems : totalProblems;
             return (
-              <div key={s.id} className="border border-slate-200 rounded-xl px-4 py-2.5 flex items-start gap-3 bg-white">
-                <div className="w-9 h-9 rounded-full bg-slate-800 text-white flex items-center justify-center text-sm font-bold shrink-0 mt-0.5">{s.name[0]}</div>
-                <div className="flex-1 min-w-0 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-base text-slate-900">{s.name}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold border ${sRec.lessonType === "추가1" ? "bg-violet-100 text-violet-700 border-violet-200" : sRec.lessonType === "추가2" ? "bg-rose-100 text-rose-700 border-rose-200" : "bg-sky-50 text-sky-600 border-sky-200"}`}>
-                      {sRec.lessonType === "추가1" ? "추가1" : sRec.lessonType === "추가2" ? "추가2" : "현행"}
-                    </span>
-                    <span className="text-xs text-slate-400">{s.className}</span>
-                    {tags.length > 0 && <span className={`text-xs font-bold ml-auto ${xp >= 0 ? "text-emerald-600" : "text-red-500"}`}>{xp >= 0 ? "+" : ""}{xp}XP</span>}
-                    {tags.length > 0 && <span className="text-xs font-bold text-blue-600">+{cp}CP</span>}
-                  </div>
-                  {sRec.현행숙제 && (
-                    <div className="text-sm text-slate-700">
-                      <span className={`text-[10px] font-bold mr-1 ${sRec.lessonType === "추가1" ? "text-violet-500" : sRec.lessonType === "추가2" ? "text-rose-500" : "text-sky-500"}`}>{sRec.lessonType === "추가1" ? "(추1)" : sRec.lessonType === "추가2" ? "(추2)" : "(현)"}</span>
-                      {sRec.현행숙제}
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {asmName && (
-                      <span className="text-xs text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">
-                        {type === "누적테스트" ? `${asmName} · 남은 ${rem}문제` : `${asmName}${curUnit ? " · " + curUnit : ""}`}
+              <div key={s.id} className="border border-slate-200 rounded-xl bg-white overflow-hidden">
+                <div className="px-4 py-2.5 flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-full bg-slate-800 text-white flex items-center justify-center text-sm font-bold shrink-0 mt-0.5">{s.name[0]}</div>
+                  <div className="flex-1 min-w-0 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-base text-slate-900">{s.name}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold border ${sRec.lessonType === "추가1" ? "bg-violet-100 text-violet-700 border-violet-200" : sRec.lessonType === "추가2" ? "bg-rose-100 text-rose-700 border-rose-200" : "bg-sky-50 text-sky-600 border-sky-200"}`}>
+                        {sRec.lessonType === "추가1" ? "추가1" : sRec.lessonType === "추가2" ? "추가2" : "현행"}
                       </span>
+                      <span className="text-xs text-slate-400">{s.className}</span>
+                      {tags.length > 0 && <span className={`text-xs font-bold ml-auto ${xp >= 0 ? "text-emerald-600" : "text-red-500"}`}>{xp >= 0 ? "+" : ""}{xp}XP</span>}
+                      {tags.length > 0 && <span className="text-xs font-bold text-blue-600">+{cp}CP</span>}
+                      <button
+                        onClick={e => { e.stopPropagation(); setAddHwExpanded(prev => ({ ...prev, [s.id]: !prev[s.id] })); }}
+                        className="ml-auto w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold transition"
+                        style={{ background: addHwExpanded[s.id] ? "#1e293b" : "#f1f5f9", color: addHwExpanded[s.id] ? "white" : "#64748b" }}>
+                        {addHwExpanded[s.id] ? "×" : "+"}
+                      </button>
+                    </div>
+                    {sRec.현행숙제 && (
+                      <div className="text-sm text-slate-700">
+                        <span className={`text-[10px] font-bold mr-1 ${sRec.lessonType === "추가1" ? "text-violet-500" : sRec.lessonType === "추가2" ? "text-rose-500" : "text-sky-500"}`}>{sRec.lessonType === "추가1" ? "(추1)" : sRec.lessonType === "추가2" ? "(추2)" : "(현)"}</span>
+                        {sRec.현행숙제}
+                      </div>
                     )}
-                    {tags.map(name => {
-                      const t = BEHAVIOR_TAGS.find(b => b.name === name);
-                      const neg = t && t.xp < 0;
-                      return <span key={name} className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${neg ? "bg-red-50 text-red-600 border-red-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>{name}</span>;
-                    })}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {asmName && (
+                        <span className="text-xs text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">
+                          {type === "누적테스트" ? `${asmName} · 남은 ${rem}문제` : `${asmName}${curUnit ? " · " + curUnit : ""}`}
+                        </span>
+                      )}
+                      {tags.map(name => {
+                        const t = BEHAVIOR_TAGS.find(b => b.name === name);
+                        const neg = t && t.xp < 0;
+                        return <span key={name} className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${neg ? "bg-red-50 text-red-600 border-red-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>{name}</span>;
+                      })}
+                    </div>
                   </div>
                 </div>
+                {addHwExpanded[s.id] && (
+                  <div className="border-t border-slate-100 bg-slate-50 px-4 py-2.5 flex items-center gap-2">
+                    <span className="text-[10px] text-slate-400 font-medium">숙제 추가:</span>
+                    {["현행", "추가1", "추가2"].map(tab => (
+                      <button key={tab} onClick={e => { e.stopPropagation(); setAddHwExpanded(prev => ({ ...prev, [s.id]: false })); openAutoHwModal(s.id, s.name, tab); }}
+                        className={`text-[10px] px-2.5 py-1 rounded-lg font-bold border transition ${tab === "추가1" ? "bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100" : tab === "추가2" ? "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100" : "bg-sky-50 text-sky-600 border-sky-200 hover:bg-sky-100"}`}>
+                        {tab}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -1361,8 +1714,8 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
                   );
                 }
 
-                return (
-                  <tr key={s.id} className={si % 2 === 0 ? "bg-white" : "bg-slate-50/30"}>
+                return (<React.Fragment key={s.id}>
+                  <tr className={si % 2 === 0 ? "bg-white" : "bg-slate-50/30"}>
                     <td className="sticky left-0 z-10 bg-inherit px-4 py-3 border-b border-r border-slate-200 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-full bg-slate-800 text-white flex items-center justify-center text-xs font-bold shrink-0">{s.name[0]}</div>
@@ -1386,6 +1739,11 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
                                 👤
                               </button>
                             )}
+                            <button type="button" onClick={e => { e.stopPropagation(); setAddHwExpanded(prev => ({ ...prev, [s.id]: !prev[s.id] })); }}
+                              className="text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-bold border transition shrink-0"
+                              style={addHwExpanded[s.id] ? {background:"#1e293b",color:"white",borderColor:"#1e293b"} : {background:"#f8fafc",color:"#94a3b8",borderColor:"#e2e8f0"}}>
+                              {addHwExpanded[s.id] ? "×" : "+"}
+                            </button>
                           </div>
                           <div className="text-[10px] text-slate-400 flex gap-2">
                             <span>{s.className}</span>
@@ -1579,7 +1937,23 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
                       </div>
                     </td>
                   </tr>
-                );
+                  {addHwExpanded[s.id] && (
+                    <tr key={s.id + "_addhw"} className="bg-indigo-50/50">
+                      <td className="sticky left-0 z-10 bg-indigo-50 px-4 py-2 border-b border-r border-indigo-100">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-slate-400 font-medium">숙제 추가:</span>
+                          {["현행", "추가1", "추가2"].map(tab => (
+                            <button key={tab} type="button" onClick={e => { e.stopPropagation(); setAddHwExpanded(prev => ({ ...prev, [s.id]: false })); openAutoHwModal(s.id, s.name, tab); }}
+                              className={`text-[10px] px-2 py-0.5 rounded-lg font-bold border transition ${tab === "추가1" ? "bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100" : tab === "추가2" ? "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100" : "bg-sky-50 text-sky-600 border-sky-200 hover:bg-sky-100"}`}>
+                              {tab}
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                      <td colSpan={colWidths.length - 1} className="border-b border-indigo-100 bg-indigo-50/30" />
+                    </tr>
+                  )}
+                </React.Fragment>);
               })}
             </tbody>
           </table>
@@ -1746,8 +2120,85 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
   );
 }
 
+// ── 출결보고 모달 ─────────────────────────────────────────────────────────
+function AttendanceReportModal({ date, lessons, attendance, students, profiles, onClose }) {
+  // 해당 날짜의 모든 수업에서 결석 학생 추출 (중복 제거)
+  const absentMap = {}; // studentId -> { student, lessonKey, absenceReason, absenceResponse }
+  lessons.forEach(lesson => {
+    const rec = attendance[lesson._key] || {};
+    (lesson.studentIds || []).forEach(sid => {
+      const sRec = rec[sid] || {};
+      const tags = sRec.tags || [];
+      if (tags.includes("결석") || tags.includes("무단결석")) {
+        if (!absentMap[sid]) {
+          absentMap[sid] = { student: students.find(s => s.id === sid), lessonKey: lesson._key, sRec };
+        }
+      }
+    });
+  });
+  const absentList = Object.values(absentMap);
+
+  const saveResponse = async (lessonKey, studentId, val) => {
+    if (val.trim()) await db.ref(`lessonAttendance/${lessonKey}/${studentId}/absenceResponse`).set(val.trim());
+    else await db.ref(`lessonAttendance/${lessonKey}/${studentId}/absenceResponse`).remove();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col"
+        onClick={e => e.stopPropagation()}>
+        <div className="p-5 pb-3 border-b shrink-0 flex items-center justify-between">
+          <div>
+            <h3 className="font-bold text-base">출결보고</h3>
+            <div className="text-sm text-slate-500 mt-0.5">{date} · 결석 {absentList.length}명</div>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          {absentList.length === 0 ? (
+            <div className="text-center py-10 text-slate-400 text-sm">결석한 학생이 없습니다</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200">
+                  <th className="text-left py-2 px-3 text-xs font-semibold text-slate-500 w-16">학년</th>
+                  <th className="text-left py-2 px-3 text-xs font-semibold text-slate-500 w-24">이름</th>
+                  <th className="text-left py-2 px-3 text-xs font-semibold text-slate-500 w-20">담당T</th>
+                  <th className="text-left py-2 px-3 text-xs font-semibold text-slate-500">결석사유</th>
+                  <th className="text-left py-2 px-3 text-xs font-semibold text-slate-500">대응</th>
+                </tr>
+              </thead>
+              <tbody>
+                {absentList.map(({ student, lessonKey, sRec }) => {
+                  const profile = profiles[student?.id] || {};
+                  return (
+                    <tr key={student?.id} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="py-2 px-3 text-slate-700">{student?.className || "-"}</td>
+                      <td className="py-2 px-3 font-medium text-slate-900">{student?.name || "-"}</td>
+                      <td className="py-2 px-3 text-slate-500">{profile.teacher || "-"}</td>
+                      <td className="py-2 px-3 text-slate-600">{sRec.absenceReason || <span className="text-slate-300">-</span>}</td>
+                      <td className="py-2 px-3">
+                        <input
+                          defaultValue={sRec.absenceResponse || ""}
+                          onBlur={e => saveResponse(lessonKey, student?.id, e.target.value)}
+                          placeholder="대응 내용..."
+                          className="w-full text-xs outline-none bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 placeholder-slate-300 focus:ring-2 focus:ring-blue-300"
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── 달력 뷰 ──────────────────────────────────────────────────────────────
-function LessonCalendar({ lessons, today, focusDateOverride, focusTrigger, onDayClick, onLessonClick, onAddLesson, onPasteLesson, onDeleteLesson }) {
+function LessonCalendar({ lessons, today, focusDateOverride, focusTrigger, onDayClick, onLessonClick, onAddLesson, onPasteLesson, onDeleteLesson, onAttendanceReport }) {
   const todayDate = new Date(today);
   const [year, setYear] = React.useState(todayDate.getFullYear());
   const [month, setMonth] = React.useState(todayDate.getMonth());
@@ -2011,6 +2462,13 @@ function LessonCalendar({ lessons, today, focusDateOverride, focusTrigger, onDay
                     <div className="text-[10px] text-slate-300 text-center mt-4">+</div>
                   )}
                 </div>
+                {dayLessons.length > 0 && current && onAttendanceReport && (
+                  <button
+                    onClick={e => { e.stopPropagation(); onAttendanceReport(dateStr); }}
+                    className="mt-1 w-full text-[9px] text-slate-400 hover:text-red-500 hover:bg-red-50 rounded px-1 py-0.5 transition text-center border border-transparent hover:border-red-200">
+                    출결보고
+                  </button>
+                )}
               </div>
             );
           })}
@@ -2025,8 +2483,10 @@ function LessonManager({ students, materials = [], isViewer = false, onViewStude
   const today = todayString();
   const [lessons, setLessons] = React.useState([]);
   const [attendance, setAttendance] = React.useState({});
+  const [profiles, setProfiles] = React.useState({});
   const [selectedLessonKey, setSelectedLessonKey] = React.useState(null);
   const [addModal, setAddModal] = React.useState(null);
+  const [attendanceReportDate, setAttendanceReportDate] = React.useState(null);
   const [calendarFocusDate, setCalendarFocusDate] = React.useState(null);
   const [calendarFocusTrigger, setCalendarFocusTrigger] = React.useState(0);
 
@@ -2046,7 +2506,9 @@ function LessonManager({ students, materials = [], isViewer = false, onViewStude
     });
     const aRef = db.ref("lessonAttendance");
     aRef.on("value", snap => setAttendance(snap.val() || {}));
-    return () => { lRef.off(); aRef.off(); };
+    const pRef = db.ref("studentProfiles");
+    pRef.on("value", snap => setProfiles(snap.val() || {}));
+    return () => { lRef.off(); aRef.off(); pRef.off(); };
   }, []);
 
   const currentLesson = selectedLessonKey ? lessons.find(l => l._key === selectedLessonKey) ?? null : null;
@@ -2111,6 +2573,7 @@ function LessonManager({ students, materials = [], isViewer = false, onViewStude
         onAddLesson={(date) => setAddModal({ date })}
         onPasteLesson={handlePasteLesson}
         onDeleteLesson={handleDeleteLesson}
+        onAttendanceReport={(date) => setAttendanceReportDate(date)}
       />
       {addModal && (
         <LessonModal
@@ -2118,6 +2581,16 @@ function LessonManager({ students, materials = [], isViewer = false, onViewStude
           students={students}
           onClose={closeModal}
           onSave={handleSaveLesson}
+        />
+      )}
+      {attendanceReportDate && (
+        <AttendanceReportModal
+          date={attendanceReportDate}
+          lessons={lessons.filter(l => l.date === attendanceReportDate)}
+          attendance={attendance}
+          students={students}
+          profiles={profiles}
+          onClose={() => setAttendanceReportDate(null)}
         />
       )}
     </>

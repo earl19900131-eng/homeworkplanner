@@ -391,6 +391,13 @@ function StudentManager({ students, homeworks }) {
     catch(e) { alert("저장 실패: " + e.message); }
   };
 
+  const TEACHERS = ["임효재T", "곽명용T"];
+
+  const updateTeacher = async (studentId, teacher) => {
+    try { await db.ref(`studentProfiles/${studentId}/teacher`).set(teacher || null); }
+    catch(e) { alert("저장 실패: " + e.message); }
+  };
+
   const updateAdvanceAssessment = async (studentId, assessmentId) => {
     try { await db.ref(`studentProfiles/${studentId}/advanceAssessment`).set(assessmentId || null); }
     catch(e) { alert("저장 실패: " + e.message); }
@@ -401,10 +408,12 @@ function StudentManager({ students, homeworks }) {
 
   const [filterClass, setFilterClass] = useState("");
   const [filterSchool, setFilterSchool] = useState("");
+  const [filterTeacher, setFilterTeacher] = useState("");
 
   const sortedStudents = [...students]
     .filter(s => !filterClass || s.className === filterClass)
     .filter(s => !filterSchool || (profiles[s.id]?.school || "") === filterSchool)
+    .filter(s => !filterTeacher || (profiles[s.id]?.teacher || "") === filterTeacher)
     .sort((a, b) => a.className.localeCompare(b.className) || a.name.localeCompare(b.name));
 
   const handleTableKeyDown = (e) => {
@@ -658,13 +667,15 @@ function StudentManager({ students, homeworks }) {
   return (
     <div className="space-y-6">
       {/* 하위 탭 */}
-      <div className="flex gap-1 bg-slate-100 rounded-2xl p-1">
+      <div className="flex justify-center">
+      <div className="inline-flex gap-1 bg-slate-100 rounded-2xl p-1">
         {[["students","👤 학생목록"],["grades","📊 성적관리"],["xp","⭐ 경험치관리"]].map(([t,l])=>(
           <button key={t} type="button" onClick={()=>setSubTab(t)}
-            className={`flex-1 py-2 text-sm font-medium rounded-xl transition ${subTab===t?"bg-white shadow-sm":"text-slate-500 hover:text-slate-700"}`}>
+            className={`py-2 px-8 text-sm font-medium rounded-xl transition ${subTab===t?"bg-white shadow-sm":"text-slate-500 hover:text-slate-700"}`}>
             {l}
           </button>
         ))}
+      </div>
       </div>
 
       {subTab === "xp" && <XpTab/>}
@@ -776,8 +787,13 @@ function StudentManager({ students, homeworks }) {
               <option value="">전체 학교</option>
               {schools.map(sc=><option key={sc} value={sc}>{sc}</option>)}
             </select>
-            {(filterClass || filterSchool) && (
-              <button onClick={()=>{ setFilterClass(""); setFilterSchool(""); }}
+            <select value={filterTeacher} onChange={e=>setFilterTeacher(e.target.value)}
+              className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white outline-none focus:ring-1 focus:ring-blue-300">
+              <option value="">전체 담당T</option>
+              {TEACHERS.map(t=><option key={t} value={t}>{t}</option>)}
+            </select>
+            {(filterClass || filterSchool || filterTeacher) && (
+              <button onClick={()=>{ setFilterClass(""); setFilterSchool(""); setFilterTeacher(""); }}
                 className="text-xs text-slate-400 hover:text-slate-700 px-2 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50">
                 초기화
               </button>
@@ -800,6 +816,7 @@ function StudentManager({ students, homeworks }) {
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">숙제</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-indigo-500">문제계수</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-indigo-500">강의계수</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">담당T</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">현행평가</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">추가평가</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">상태</th>
@@ -877,6 +894,13 @@ function StudentManager({ students, homeworks }) {
                             <EditCell field="lectureCoeff" value={profile?.lectureCoeff ?? ""} inputCls="w-14">
                               <span className="font-mono">{profile?.lectureCoeff != null ? Number(profile.lectureCoeff).toFixed(1) : <span className="text-slate-400">1.0</span>}</span>
                             </EditCell>
+                          </td>
+                          <td className="px-3 py-2">
+                            <select value={profile?.teacher || ""} onChange={e=>updateTeacher(s.id,e.target.value)}
+                              className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-1 focus:ring-blue-300">
+                              <option value="">-</option>
+                              {TEACHERS.map(t=><option key={t} value={t}>{t}</option>)}
+                            </select>
                           </td>
                           <td className="px-3 py-2">
                             <select value={profile?.currentAssessment || ""} onChange={e=>updateCurrentAssessment(s.id,e.target.value)}

@@ -1,8 +1,10 @@
 // ── 날짜 선택 달력 ────────────────────────────────────────────────────────────
-function DatePicker({ startDate, dueDate, includeWeekend, selectedDates, onChange }) {
+function DatePicker({ startDate, dueDate, includeWeekend, selectedDates, onChange, rangeOverride }) {
   const months = useMemo(() => {
-    if (!startDate || !dueDate) return [];
-    const s = new Date(startDate), e = new Date(dueDate);
+    const s0 = rangeOverride && rangeOverride.length ? rangeOverride[0] : startDate;
+    const e0 = rangeOverride && rangeOverride.length ? rangeOverride[rangeOverride.length-1] : dueDate;
+    if (!s0 || !e0) return [];
+    const s = new Date(s0), e = new Date(e0);
     if (isNaN(s.getTime()) || isNaN(e.getTime()) || s > e) return [];
     const result = [];
     const cur = new Date(s.getFullYear(), s.getMonth(), 1);
@@ -12,11 +14,11 @@ function DatePicker({ startDate, dueDate, includeWeekend, selectedDates, onChang
       cur.setMonth(cur.getMonth() + 1);
     }
     return result;
-  }, [startDate, dueDate]);
+  }, [startDate, dueDate, rangeOverride]);
 
   if (months.length === 0) return null;
 
-  const rangeSet = new Set(enumerateDates(startDate, dueDate, includeWeekend));
+  const rangeSet = rangeOverride ? new Set(rangeOverride) : new Set(enumerateDates(startDate, dueDate, includeWeekend));
   const selectedSet = new Set(selectedDates || [...rangeSet]);
 
   const toggle = (date) => {
@@ -35,7 +37,7 @@ function DatePicker({ startDate, dueDate, includeWeekend, selectedDates, onChang
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-slate-700">날짜 선택 <span className="text-slate-400 font-normal">(클릭으로 빼거나 추가)</span></span>
+        <span className="text-sm font-medium text-slate-700">{rangeOverride ? <>못하는 날 선택 <span className="text-slate-400 font-normal">(클릭으로 제외/복원)</span></> : <>날짜 선택 <span className="text-slate-400 font-normal">(클릭으로 빼거나 추가)</span></>}</span>
         <div className="flex gap-2 text-xs">
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-slate-900 inline-block"/>포함</span>
           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-slate-200 inline-block"/>제외</span>

@@ -247,6 +247,76 @@ function ParentNoticesSection({ studentId }) {
   );
 }
 
+// ── 밀린 학생 모달 ────────────────────────────────────────────────────────────
+function OverdueModal({ teacherStats, overdueGradeFilter, setOverdueGradeFilter, onClose }) {
+  const [msgSending, setMsgSending] = React.useState(false);
+  const [msgDone, setMsgDone] = React.useState(false);
+  const GRADES = ["중1","중2","중3","고1","고2","고3"];
+  const overdueList = teacherStats.filter(s => s.overdueChunks >= 1);
+  const filtered = overdueGradeFilter === "all" ? overdueList : overdueList.filter(s => s.className === overdueGradeFilter);
+
+  const sendOverdueMsg = async () => {
+    if (!filtered.length) return;
+    setMsgSending(true);
+    const studentIds = filtered.map(s => ({ id: s.id, name: s.name, overdueCount: s.overdueHyun + s.overdueSum }));
+    try {
+      const res = await fetch("https://us-central1-homeworkplanner-e90a3.cloudfunctions.net/sendOverdueAlert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentIds }),
+      });
+      const data = await res.json();
+      console.log("알림 발송:", data);
+    } catch(e) { console.error("알림 발송 실패", e); }
+    setMsgSending(false); setMsgDone(true);
+    setTimeout(() => setMsgDone(false), 2500);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 space-y-4 flex flex-col"
+        style={{resize:"vertical", overflow:"hidden", minHeight:"260px", maxHeight:"90vh"}}
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between shrink-0">
+          <h2 className="text-lg font-bold">⚠️ 밀린 학생 목록</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
+        </div>
+        <div className="flex gap-2 flex-wrap shrink-0">
+          <button onClick={() => setOverdueGradeFilter("all")} className={`px-3 py-1 rounded-xl text-sm font-medium border transition ${overdueGradeFilter==="all"?"bg-slate-900 text-white border-slate-900":"bg-white text-slate-600 border-slate-200 hover:border-slate-400"}`}>전체</button>
+          {GRADES.map(g => (
+            <button key={g} onClick={() => setOverdueGradeFilter(g)} className={`px-3 py-1 rounded-xl text-sm font-medium border transition ${overdueGradeFilter===g?"bg-slate-900 text-white border-slate-900":"bg-white text-slate-600 border-slate-200 hover:border-slate-400"}`}>{g}</button>
+          ))}
+        </div>
+        {filtered.length === 0
+          ? <div className="text-sm text-slate-400 text-center py-6 shrink-0">해당 학년에 밀린 학생이 없습니다.</div>
+          : <div className="space-y-2 overflow-y-auto flex-1">
+              {filtered.map(s => (
+                <div key={s.id} className="flex items-center justify-between rounded-xl border bg-slate-50 px-4 py-3">
+                  <div>
+                    <span className="font-semibold text-sm">{s.name}</span>
+                    <span className="ml-2 text-xs text-slate-400 bg-slate-200 rounded px-1.5 py-0.5">{s.className}</span>
+                  </div>
+                  <span className="text-sm text-red-600 font-medium">
+                    {s.overdueHyun>0&&s.overdueSum>0 ? `현 ${s.overdueHyun}개 / 추 ${s.overdueSum}개 밀림`
+                      : s.overdueHyun>0 ? `현행 ${s.overdueHyun}개 밀림`
+                      : `추가 ${s.overdueSum}개 밀림`}
+                  </span>
+                </div>
+              ))}
+            </div>
+        }
+        {filtered.length > 0 && (
+          <button onClick={sendOverdueMsg} disabled={msgSending || msgDone}
+            className="w-full py-2.5 rounded-xl text-sm font-bold text-white shrink-0 transition"
+            style={{background: msgDone ? "#22c55e" : "#dc2626", opacity: msgSending ? 0.6 : 1}}>
+            {msgSending ? "발송 중..." : msgDone ? `✓ ${filtered.length}명 발송 완료` : `📢 밀린 학생 ${filtered.length}명에게 알림 발송`}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── 선생님 학부모 알림 발송 탭 ────────────────────────────────────────────────
 function TeacherNoticesTab({ students }) {
   const [tab, setTab] = React.useState("broadcast");
@@ -257,6 +327,7 @@ function TeacherNoticesTab({ students }) {
   const [sentOk, setSentOk] = React.useState(false);
   const [broadcasts, setBroadcasts] = React.useState([]);
   const [personal, setPersonal] = React.useState([]);
+  const [logs, setLogs] = React.useState([]);
 
   React.useEffect(() => {
     const ref = db.ref("parentBroadcast");
@@ -276,6 +347,16 @@ function TeacherNoticesTab({ students }) {
     });
     return () => ref.off();
   }, [selStudentId]);
+
+  React.useEffect(() => {
+    if (tab !== "logs") return;
+    const ref = db.ref("notificationLogs");
+    ref.on("value", snap => {
+      const data = snap.val() || {};
+      setLogs(Object.entries(data).map(([k,v])=>({...v,id:k})).sort((a,b)=>b.sentAt.localeCompare(a.sentAt)));
+    });
+    return () => ref.off();
+  }, [tab]);
 
   const DOW = ["일","월","화","수","목","금","토"];
   const fmtDate = (iso) => { if (!iso) return ""; const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")} (${DOW[d.getDay()]}) ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`; };
@@ -302,20 +383,24 @@ function TeacherNoticesTab({ students }) {
   };
 
   const inp = "w-full border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-300";
+  const TYPE_LABEL = { auto_daily:"자동(미완료)", manual_overdue:"수동(밀림)", report:"보고서" };
+  const TYPE_COLOR = { auto_daily:"text-amber-600 bg-amber-50", manual_overdue:"text-red-600 bg-red-50", report:"text-blue-600 bg-blue-50" };
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2 bg-white rounded-2xl p-1" style={{boxShadow:"0px 0px 0px 1px rgba(74,107,214,0.08), 0px 2px 8px rgba(74,107,214,0.06)"}}>
-        {[["broadcast","전체 알림"],["personal","개인 알림"]].map(([k,l])=>(
+      <div className="flex justify-center">
+      <div className="inline-flex gap-2 bg-white rounded-2xl p-1" style={{boxShadow:"0px 0px 0px 1px rgba(74,107,214,0.08), 0px 2px 8px rgba(74,107,214,0.06)"}}>
+        {[["broadcast","전체 알림"],["personal","개인 알림"],["logs","발송 로그"]].map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)}
-            className={`flex-1 py-2 text-sm font-bold rounded-xl transition ${tab===k?"text-white":"text-slate-500"}`}
+            className={`py-2 px-6 text-sm font-bold rounded-xl transition ${tab===k?"text-white":"text-slate-500"}`}
             style={tab===k?{background:"#1a2340"}:{}}>
             {l}
           </button>
         ))}
       </div>
+      </div>
 
-      <Card className="p-4 space-y-3">
+      {tab !== "logs" && <Card className="p-4 space-y-3">
         <h3 className="font-bold text-sm">새 {tab==="broadcast"?"전체":"개인"} 알림 발송</h3>
         {tab==="personal" && (
           <select value={selStudentId} onChange={e=>setSelStudentId(e.target.value)} className={inp}>
@@ -330,9 +415,9 @@ function TeacherNoticesTab({ students }) {
           style={{background: sentOk?"#22c55e":"#1a2340", opacity: (sending||!title.trim()||!body.trim())?0.5:1}}>
           {sending?"발송 중...":sentOk?"발송 완료!":"발송"}
         </button>
-      </Card>
+      </Card>}
 
-      <Card className="p-4 space-y-3">
+      {tab !== "logs" && <Card className="p-4 space-y-3">
         <h3 className="font-bold text-sm text-slate-500">발송 내역</h3>
         {tab==="broadcast" && (
           broadcasts.length===0
@@ -362,7 +447,47 @@ function TeacherNoticesTab({ students }) {
                 </div>
               ))
         )}
-      </Card>
+      </Card>}
+
+      {tab==="logs" && <Card className="p-4 space-y-3">
+        <h3 className="font-bold text-sm text-slate-500">알림 발송 로그 ({logs.length}건)</h3>
+        {logs.length===0
+          ? <div className="text-xs text-slate-400 text-center py-6">로그 없음</div>
+          : logs.map(log=>(
+            <div key={log.id} className="border-b border-slate-100 pb-4 last:border-0 last:pb-0 space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${TYPE_COLOR[log.type]||"text-slate-600 bg-slate-100"}`}>{TYPE_LABEL[log.type]||log.type}</span>
+                <span className="text-sm font-medium text-slate-800">{log.title}</span>
+              </div>
+              <div className="text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-2">
+                <span className="font-bold text-slate-500">메시지:</span> {log.body}
+              </div>
+              <div className="text-xs text-slate-400">{fmtDate(log.sentAt)}</div>
+              {(() => {
+                const succList = log.successNames ? log.successNames.split(", ").filter(Boolean) : [];
+                const failList = log.failedNames ? log.failedNames.split(", ").filter(Boolean) : [];
+                return (<>
+                  {succList.length > 0 && (
+                    <div className="text-xs bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2 text-emerald-700">
+                      <div className="font-bold mb-0.5">✓ 수신 성공 ({succList.length}명)</div>
+                      <div>{succList.join(", ")}</div>
+                    </div>
+                  )}
+                  {failList.length > 0 && (
+                    <div className="text-xs bg-red-50 border border-red-100 rounded-lg px-3 py-2 text-red-600">
+                      <div className="font-bold mb-0.5">✗ 수신 실패 ({failList.length}명)</div>
+                      <div>{failList.join(", ")}</div>
+                    </div>
+                  )}
+                  {succList.length === 0 && failList.length === 0 && log.sentCount === 0 && (
+                    <div className="text-xs text-slate-400">발송 대상 없음</div>
+                  )}
+                </>);
+              })()}
+            </div>
+          ))
+        }
+      </Card>}
     </div>
   );
 }
@@ -570,7 +695,7 @@ function ParentAttendanceCalendar({ studentId }) {
 }
 
 // ── 완료 체크 오답 입력 모달 ────────────────────────────────────────────────
-function CompletionModal({ startProblem, endProblem, studentId, materialId, onClose, onConfirm }) {
+function CompletionModal({ startProblem, endProblem, problemNums, studentId, materialId, onClose, onConfirm }) {
   const [statuses, setStatuses] = React.useState({});
   const [loading, setLoading] = React.useState(true);
 
@@ -581,6 +706,14 @@ function CompletionModal({ startProblem, endProblem, studentId, materialId, onCl
       setLoading(false);
     });
   }, [studentId, materialId]);
+
+  // problemNums가 있으면 그것만, 없으면 startProblem~endProblem 순차
+  const problems = React.useMemo(() => {
+    if (problemNums && problemNums.length > 0) return problemNums;
+    const arr = [];
+    for (let p = startProblem; p <= endProblem; p++) arr.push(p);
+    return arr;
+  }, [problemNums, startProblem, endProblem]);
 
   const CYCLE = [null, "correct", "wrong", "unknown"];
   const STYLE = {
@@ -597,19 +730,17 @@ function CompletionModal({ startProblem, endProblem, studentId, materialId, onCl
   };
 
   const handleConfirm = async () => {
-    // problemStatus 저장
     const updates = {};
-    for (let p = startProblem; p <= endProblem; p++) {
+    let checkedCount = 0;
+    for (const p of problems) {
       const s = statuses[p] || null;
-      if (s) updates[`problemStatus/${studentId}/${materialId}/${p}`] = s;
-      else updates[`problemStatus/${studentId}/${materialId}/${p}`] = null;
+      updates[`problemStatus/${studentId}/${materialId}/${p}`] = s;
+      if (s) checkedCount++;
     }
     await db.ref().update(updates);
-    onConfirm();
+    onConfirm(checkedCount, problems.length);
   };
 
-  const problems = [];
-  for (let p = startProblem; p <= endProblem; p++) problems.push(p);
   const COLS = 10;
   const rows = [];
   for (let r = 0; r < Math.ceil(problems.length / COLS); r++) {
@@ -1032,11 +1163,19 @@ function App() {
     return count;
   },[studentHW,today]);
 
+  const applyAutoHwOffset = (rawChunks, autoHwData) => {
+    const unc = autoHwData?.uncheckedProblems;
+    if (unc && unc.length > 0) {
+      return rawChunks.map(c => ({ ...c, startProblem: unc[c.startProblem-1] ?? c.startProblem, endProblem: unc[c.endProblem-1] ?? c.endProblem }));
+    }
+    const offset = autoHwData && autoHwData.startProblem > 1 ? autoHwData.startProblem - 1 : 0;
+    return offset > 0 ? rawChunks.map(c => ({ ...c, startProblem: c.startProblem + offset, endProblem: c.endProblem + offset })) : rawChunks;
+  };
+
   const previewChunks = useMemo(() => {
     if (!form.totalAmount || !form.startDate || !form.dueDate) return [];
     const raw = splitHomework({...form, customDates: form.selectedDates});
-    const offset = autoHwData && autoHwData.startProblem > 1 ? autoHwData.startProblem - 1 : 0;
-    return offset > 0 ? raw.map(c => ({ ...c, startProblem: c.startProblem + offset, endProblem: c.endProblem + offset })) : raw;
+    return applyAutoHwOffset(raw, autoHwData);
   }, [form, autoHwData]);
 
   const handleCreate = async () => {
@@ -1045,10 +1184,8 @@ function App() {
     if (!form.totalAmount||!form.startDate||!form.dueDate) { setFormError("총 문제 수, 시작일, 마감일을 모두 입력해 주세요."); return; }
     const rawChunks = splitHomework({...form, customDates: form.selectedDates});
     if (!rawChunks.length) { setFormError("기간이나 최대 문제 수를 조정해 주세요."); return; }
-    // 자동 숙제인 경우 문제 번호 오프셋 적용
-    const offset = autoHwData && autoHwData.startProblem > 1 ? autoHwData.startProblem - 1 : 0;
-    const chunks = offset > 0 ? rawChunks.map(c => ({ ...c, startProblem: c.startProblem + offset, endProblem: c.endProblem + offset })) : rawChunks;
-    const autoExtra = autoHwData?.materialNodeId ? { isAuto: true, materialNodeId: autoHwData.materialNodeId, materialId: autoHwData.materialId } : {};
+    const chunks = applyAutoHwOffset(rawChunks, autoHwData);
+    const autoExtra = autoHwData?.materialNodeId ? { isAuto: true, materialNodeId: autoHwData.materialNodeId, materialId: autoHwData.materialId, uncheckedProblems: autoHwData.uncheckedProblems || null } : {};
     const id = Date.now();
     setSaving(true);
     try {
@@ -1111,11 +1248,28 @@ function App() {
   const redistribute = async (hwKey) => {
     const hw=homeworks.find(h=>h._key===hwKey); if(!hw) return;
     const solvedMap = {};
-    (hw.chunks||[]).forEach(c => { if (!c.done && c.completedAmount > 0) solvedMap[c.date] = c.completedAmount; });
-    const updated=redistributeHomework(hw,today,solvedMap);
     setSaving(true);
-    try { await db.ref(`homeworks/${hwKey}/chunks`).set(updated.chunks); }
-    catch(e) { alert("저장 실패: "+e.message); }
+    try {
+      if (hw.materialId && hw.uncheckedProblems && hw.uncheckedProblems.length > 0 && currentStudent) {
+        // 원래 숙제의 미체크 문제 목록에서 아직 안 푼 것만 추출
+        const snap = await db.ref(`problemStatus/${currentStudent.id}/${hw.materialId}`).once("value");
+        const statusData = snap.val() || {};
+        const stillUnchecked = hw.uncheckedProblems.filter(p => !statusData[p]);
+        if (!stillUnchecked.length) { setSaving(false); setRedistState(null); return; }
+        const future = (hw.chunks||[]).filter(c => !c.done && c.date >= today);
+        if (!future.length) { setSaving(false); setRedistState(null); return; }
+        const redist = splitHomework({ totalAmount: stillUnchecked.length, startDate: future[0].date, dueDate: future[future.length-1].date, includeWeekend: hw.includeWeekend, dailyMax: hw.dailyMax });
+        if (!redist.length) { setSaving(false); setRedistState(null); return; }
+        const newChunks = redist.map(c => ({ ...c, startProblem: stillUnchecked[c.startProblem-1], endProblem: stillUnchecked[c.endProblem-1] }));
+        const completed = (hw.chunks||[]).filter(c => c.done);
+        const allChunks = [...completed, ...newChunks].sort((a,b) => a.date.localeCompare(b.date));
+        await db.ref(`homeworks/${hwKey}/chunks`).set(allChunks);
+      } else {
+        (hw.chunks||[]).forEach(c => { if (!c.done && c.completedAmount > 0) solvedMap[c.date] = c.completedAmount; });
+        const updated = redistributeHomework(hw, today, solvedMap);
+        await db.ref(`homeworks/${hwKey}/chunks`).set(updated.chunks);
+      }
+    } catch(e) { alert("저장 실패: "+e.message); }
     setSaving(false);
     setRedistState(null);
   };
@@ -1269,7 +1423,7 @@ function App() {
             <div className="flex gap-2 bg-white rounded-2xl p-1" style={{boxShadow:"0px 0px 0px 1px rgba(74,107,214,0.08), 0px 2px 8px rgba(74,107,214,0.06)"}}>
               {(currentViewer
                 ? [["lessons","📓 수업일지"],["dashboard","📊 숙제 현황"],["wronganswer","❌ 오답관리"],["stats","📈 통계"]]
-                : [["lessons","📓 수업일지"],["dashboard","📊 숙제 현황"],["wronganswer","❌ 오답관리"],["stats","📈 통계"],["students","👥 학생 관리"],["curriculum","📚 커리큘럼"],["notices","📢 알림"]]
+                : [["lessons","📓 수업일지"],["dashboard","📊 숙제 현황"],["wronganswer","❌ 오답관리"],["stats","📈 통계"],["students","👥 학생 관리"],["curriculum","📚 커리큘럼"],["assessments","📝 평가"],["notices","📢 알림"]]
               ).map(([tab,label])=>(
                 <button key={tab} onClick={()=>setTeacherTab(tab)}
                   className="flex-1 py-2.5 text-sm font-medium rounded-xl transition"
@@ -1279,47 +1433,7 @@ function App() {
               ))}
             </div>
 
-            {showOverdueModal && (() => {
-              const GRADES = ["중1","중2","중3","고1","고2","고3"];
-              const overdueList = teacherStats.filter(s=>s.overdueChunks>=1);
-              const filtered = overdueGradeFilter==="all" ? overdueList : overdueList.filter(s=>s.className===overdueGradeFilter);
-              return (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={()=>setShowOverdueModal(false)}>
-                  <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6 space-y-4 flex flex-col"
-                    style={{resize:"vertical", overflow:"hidden", minHeight:"260px", maxHeight:"90vh"}}
-                    onClick={e=>e.stopPropagation()}>
-                    <div className="flex items-center justify-between shrink-0">
-                      <h2 className="text-lg font-bold">⚠️ 밀린 학생 목록</h2>
-                      <button onClick={()=>setShowOverdueModal(false)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
-                    </div>
-                    <div className="flex gap-2 flex-wrap shrink-0">
-                      <button onClick={()=>setOverdueGradeFilter("all")} className={`px-3 py-1 rounded-xl text-sm font-medium border transition ${overdueGradeFilter==="all"?"bg-slate-900 text-white border-slate-900":"bg-white text-slate-600 border-slate-200 hover:border-slate-400"}`}>전체</button>
-                      {GRADES.map(g=>(
-                        <button key={g} onClick={()=>setOverdueGradeFilter(g)} className={`px-3 py-1 rounded-xl text-sm font-medium border transition ${overdueGradeFilter===g?"bg-slate-900 text-white border-slate-900":"bg-white text-slate-600 border-slate-200 hover:border-slate-400"}`}>{g}</button>
-                      ))}
-                    </div>
-                    {filtered.length===0
-                      ? <div className="text-sm text-slate-400 text-center py-6 shrink-0">해당 학년에 밀린 학생이 없습니다.</div>
-                      : <div className="space-y-2 overflow-y-auto flex-1">
-                          {filtered.map(s=>(
-                            <div key={s.id} className="flex items-center justify-between rounded-xl border bg-slate-50 px-4 py-3">
-                              <div>
-                                <span className="font-semibold text-sm">{s.name}</span>
-                                <span className="ml-2 text-xs text-slate-400 bg-slate-200 rounded px-1.5 py-0.5">{s.className}</span>
-                              </div>
-                              <span className="text-sm text-red-600 font-medium">
-                                {s.overdueHyun>0&&s.overdueSum>0 ? `현 ${s.overdueHyun}개 / 추 ${s.overdueSum}개 밀림`
-                                  : s.overdueHyun>0 ? `현행 ${s.overdueHyun}개 밀림`
-                                  : `추가 ${s.overdueSum}개 밀림`}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                    }
-                  </div>
-                </div>
-              );
-            })()}
+            {showOverdueModal && <OverdueModal teacherStats={teacherStats} overdueGradeFilter={overdueGradeFilter} setOverdueGradeFilter={setOverdueGradeFilter} onClose={()=>setShowOverdueModal(false)}/>}
 
             {teacherTab==="dashboard" && (
               <div className="space-y-5">
@@ -1386,6 +1500,7 @@ function App() {
             {teacherTab==="stats" && <TeacherStatsTab students={students} homeworks={homeworks} today={today}/>}
             {teacherTab==="students" && !currentViewer && <StudentManager students={students} homeworks={homeworks}/>}
             {teacherTab==="curriculum" && !currentViewer && <CurriculumManager students={students} materials={materials}/>}
+            {teacherTab==="assessments" && !currentViewer && <AssessmentsTab students={students}/>}
             {teacherTab==="notices" && !currentViewer && <TeacherNoticesTab students={students}/>}
           </div>
         )}
@@ -1436,11 +1551,14 @@ function App() {
                               <p className="mt-1 text-sm text-slate-600">오늘은 {task.startProblem}번 ~ {task.endProblem}번 ({task.plannedAmount}문제)</p>
                             </div>
                             <Btn variant={task.done?"outline":"default"} onClick={()=>{
-                              if (!task.done && task.isAuto && task.materialId) {
-                                setCompletionModal({hwKey:task.hwKey,date:task.date,startProblem:task.startProblem,endProblem:task.endProblem,studentId:currentStudent.id,materialId:task.materialId});
+                              if (task.isAuto && task.materialId && !task.done) {
+                                const _hw = homeworks.find(h=>h._key===task.hwKey);
+                                const _unc = _hw?.uncheckedProblems;
+                                const _pnums = _unc ? _unc.slice(_unc.indexOf(task.startProblem), _unc.indexOf(task.endProblem)+1) : null;
+                                setCompletionModal({hwKey:task.hwKey,date:task.date,startProblem:task.startProblem,endProblem:task.endProblem,problemNums:_pnums,studentId:currentStudent.id,materialId:task.materialId});
                               } else { toggleDone(task.hwKey,task.date); }
                             }}>
-                              {task.done?"완료 취소":"완료 체크"}
+                              {task.done?"완료 취소":task.completedAmount>0?`${task.completedAmount}/${task.plannedAmount} 수정`:"완료 체크"}
                             </Btn>
                           </div>
                         </div>
@@ -1468,7 +1586,7 @@ function App() {
                           <div className="flex items-center gap-2 shrink-0">
                             <span className="text-[11px] text-slate-400">{confirmedHw.현행.date && (() => { const d=new Date(confirmedHw.현행.date); return `${confirmedHw.현행.date} (${["일","월","화","수","목","금","토"][d.getDay()]})`; })()}</span>
                             {confirmedHw.현행.isAuto
-                              ? <button type="button" onClick={() => { const hw=confirmedHw.현행; const matSubj=materials.find(m=>m.id===hw.autoMaterialId)?.subject||hw.autoSubject; setForm(f=>({...f,title:hw.text,hwType:hw.autoHwType||"현행",subject:matSubj||f.subject,totalAmount:String(hw.autoTotalAmount||"")})); setAutoHwData({startProblem:hw.autoStartProblem||1,materialNodeId:hw.autoMaterialNodeId,materialId:hw.autoMaterialId}); }} className="text-xs px-2 py-0.5 rounded-lg bg-indigo-100 text-indigo-700 font-bold hover:bg-indigo-200 shrink-0">(자동)</button>
+                              ? <button type="button" onClick={() => { const hw=confirmedHw.현행; const matSubj=materials.find(m=>m.id===hw.autoMaterialId)?.subject||hw.autoSubject; const cd=hw.checkDates&&hw.checkDates.length?hw.checkDates:null; const hasDates=!!(hw.hwDueDate||cd); const sd=hasDates?(hw.hwStartDate||cd?.[0]):null; const dd=hasDates?(hw.hwDueDate||cd?.[cd.length-1]):null; const selDates=cd||(sd&&dd?enumerateDates(sd,dd,true):null); setForm(f=>({...f,title:hw.text,hwType:hw.autoHwType||"현행",subject:matSubj||f.subject,totalAmount:String(hw.autoTotalAmount||""),startDate:sd||f.startDate,dueDate:dd||f.dueDate,selectedDates:selDates,fromTeacher:hasDates})); setAutoHwData({startProblem:hw.autoStartProblem||1,materialNodeId:hw.autoMaterialNodeId,materialId:hw.autoMaterialId,uncheckedProblems:hw.autoUncheckedProblems||null}); setActiveTab("create"); }} className="text-xs px-2 py-0.5 rounded-lg bg-indigo-100 text-indigo-700 font-bold hover:bg-indigo-200 shrink-0">(자동)</button>
                               : <button type="button" title="복사" onClick={() => { navigator.clipboard?.writeText(confirmedHw.현행.text); setCopyToast(true); setTimeout(()=>setCopyToast(false),2000); }} className="text-slate-400 hover:text-slate-600 text-base">⧉</button>
                             }
                           </div>
@@ -1480,7 +1598,7 @@ function App() {
                           <div className="flex items-center gap-2 shrink-0">
                             <span className="text-[11px] text-slate-400">{confirmedHw.추가1.date && (() => { const d=new Date(confirmedHw.추가1.date); return `${confirmedHw.추가1.date} (${["일","월","화","수","목","금","토"][d.getDay()]})`; })()}</span>
                             {confirmedHw.추가1.isAuto
-                              ? <button type="button" onClick={() => { const hw=confirmedHw.추가1; const matSubj=materials.find(m=>m.id===hw.autoMaterialId)?.subject||hw.autoSubject; setForm(f=>({...f,title:hw.text,hwType:hw.autoHwType||"추가1",subject:matSubj||f.subject,totalAmount:String(hw.autoTotalAmount||"")})); setAutoHwData({startProblem:hw.autoStartProblem||1,materialNodeId:hw.autoMaterialNodeId,materialId:hw.autoMaterialId}); }} className="text-xs px-2 py-0.5 rounded-lg bg-indigo-100 text-indigo-700 font-bold hover:bg-indigo-200 shrink-0">(자동)</button>
+                              ? <button type="button" onClick={() => { const hw=confirmedHw.추가1; const matSubj=materials.find(m=>m.id===hw.autoMaterialId)?.subject||hw.autoSubject; const cd=hw.checkDates&&hw.checkDates.length?hw.checkDates:null; const hasDates=!!(hw.hwDueDate||cd); const sd=hasDates?(hw.hwStartDate||cd?.[0]):null; const dd=hasDates?(hw.hwDueDate||cd?.[cd.length-1]):null; const selDates=cd||(sd&&dd?enumerateDates(sd,dd,true):null); setForm(f=>({...f,title:hw.text,hwType:hw.autoHwType||"추가1",subject:matSubj||f.subject,totalAmount:String(hw.autoTotalAmount||""),startDate:sd||f.startDate,dueDate:dd||f.dueDate,selectedDates:selDates,fromTeacher:hasDates})); setAutoHwData({startProblem:hw.autoStartProblem||1,materialNodeId:hw.autoMaterialNodeId,materialId:hw.autoMaterialId,uncheckedProblems:hw.autoUncheckedProblems||null}); setActiveTab("create"); }} className="text-xs px-2 py-0.5 rounded-lg bg-indigo-100 text-indigo-700 font-bold hover:bg-indigo-200 shrink-0">(자동)</button>
                               : <button type="button" title="복사" onClick={() => { navigator.clipboard?.writeText(confirmedHw.추가1.text); setCopyToast(true); setTimeout(()=>setCopyToast(false),2000); }} className="text-slate-400 hover:text-slate-600 text-base">⧉</button>
                             }
                           </div>
@@ -1492,7 +1610,7 @@ function App() {
                           <div className="flex items-center gap-2 shrink-0">
                             <span className="text-[11px] text-slate-400">{confirmedHw.추가2.date && (() => { const d=new Date(confirmedHw.추가2.date); return `${confirmedHw.추가2.date} (${["일","월","화","수","목","금","토"][d.getDay()]})`; })()}</span>
                             {confirmedHw.추가2.isAuto
-                              ? <button type="button" onClick={() => { const hw=confirmedHw.추가2; const matSubj=materials.find(m=>m.id===hw.autoMaterialId)?.subject||hw.autoSubject; setForm(f=>({...f,title:hw.text,hwType:hw.autoHwType||"추가2",subject:matSubj||f.subject,totalAmount:String(hw.autoTotalAmount||"")})); setAutoHwData({startProblem:hw.autoStartProblem||1,materialNodeId:hw.autoMaterialNodeId,materialId:hw.autoMaterialId}); }} className="text-xs px-2 py-0.5 rounded-lg bg-indigo-100 text-indigo-700 font-bold hover:bg-indigo-200 shrink-0">(자동)</button>
+                              ? <button type="button" onClick={() => { const hw=confirmedHw.추가2; const matSubj=materials.find(m=>m.id===hw.autoMaterialId)?.subject||hw.autoSubject; const cd=hw.checkDates&&hw.checkDates.length?hw.checkDates:null; const hasDates=!!(hw.hwDueDate||cd); const sd=hasDates?(hw.hwStartDate||cd?.[0]):null; const dd=hasDates?(hw.hwDueDate||cd?.[cd.length-1]):null; const selDates=cd||(sd&&dd?enumerateDates(sd,dd,true):null); setForm(f=>({...f,title:hw.text,hwType:hw.autoHwType||"추가2",subject:matSubj||f.subject,totalAmount:String(hw.autoTotalAmount||""),startDate:sd||f.startDate,dueDate:dd||f.dueDate,selectedDates:selDates,fromTeacher:hasDates})); setAutoHwData({startProblem:hw.autoStartProblem||1,materialNodeId:hw.autoMaterialNodeId,materialId:hw.autoMaterialId,uncheckedProblems:hw.autoUncheckedProblems||null}); setActiveTab("create"); }} className="text-xs px-2 py-0.5 rounded-lg bg-indigo-100 text-indigo-700 font-bold hover:bg-indigo-200 shrink-0">(자동)</button>
                               : <button type="button" title="복사" onClick={() => { navigator.clipboard?.writeText(confirmedHw.추가2.text); setCopyToast(true); setTimeout(()=>setCopyToast(false),2000); }} className="text-slate-400 hover:text-slate-600 text-base">⧉</button>
                             }
                           </div>
@@ -1519,21 +1637,27 @@ function App() {
                         </select>
                       </div>
                       <div className="space-y-1.5"><Lbl>총 문제 수</Lbl><Inp type="number" value={form.totalAmount} onChange={e=>setForm({...form,totalAmount:e.target.value})} placeholder="30"/></div>
-                      <div className="space-y-1.5"><Lbl>시작일</Lbl><Inp type="date" value={form.startDate} onChange={e=>setForm({...form,startDate:e.target.value,selectedDates:null})}/></div>
-                      <div className="space-y-1.5"><Lbl>마감일</Lbl><Inp type="date" value={form.dueDate} onChange={e=>setForm({...form,dueDate:e.target.value,selectedDates:null})}/></div>
+                      {!form.fromTeacher && <div className="space-y-1.5"><Lbl>시작일</Lbl><Inp type="date" value={form.startDate} onChange={e=>setForm({...form,startDate:e.target.value,selectedDates:null})}/></div>}
+                      {!form.fromTeacher && <div className="space-y-1.5"><Lbl>마감일</Lbl><Inp type="date" value={form.dueDate} onChange={e=>setForm({...form,dueDate:e.target.value,selectedDates:null})}/></div>}
                       <div className="space-y-1.5"><Lbl>하루 최대 문제 수</Lbl><Inp type="number" value={form.dailyMax} onChange={e=>setForm({...form,dailyMax:e.target.value})} placeholder="선택 입력"/></div>
-                      <div className="flex items-center gap-3 rounded-2xl border bg-slate-50 p-3">
+                      {!form.fromTeacher && <div className="flex items-center gap-3 rounded-2xl border bg-slate-50 p-3">
                         <input type="checkbox" id="weekend" checked={form.includeWeekend} onChange={e=>setForm({...form,includeWeekend:e.target.checked,selectedDates:null})} className="w-4 h-4 cursor-pointer"/>
                         <label htmlFor="weekend" className="text-sm font-medium cursor-pointer">주말 포함</label>
-                      </div>
+                      </div>}
                     </div>
-                    {form.startDate && form.dueDate && (
+                    {form.fromTeacher && form.selectedDates && form.selectedDates.length > 0 && (
+                      <div className="rounded-2xl border bg-blue-50 px-4 py-2.5 text-sm text-blue-700 mb-1">
+                        선생님이 설정한 기간입니다. 못하는 날을 클릭해 제외하세요.
+                      </div>
+                    )}
+                    {(form.fromTeacher ? (form.selectedDates && form.selectedDates.length > 0) : (form.startDate && form.dueDate)) && (
                       <DatePicker
                         startDate={form.startDate}
                         dueDate={form.dueDate}
                         includeWeekend={form.includeWeekend}
                         selectedDates={form.selectedDates}
                         onChange={(dates) => setForm(f => ({...f, selectedDates: dates}))}
+                        rangeOverride={form.fromTeacher ? form.selectedDates : undefined}
                       />
                     )}
                     {formError&&<AlertBox className="bg-red-50 text-red-700">{formError}</AlertBox>}
@@ -1600,7 +1724,7 @@ function App() {
                           </div>
                           {redistState?.hwKey === hw._key && (
                             <div className="border-t pt-3 space-y-2">
-                              <div className="text-xs text-slate-500">각 날짜를 클릭해 완료/부분완료를 표시한 뒤 재분배를 실행하세요.</div>
+                              <div className="text-xs text-slate-500">맞음/틀림/모름 체크된 문제를 제외하고 남은 문제를 미래 날짜에 재분배합니다.</div>
                               <div className="flex gap-2 justify-end">
                                 <Btn variant="outline" size="sm" onClick={()=>setRedistState(null)}>취소</Btn>
                                 <Btn size="sm" onClick={()=>redistribute(hw._key)} disabled={saving}>{saving?"처리 중...":"재분배 실행"}</Btn>
@@ -1636,12 +1760,20 @@ function App() {
                               const isInputMode = chunkInput?.hwKey===hw._key && chunkInput?.idx===cidx;
                               return(
                                 <div key={chunk.date}
-                                  onClick={()=>toggleDone(hw._key,chunk.date)}
+                                  onClick={()=>{
+                                    if (hw.isAuto && hw.materialId && !chunk.done) {
+                                      const _unc = hw.uncheckedProblems;
+                                      const _pnums = _unc ? _unc.slice(_unc.indexOf(chunk.startProblem), _unc.indexOf(chunk.endProblem)+1) : null;
+                                      setCompletionModal({hwKey:hw._key,date:chunk.date,startProblem:chunk.startProblem,endProblem:chunk.endProblem,problemNums:_pnums,studentId:currentStudent.id,materialId:hw.materialId});
+                                    } else { toggleDone(hw._key,chunk.date); }
+                                  }}
                                   className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition cursor-pointer
                                     ${isYellow||isInputMode?"bg-amber-50 text-amber-700":chunk.done?"bg-emerald-50 text-emerald-700":isOverdue?"bg-red-50 text-red-700":isToday?"bg-blue-50 text-blue-700":"bg-slate-50 text-slate-600"}`}>
                                   <span>{chunk.date}{isToday?" · 오늘":""}</span>
                                   <span className="font-medium flex items-center gap-1">
-                                    {isInputMode ? (
+                                    {isYellow && hw.isAuto ? (
+                                      <span>{chunk.completedAmount}/{chunk.plannedAmount}문제 (클릭해서 수정)</span>
+                                    ) : isInputMode ? (
                                       <>
                                         <input type="number" min="0" max={chunk.plannedAmount}
                                           value={chunkInput.val}
@@ -1703,11 +1835,25 @@ function App() {
         <CompletionModal
           startProblem={completionModal.startProblem}
           endProblem={completionModal.endProblem}
+          problemNums={completionModal.problemNums}
           studentId={completionModal.studentId}
           materialId={completionModal.materialId}
           onClose={() => setCompletionModal(null)}
-          onConfirm={async () => {
-            await toggleDone(completionModal.hwKey, completionModal.date);
+          onConfirm={async (checkedCount, totalCount) => {
+            const { hwKey, date } = completionModal;
+            const hw = homeworks.find(h => h._key === hwKey);
+            const idx = (hw?.chunks||[]).findIndex(c => c.date === date);
+            if (hw && idx !== -1) {
+              const done = checkedCount === totalCount;
+              const now = new Date();
+              const submittedAt = done ? `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}` : null;
+              await db.ref(`homeworks/${hwKey}/chunks/${idx}`).update({ done, completedAmount: checkedCount, submittedAt });
+              if (done && hw.isAuto && hw.materialNodeId) {
+                const allChunks = hw.chunks.map((c,i) => i===idx ? {...c, done:true} : c);
+                const maxEnd = allChunks.filter(c=>c.done).reduce((m,c)=>Math.max(m, c.endProblem||0), hw.chunks[idx].endProblem);
+                await db.ref(`studentProfiles/${hw.studentId}/materialProgress/${hw.materialNodeId}`).set({ currentProblem: maxEnd+1, completedAt: submittedAt }).catch(()=>{});
+              }
+            }
             setCompletionModal(null);
           }}
         />

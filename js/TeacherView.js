@@ -159,14 +159,16 @@ function TeacherStatsTab({ students, homeworks, today }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2 bg-white rounded-2xl p-1" style={{boxShadow:"0px 0px 0px 1px rgba(74,107,214,0.08), 0px 2px 8px rgba(74,107,214,0.06)"}}>
+      <div className="flex justify-center">
+      <div className="inline-flex gap-2 bg-white rounded-2xl p-1" style={{boxShadow:"0px 0px 0px 1px rgba(74,107,214,0.08), 0px 2px 8px rgba(74,107,214,0.06)"}}>
         {[["homework","숙제통계"],["attendance","출결통계"]].map(([k,l])=>(
           <button key={k} onClick={()=>setStatsTab(k)}
-            className={`flex-1 py-2 text-sm font-bold rounded-xl transition ${statsTab===k?"text-white":"text-slate-500"}`}
+            className={`py-2 px-8 text-sm font-bold rounded-xl transition ${statsTab===k?"text-white":"text-slate-500"}`}
             style={statsTab===k?{background:"#1a2340"}:{}}>
             {l}
           </button>
         ))}
+      </div>
       </div>
       {statsTab==="homework" && <HomeworkStatsSection students={students}/>}
       {statsTab==="attendance" && <AttendanceStatsSection students={students}/>}
@@ -486,7 +488,7 @@ function AttendanceStatsSection({ students }) {
 
 // ── 학년별/과목별 필터 리스트 ─────────────────────────────────────────────────
 const GRADES = ["중1","중2","중3","고1","고2","고3"];
-const SUBJECTS = ["중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"];
+const SUBJECTS = ["초5-1","초5-2","초6-1","초6-2","중1-1","중1-2","중2-1","중2-2","중3-1","중3-2","공통수학1","공통수학2","대수","미적분1","기하","미적분","확률과통계"];
 
 function ClassGroupList({ teacherStats, teacherViewId, setTeacherViewId, homeworks, gradeFilter, setGradeFilter, subjectFilter, setSubjectFilter }) {
 
