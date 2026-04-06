@@ -568,7 +568,7 @@ function StudentManager({ students, homeworks }) {
         {students.length === 0
           ? <div className="p-8 text-center text-sm text-slate-400 border border-dashed m-4 rounded-2xl">아직 등록된 학생이 없습니다.</div>
           : <div className="overflow-x-auto">
-              <table className="text-sm border-collapse w-full">
+              <table className="text-sm border-collapse min-w-max">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-100">
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 w-8">#</th>
@@ -804,7 +804,7 @@ function StudentManager({ students, homeworks }) {
         {students.length === 0
           ? <div className="p-8 text-center text-sm text-slate-400 border border-dashed m-4 rounded-2xl">아직 등록된 학생이 없습니다.</div>
           : <div className="overflow-x-auto">
-              <table className="text-sm border-collapse w-full">
+              <table className="text-sm border-collapse min-w-max">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-100">
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500 w-8">#</th>
