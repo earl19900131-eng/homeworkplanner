@@ -1097,7 +1097,15 @@ function App() {
 
   // ── 실시간 접속자 추적 ─────────────────────────────────────────────────────
   const [onlineUsers, setOnlineUsers] = React.useState([]);
+  const [showPresenceModal, setShowPresenceModal] = React.useState(false);
+  const [now, setNow] = React.useState(Date.now());
   const presenceRegisteredRef = React.useRef(false);
+
+  useEffect(() => {
+    if (!showPresenceModal) return;
+    const t = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, [showPresenceModal]);
 
   useEffect(() => {
     if (!currentUserId) { presenceRegisteredRef.current = false; return; }
@@ -1449,13 +1457,49 @@ function App() {
             </div>
             <div className="flex items-center gap-2 flex-wrap justify-end">
               {(currentTeacher || currentViewer) && (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl" style={{background:"#f0fdf4", border:"1px solid #bbf7d0"}}>
+                <button type="button" onClick={() => setShowPresenceModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl transition hover:opacity-80"
+                  style={{background:"#f0fdf4", border:"1px solid #bbf7d0"}}>
                   <span className="inline-block w-2 h-2 rounded-full bg-green-400" style={{boxShadow:"0 0 0 2px #86efac"}}></span>
                   <span className="text-xs font-medium text-green-700">
-                    {onlineUsers.length > 0
-                      ? `접속 중 ${onlineUsers.length}명: ${onlineUsers.map(u => u.name).join(", ")}`
-                      : "접속 중인 학생 없음"}
+                    {onlineUsers.length > 0 ? `접속 중 ${onlineUsers.length}명` : "접속 중인 학생 없음"}
                   </span>
+                </button>
+              )}
+              {showPresenceModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center" style={{background:"rgba(0,0,0,0.4)"}}
+                  onClick={() => setShowPresenceModal(false)}>
+                  <div className="bg-white rounded-2xl shadow-xl p-5 w-80 max-h-96 overflow-y-auto" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-base font-bold text-slate-800">실시간 접속 현황</h3>
+                      <button type="button" onClick={() => setShowPresenceModal(false)}
+                        className="text-slate-400 hover:text-slate-600 text-lg leading-none">×</button>
+                    </div>
+                    {onlineUsers.length === 0 ? (
+                      <div className="text-sm text-slate-400 text-center py-6">접속 중인 학생이 없습니다.</div>
+                    ) : (
+                      <div className="space-y-2">
+                        {onlineUsers.map((u, i) => {
+                          const loginAt = new Date(u.loginAt);
+                          const hhmm = loginAt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+                          const elapsed = Math.floor((now - u.loginAt) / 60000);
+                          const elapsedStr = elapsed < 1 ? "방금 접속" : elapsed < 60 ? `${elapsed}분째 접속 중` : `${Math.floor(elapsed/60)}시간 ${elapsed%60}분째 접속 중`;
+                          return (
+                            <div key={i} className="flex items-center justify-between rounded-xl px-3 py-2.5" style={{background:"#f0fdf4", border:"1px solid #bbf7d0"}}>
+                              <div className="flex items-center gap-2">
+                                <span className="inline-block w-2 h-2 rounded-full bg-green-400 flex-shrink-0"></span>
+                                <span className="text-sm font-semibold text-slate-800">{u.name}</span>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-xs text-slate-500">{hhmm} 접속</div>
+                                <div className="text-xs text-green-600 font-medium">{elapsedStr}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
               <span className="text-sm px-3 py-1.5 rounded-2xl" style={{color:"#4a6bd6", background:"#eef2ff"}}>📅 {today}</span>
