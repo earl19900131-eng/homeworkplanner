@@ -153,6 +153,116 @@ function StudentCalendarModal({ type, student, lessonEntries, lessons, attendanc
   );
 }
 
+// ── 인라인 달력 (통계 탭 우측) ────────────────────────────────────────────────
+function InlineStudentCalendar({ type, student, lessonEntries, lessons, attendance }) {
+  const now = new Date();
+  const [year, setYear] = React.useState(now.getFullYear());
+  const [month, setMonth] = React.useState(now.getMonth());
+
+  const dayMap = React.useMemo(() => {
+    const map = {};
+    if (type === "homework") {
+      (lessonEntries || []).forEach(({ date, status, lessonType }) => {
+        if (!date) return;
+        if (!map[date]) map[date] = [];
+        map[date].push({ status, lessonType });
+      });
+    } else {
+      (lessons || []).forEach(l => {
+        if (!(l.studentIds || []).includes(student.id)) return;
+        const tags = (attendance[l._key]?.[student.id]?.tags) || [];
+        let status = null;
+        if (tags.includes("무단결석")) status = "무단결석";
+        else if (tags.includes("결석")) status = "결석";
+        else if (tags.includes("지각")) status = "지각";
+        else if (tags.includes("출석")) status = "출석";
+        if (status) { if (!map[l.date]) map[l.date] = []; map[l.date].push({ status }); }
+      });
+    }
+    return map;
+  }, [type, lessonEntries, lessons, attendance, student]);
+
+  const cells = React.useMemo(() => {
+    const first = new Date(year, month, 1);
+    const startDow = first.getDay();
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    const result = [];
+    for (let i = 0; i < startDow; i++) result.push(null);
+    for (let d = 1; d <= lastDay; d++) {
+      const dateStr = `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+      result.push({ d, dateStr });
+    }
+    while (result.length % 7 !== 0) result.push(null);
+    return result;
+  }, [year, month]);
+
+  const hwDotColor = s => s==="이행"?"bg-emerald-400":"bg-red-400";
+  const attDotColor = s => s==="출석"?"bg-emerald-400":s==="지각"?"bg-amber-400":s==="결석"?"bg-red-400":"bg-pink-500";
+  const cellBg = (entries) => {
+    if (!entries||!entries.length) return "";
+    if (type==="homework") return entries.some(e=>e.status==="미이행")?"bg-red-50":"bg-emerald-50";
+    const s=entries[0].status;
+    return s==="출석"?"bg-emerald-50":s==="지각"?"bg-amber-50":s==="결석"?"bg-red-50":s==="무단결석"?"bg-pink-50":"";
+  };
+  const hwTypeColor = lt => lt==="추가1"?"text-violet-500":lt==="추가2"?"text-rose-500":"text-sky-500";
+  const hwTypeLabel = lt => lt==="추가1"?"추1":lt==="추가2"?"추2":"현";
+
+  const prevMonth = () => { if (month===0){setYear(y=>y-1);setMonth(11);}else setMonth(m=>m-1); };
+  const nextMonth = () => { if (month===11){setYear(y=>y+1);setMonth(0);}else setMonth(m=>m+1); };
+
+  return (
+    <div className="space-y-3 h-full flex flex-col">
+      <div className="rounded-xl px-3 py-2 text-white text-sm font-bold" style={{background:"linear-gradient(135deg,#1a2340,#2d3a6b)"}}>
+        <div>{student.name} · {student.className}</div>
+        <div className="text-xs text-blue-300 font-normal mt-0.5">{type==="homework"?"숙제 이행 달력":"출결 달력"}</div>
+      </div>
+      <div className="flex items-center justify-between">
+        <button onClick={prevMonth} className="w-7 h-7 rounded-lg border flex items-center justify-center text-slate-500 hover:bg-slate-50 text-sm">‹</button>
+        <div className="text-sm font-bold text-slate-800">{year}년 {month+1}월</div>
+        <button onClick={nextMonth} className="w-7 h-7 rounded-lg border flex items-center justify-center text-slate-500 hover:bg-slate-50 text-sm">›</button>
+      </div>
+      <div className="grid grid-cols-7 text-center">
+        {["일","월","화","수","목","금","토"].map((d,i)=>(
+          <div key={d} className={`text-[10px] font-bold py-0.5 ${i===0?"text-red-400":i===6?"text-blue-400":"text-slate-400"}`}>{d}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-0.5 flex-1">
+        {cells.map((cell,i) => {
+          if (!cell) return <div key={i}/>;
+          const entries = dayMap[cell.dateStr]||[];
+          const dow = i%7;
+          return (
+            <div key={cell.dateStr} className={`rounded-md p-0.5 min-h-[36px] flex flex-col items-center gap-0.5 ${cellBg(entries)}`}>
+              <div className={`text-[10px] font-medium ${dow===0?"text-red-400":dow===6?"text-blue-400":"text-slate-600"}`}>{cell.d}</div>
+              {type==="homework"
+                ? entries.map((e,ei)=>(
+                    <div key={ei} className="flex flex-col items-center">
+                      <div className={`w-1.5 h-1.5 rounded-full ${hwDotColor(e.status)}`}/>
+                      <span className={`text-[7px] font-bold leading-none ${hwTypeColor(e.lessonType)}`}>{hwTypeLabel(e.lessonType)}</span>
+                    </div>
+                  ))
+                : entries.map((e,ei)=>(
+                    <div key={ei} className={`w-1.5 h-1.5 rounded-full ${attDotColor(e.status)}`}/>
+                  ))
+              }
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap gap-2 pt-1 border-t">
+        {type==="homework"
+          ? [["bg-emerald-400","이행"],["bg-red-400","미이행"]].map(([cls,lbl])=>(
+              <div key={lbl} className="flex items-center gap-1"><div className={`w-2 h-2 rounded-full ${cls}`}/><span className="text-[10px] text-slate-400">{lbl}</span></div>
+            ))
+          : [["bg-emerald-400","출석"],["bg-amber-400","지각"],["bg-red-400","결석"],["bg-pink-500","무단"]].map(([cls,lbl])=>(
+              <div key={lbl} className="flex items-center gap-1"><div className={`w-2 h-2 rounded-full ${cls}`}/><span className="text-[10px] text-slate-400">{lbl}</span></div>
+            ))
+        }
+      </div>
+    </div>
+  );
+}
+
 // ── 선생님 통계 탭 ────────────────────────────────────────────────────────────
 function TeacherStatsTab({ students, homeworks, today }) {
   const [statsTab, setStatsTab] = useState("homework"); // "homework" | "attendance"
@@ -180,8 +290,8 @@ function HomeworkStatsSection({ students }) {
   const [allAttendance, setAllAttendance] = React.useState({});
   const [allLessons, setAllLessons] = React.useState([]);
   const classes = [...new Set(students.map(s=>s.className))].sort();
-  const [selectedClass, setSelectedClass] = useState("all");
-  const [calendarModal, setCalendarModal] = useState(null);
+  const [selectedClass, setSelectedClass] = useState(classes[0] || null);
+  const [selectedStudent, setSelectedStudent] = useState(null);
 
   React.useEffect(() => {
     const r1 = db.ref("lessonAttendance");
@@ -194,9 +304,10 @@ function HomeworkStatsSection({ students }) {
     return () => { r1.off("value",h1); r2.off("value",h2); };
   }, []);
 
-  const filteredStudents = selectedClass === "all" ? students : students.filter(s=>s.className===selectedClass);
+  React.useEffect(() => { if (!selectedClass && classes.length) setSelectedClass(classes[0]); }, [classes.join()]);
 
-  // 학생별: 타입별 이행/미이행 집계
+  const filteredStudents = selectedClass ? students.filter(s=>s.className===selectedClass) : students;
+
   const studentStats = useMemo(() => {
     return filteredStudents.map(s => {
       const typeMap = { 현행:{이행:0,미이행:0}, 추가1:{이행:0,미이행:0}, 추가2:{이행:0,미이행:0} };
@@ -219,7 +330,6 @@ function HomeworkStatsSection({ students }) {
     }).sort((a,b) => (b.overallRate??-1)-(a.overallRate??-1));
   }, [filteredStudents, allLessons, allAttendance]);
 
-  // 반별 집계
   const classStats = useMemo(() => classes.map(cls => {
     const group = students.filter(s=>s.className===cls);
     let done=0, total=0;
@@ -231,7 +341,7 @@ function HomeworkStatsSection({ students }) {
         else if (tags.includes("숙제미이행")) total++;
       });
     });
-    return { cls, avg: total>0?Math.round(done/total*100):0, count: group.length, total };
+    return { cls, avg: total>0?Math.round(done/total*100):null, count: group.length, total };
   }), [classes, students, allLessons, allAttendance]);
 
   const rateColor = (r) => {
@@ -240,10 +350,8 @@ function HomeworkStatsSection({ students }) {
     if (r>=50) return "bg-amber-100 text-amber-700";
     return "bg-red-100 text-red-700";
   };
-
   const typeColor = (t) => t==="추가1"?"text-violet-600":t==="추가2"?"text-rose-600":"text-sky-600";
 
-  // 달력 모달용 lessonEntries 생성
   const getLessonEntries = (studentId) => {
     const entries = [];
     allLessons.forEach(l => {
@@ -259,82 +367,70 @@ function HomeworkStatsSection({ students }) {
     return entries;
   };
 
-  return (
-    <div className="space-y-5">
-      {calendarModal && (
-        <StudentCalendarModal
-          type="homework"
-          student={calendarModal.student}
-          lessonEntries={calendarModal.entries}
-          onClose={() => setCalendarModal(null)}
-        />
-      )}
-      <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
-        {classStats.map(c => (
-          <Card key={c.cls} className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-bold">{c.cls}</div>
-                <div className="text-xs text-slate-400 mt-0.5">총 {c.total}회 판정</div>
-              </div>
-              <div className="text-2xl font-bold">{c.total>0?c.avg+"%":"-"}</div>
-            </div>
-            <div className="mt-2"><ProgressBar value={c.avg}/></div>
-          </Card>
-        ))}
-      </div>
+  const calStudent = selectedStudent ? studentStats.find(s=>s.id===selectedStudent) : null;
 
-      <div className="flex gap-2 flex-wrap">
-        <button type="button" onClick={()=>setSelectedClass("all")}
-          className={"px-3 py-1.5 rounded-xl text-sm font-medium transition border " + (selectedClass==="all"?"bg-slate-900 text-white border-slate-900":"bg-white text-slate-600 border-slate-200 hover:bg-slate-50")}>
-          전체
-        </button>
-        {classes.map(cls=>(
-          <button key={cls} type="button" onClick={()=>setSelectedClass(cls)}
-            className={"px-3 py-1.5 rounded-xl text-sm font-medium transition border " + (selectedClass===cls?"bg-slate-900 text-white border-slate-900":"bg-white text-slate-600 border-slate-200 hover:bg-slate-50")}>
-            {cls}
+  return (
+    <div className="flex gap-3" style={{minHeight:520}}>
+      {/* 좌: 반 목록 */}
+      <div className="flex flex-col gap-1.5 flex-shrink-0" style={{width:160}}>
+        {classStats.map(c => (
+          <button key={c.cls} type="button" onClick={()=>{ setSelectedClass(c.cls); setSelectedStudent(null); }}
+            className={`w-full text-left px-4 py-3 rounded-2xl border transition ${selectedClass===c.cls?"border-slate-700 text-white":"border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
+            style={selectedClass===c.cls?{background:"#1a2340"}:{}}>
+            <div className="font-bold text-sm">{c.cls}</div>
+            <div className="text-xs mt-0.5 opacity-70">{c.avg !== null ? c.avg+"%" : "기록없음"}</div>
           </button>
         ))}
       </div>
 
-      <Card className="p-5 space-y-3">
-        <div>
-          <h2 className="text-lg font-bold">학생별 숙제 이행률</h2>
-          <p className="text-xs text-slate-400 mt-0.5">수업일지 행동태그(숙제해옴/숙제미이행) 기준 · 현행/추가1/추가2 구분</p>
-        </div>
-        {studentStats.length === 0
-          ? <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-400 text-center">데이터가 없습니다.</div>
-          : <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {studentStats.map(s => (
-                <div key={s.id} className="rounded-2xl border p-3 space-y-2 cursor-pointer hover:bg-slate-50 transition"
-                  onClick={() => setCalendarModal({ student: s, entries: getLessonEntries(s.id) })}>
-                  <div className="flex items-center justify-between gap-1">
-                    <div className="text-sm font-semibold truncate">{s.name}</div>
-                    <div className={`rounded-xl px-2 py-0.5 text-xs font-bold ${rateColor(s.overallRate)}`}>
-                      {s.overallRate !== null ? s.overallRate+"%" : "-"}
+      {/* 중: 개인 통계 */}
+      <div className="flex-1 overflow-y-auto">
+        <Card className="p-4 h-full">
+          <div className="text-sm font-bold text-slate-700 mb-3">{selectedClass || "전체"} · 개인 통계</div>
+          {studentStats.length === 0
+            ? <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-400 text-center">데이터가 없습니다.</div>
+            : <div className="grid grid-cols-2 gap-2">
+                {studentStats.map(s => (
+                  <div key={s.id}
+                    className={`rounded-2xl border p-3 space-y-2 cursor-pointer transition ${selectedStudent===s.id?"border-blue-400 bg-blue-50":"hover:bg-slate-50"}`}
+                    onClick={() => setSelectedStudent(selectedStudent===s.id ? null : s.id)}>
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="text-sm font-semibold truncate">{s.name}</div>
+                      <div className={`rounded-xl px-2 py-0.5 text-xs font-bold ${rateColor(s.overallRate)}`}>
+                        {s.overallRate !== null ? s.overallRate+"%" : "-"}
+                      </div>
+                    </div>
+                    <ProgressBar value={s.overallRate??0}/>
+                    <div className="space-y-0.5">
+                      {s.types.map(t => (
+                        <div key={t.type} className="flex items-center justify-between text-xs">
+                          <span className={`font-bold ${typeColor(t.type)}`}>{t.type}</span>
+                          <span>
+                            <span className="text-emerald-600">{t.이행}</span>
+                            <span className="text-slate-300 mx-0.5">/</span>
+                            <span className="text-red-500">{t.미이행}</span>
+                            <span className={`ml-1 font-bold ${rateColor(t.rate).split(" ")[1]}`}>{t.rate!==null?t.rate+"%":"-"}</span>
+                          </span>
+                        </div>
+                      ))}
+                      {s.types.length===0 && <div className="text-xs text-slate-300">기록 없음</div>}
                     </div>
                   </div>
-                  <Badge variant="secondary" className="text-xs">{s.className}</Badge>
-                  <ProgressBar value={s.overallRate??0}/>
-                  <div className="space-y-0.5">
-                    {s.types.map(t => (
-                      <div key={t.type} className="flex items-center justify-between text-xs">
-                        <span className={`font-bold ${typeColor(t.type)}`}>{t.type}</span>
-                        <span>
-                          <span className="text-emerald-600">{t.이행}</span>
-                          <span className="text-slate-300 mx-0.5">/</span>
-                          <span className="text-red-500">{t.미이행}</span>
-                          <span className={`ml-1 font-bold ${rateColor(t.rate).split(" ")[1]}`}>{t.rate!==null?t.rate+"%":"-"}</span>
-                        </span>
-                      </div>
-                    ))}
-                    {s.types.length===0 && <div className="text-xs text-slate-300">기록 없음</div>}
-                  </div>
-                </div>
-              ))}
-            </div>
-        }
-      </Card>
+                ))}
+              </div>
+          }
+        </Card>
+      </div>
+
+      {/* 우: 달력 */}
+      <div className="flex-shrink-0" style={{width:280}}>
+        <Card className="p-4 h-full">
+          {calStudent
+            ? <InlineStudentCalendar type="homework" student={calStudent} lessonEntries={getLessonEntries(calStudent.id)}/>
+            : <div className="flex items-center justify-center h-full text-slate-300 text-sm">학생을 선택하면<br/>달력이 표시됩니다</div>
+          }
+        </Card>
+      </div>
     </div>
   );
 }
@@ -342,35 +438,31 @@ function HomeworkStatsSection({ students }) {
 function AttendanceStatsSection({ students }) {
   const [allAttendance, setAllAttendance] = React.useState({});
   const [allLessons, setAllLessons] = React.useState([]);
-  const [selectedClass, setSelectedClass] = useState("all");
-  const [calendarModal, setCalendarModal] = useState(null); // { student }
   const classes = [...new Set(students.map(s=>s.className))].sort();
+  const [selectedClass, setSelectedClass] = useState(classes[0] || null);
+  const [selectedStudent, setSelectedStudent] = useState(null);
 
   React.useEffect(() => {
-    const ref = db.ref("lessonAttendance");
-    ref.on("value", snap => setAllAttendance(snap.val() || {}));
-    return () => ref.off();
-  }, []);
-
-  React.useEffect(() => {
-    const ref = db.ref("lessons");
-    ref.on("value", snap => {
+    const r1 = db.ref("lessonAttendance");
+    const r2 = db.ref("lessons");
+    const h1 = r1.on("value", snap => setAllAttendance(snap.val() || {}));
+    const h2 = r2.on("value", snap => {
       const data = snap.val() || {};
       setAllLessons(Object.entries(data).map(([k,v])=>({...v,_key:k})));
     });
-    return () => ref.off();
+    return () => { r1.off("value",h1); r2.off("value",h2); };
   }, []);
 
-  // 학생별 출결 집계
+  React.useEffect(() => { if (!selectedClass && classes.length) setSelectedClass(classes[0]); }, [classes.join()]);
+
   const studentStats = useMemo(() => {
-    const filtered = selectedClass === "all" ? students : students.filter(s=>s.className===selectedClass);
+    const filtered = selectedClass ? students.filter(s=>s.className===selectedClass) : students;
     return filtered.map(s => {
       let 출석=0, 지각=0, 결석=0, 무단결석=0, 총수업=0;
       allLessons.forEach(l => {
         if (!(l.studentIds||[]).includes(s.id)) return;
         총수업++;
-        const rec = allAttendance[l._key]?.[s.id] || {};
-        const tags = rec.tags || [];
+        const tags = allAttendance[l._key]?.[s.id]?.tags || [];
         if (tags.includes("무단결석")) 무단결석++;
         else if (tags.includes("결석")) 결석++;
         else if (tags.includes("지각")) 지각++;
@@ -381,7 +473,6 @@ function AttendanceStatsSection({ students }) {
     }).sort((a,b) => (b.출석률??-1) - (a.출석률??-1));
   }, [students, allLessons, allAttendance, selectedClass]);
 
-  // 반별 집계
   const classStats = useMemo(() => classes.map(cls => {
     const group = students.filter(s=>s.className===cls);
     let 출석=0, 지각=0, 결석=0, 무단결석=0, 총수업=0;
@@ -389,14 +480,14 @@ function AttendanceStatsSection({ students }) {
       allLessons.forEach(l => {
         if (!(l.studentIds||[]).includes(s.id)) return;
         총수업++;
-        const tags = (allAttendance[l._key]?.[s.id]?.tags) || [];
+        const tags = allAttendance[l._key]?.[s.id]?.tags || [];
         if (tags.includes("무단결석")) 무단결석++;
         else if (tags.includes("결석")) 결석++;
         else if (tags.includes("지각")) 지각++;
         else if (tags.includes("출석")) 출석++;
       });
     });
-    const 출석률 = 총수업 > 0 ? Math.round((출석+지각) / 총수업 * 100) : 0;
+    const 출석률 = 총수업 > 0 ? Math.round((출석+지각) / 총수업 * 100) : null;
     return { cls, 출석, 지각, 결석, 무단결석, 총수업, 출석률, count: group.length };
   }), [classes, students, allLessons, allAttendance]);
 
@@ -407,81 +498,63 @@ function AttendanceStatsSection({ students }) {
     return "bg-red-100 text-red-700";
   };
 
-  return (
-    <div className="space-y-5">
-      {calendarModal && (
-        <StudentCalendarModal
-          type="attendance"
-          student={calendarModal.student}
-          lessons={allLessons}
-          attendance={allAttendance}
-          onClose={() => setCalendarModal(null)}
-        />
-      )}
-      {/* 반별 카드 */}
-      <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
-        {classStats.map(c => (
-          <Card key={c.cls} className="p-4 space-y-2">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-bold">{c.cls}</div>
-                <div className="text-xs text-slate-400 mt-0.5">총 {c.총수업}회 수업</div>
-              </div>
-              <div className="text-2xl font-bold">{c.총수업>0?c.출석률+"%":"-"}</div>
-            </div>
-            <ProgressBar value={c.출석률}/>
-            <div className="flex gap-3 text-xs">
-              <span className="text-emerald-600">출석 {c.출석}</span>
-              <span className="text-amber-600">지각 {c.지각}</span>
-              <span className="text-red-500">결석 {c.결석}</span>
-              <span className="text-pink-600">무단 {c.무단결석}</span>
-            </div>
-          </Card>
-        ))}
-      </div>
+  const calStudent = selectedStudent ? studentStats.find(s=>s.id===selectedStudent) : null;
 
-      {/* 반 필터 */}
-      <div className="flex gap-2 flex-wrap">
-        {["all",...classes].map(cls=>(
-          <button key={cls} type="button" onClick={()=>setSelectedClass(cls)}
-            className={"px-3 py-1.5 rounded-xl text-sm font-medium transition border " + (selectedClass===cls?"bg-slate-900 text-white border-slate-900":"bg-white text-slate-600 border-slate-200 hover:bg-slate-50")}>
-            {cls==="all"?"전체":cls}
+  return (
+    <div className="flex gap-3" style={{minHeight:520}}>
+      {/* 좌: 반 목록 */}
+      <div className="flex flex-col gap-1.5 flex-shrink-0" style={{width:160}}>
+        {classStats.map(c => (
+          <button key={c.cls} type="button" onClick={()=>{ setSelectedClass(c.cls); setSelectedStudent(null); }}
+            className={`w-full text-left px-4 py-3 rounded-2xl border transition ${selectedClass===c.cls?"border-slate-700 text-white":"border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
+            style={selectedClass===c.cls?{background:"#1a2340"}:{}}>
+            <div className="font-bold text-sm">{c.cls}</div>
+            <div className="text-xs mt-0.5 opacity-70">{c.출석률 !== null ? c.출석률+"%" : "기록없음"}</div>
           </button>
         ))}
       </div>
 
-      {/* 학생별 출결 */}
-      <Card className="p-5 space-y-3">
-        <div>
-          <h2 className="text-lg font-bold">학생별 출결 현황</h2>
-          <p className="text-xs text-slate-400 mt-0.5">수업일지에 행동태그가 입력된 수업 기준</p>
-        </div>
-        {studentStats.length === 0
-          ? <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-400 text-center">데이터가 없습니다.</div>
-          : <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {studentStats.map(s => (
-                <div key={s.id} className="rounded-2xl border p-3 space-y-2 cursor-pointer hover:bg-slate-50 transition"
-                  onClick={() => setCalendarModal({ student: s })}>
-                  <div className="flex items-center justify-between gap-1">
-                    <div className="text-sm font-semibold truncate">{s.name}</div>
-                    <div className={`rounded-xl px-2 py-0.5 text-xs font-bold ${rateColor(s.출석률)}`}>
-                      {s.출석률 !== null ? s.출석률+"%" : "-"}
+      {/* 중: 개인 통계 */}
+      <div className="flex-1 overflow-y-auto">
+        <Card className="p-4 h-full">
+          <div className="text-sm font-bold text-slate-700 mb-3">{selectedClass || "전체"} · 출결 현황</div>
+          {studentStats.length === 0
+            ? <div className="rounded-2xl border border-dashed p-6 text-sm text-slate-400 text-center">데이터가 없습니다.</div>
+            : <div className="grid grid-cols-2 gap-2">
+                {studentStats.map(s => (
+                  <div key={s.id}
+                    className={`rounded-2xl border p-3 space-y-2 cursor-pointer transition ${selectedStudent===s.id?"border-blue-400 bg-blue-50":"hover:bg-slate-50"}`}
+                    onClick={() => setSelectedStudent(selectedStudent===s.id ? null : s.id)}>
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="text-sm font-semibold truncate">{s.name}</div>
+                      <div className={`rounded-xl px-2 py-0.5 text-xs font-bold ${rateColor(s.출석률)}`}>
+                        {s.출석률 !== null ? s.출석률+"%" : "-"}
+                      </div>
+                    </div>
+                    <ProgressBar value={s.출석률??0}/>
+                    <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs">
+                      <span>총 <b>{s.총수업}</b>회</span>
+                      <span className="text-emerald-600">출석 <b>{s.출석}</b></span>
+                      <span className="text-amber-600">지각 <b>{s.지각}</b></span>
+                      <span className="text-red-500">결석 <b>{s.결석}</b></span>
+                      {s.무단결석 > 0 && <span className="text-pink-600">무단 <b>{s.무단결석}</b></span>}
                     </div>
                   </div>
-                  <Badge variant="secondary" className="text-xs">{s.className}</Badge>
-                  <ProgressBar value={s.출석률??0}/>
-                  <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs">
-                    <span>총 <b>{s.총수업}</b>회</span>
-                    <span className="text-emerald-600">출석 <b>{s.출석}</b></span>
-                    <span className="text-amber-600">지각 <b>{s.지각}</b></span>
-                    <span className="text-red-500">결석 <b>{s.결석}</b></span>
-                    {s.무단결석 > 0 && <span className="text-pink-600">무단 <b>{s.무단결석}</b></span>}
-                  </div>
-                </div>
-              ))}
-            </div>
-        }
-      </Card>
+                ))}
+              </div>
+          }
+        </Card>
+      </div>
+
+      {/* 우: 달력 */}
+      <div className="flex-shrink-0" style={{width:280}}>
+        <Card className="p-4 h-full">
+          {calStudent
+            ? <InlineStudentCalendar type="attendance" student={calStudent} lessons={allLessons} attendance={allAttendance}/>
+            : <div className="flex items-center justify-center h-full text-slate-300 text-sm text-center">학생을 선택하면<br/>달력이 표시됩니다</div>
+          }
+        </Card>
+      </div>
     </div>
   );
 }
