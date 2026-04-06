@@ -1,0 +1,25 @@
+{
+  "name": "homeworkplanner",
+  "version": "1.0.0",
+  "main": "firebase-messaging-sw.js",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/earl19900131-eng/homeworkplanner.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/earl19900131-eng/homeworkplanner/issues"
+  },
+  "homepage": "https://github.com/earl19900131-eng/homeworkplanner#readme",
+  "description": "",
+  "devDependencies": {
+    "@babel/cli": "^7.28.6",
+    "@babel/core": "^7.29.0",
+    "@babel/preset-react": "^7.28.5"
+  }
+}
