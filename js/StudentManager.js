@@ -944,6 +944,7 @@ function StudentManager({ students, homeworks }) {
                             <select value={profile?.currentAssessment || ""} onChange={e=>updateCurrentAssessment(s.id,e.target.value)}
                               className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-1 focus:ring-blue-300 max-w-[160px]">
                               <option value="">-</option>
+                              <option value="없음">없음</option>
                               {assessments.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
                             </select>
                           </td>
@@ -952,6 +953,7 @@ function StudentManager({ students, homeworks }) {
                               <select value={profile?.[field] || ""} onChange={e=>{ db.ref(`studentProfiles/${s.id}/${field}`).set(e.target.value||null); }}
                                 className={`text-xs border rounded-lg px-2 py-1 bg-white outline-none focus:ring-1 max-w-[160px] ${fi===0?"border-violet-200 focus:ring-violet-300":"border-rose-200 focus:ring-rose-300"}`}>
                                 <option value="">-</option>
+                                <option value="없음">없음</option>
                                 {assessments.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
                               </select>
                             </td>
