@@ -384,7 +384,7 @@ function HomeworkStatsSection({ students }) {
       </div>
 
       {/* 중: 개인 통계 */}
-      <div className="flex-1 overflow-y-auto">
+      <div style={{flex:2, overflow:"auto"}}>
         <Card className="p-4 h-full">
           <div className="text-sm font-bold text-slate-700 mb-3">{selectedClass || "전체"} · 개인 통계</div>
           {studentStats.length === 0
@@ -423,7 +423,7 @@ function HomeworkStatsSection({ students }) {
       </div>
 
       {/* 우: 달력 */}
-      <div className="flex-shrink-0" style={{width:280}}>
+      <div style={{flex:1}}>
         <Card className="p-4 h-full">
           {calStudent
             ? <InlineStudentCalendar type="homework" student={calStudent} lessonEntries={getLessonEntries(calStudent.id)}/>
@@ -515,7 +515,7 @@ function AttendanceStatsSection({ students }) {
       </div>
 
       {/* 중: 개인 통계 */}
-      <div className="flex-1 overflow-y-auto">
+      <div style={{flex:2, overflow:"auto"}}>
         <Card className="p-4 h-full">
           <div className="text-sm font-bold text-slate-700 mb-3">{selectedClass || "전체"} · 출결 현황</div>
           {studentStats.length === 0
@@ -547,7 +547,7 @@ function AttendanceStatsSection({ students }) {
       </div>
 
       {/* 우: 달력 */}
-      <div className="flex-shrink-0" style={{width:280}}>
+      <div style={{flex:1}}>
         <Card className="p-4 h-full">
           {calStudent
             ? <InlineStudentCalendar type="attendance" student={calStudent} lessons={allLessons} attendance={allAttendance}/>
