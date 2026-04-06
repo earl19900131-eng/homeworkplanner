@@ -1,5 +1,13 @@
 // ── 수업일지 ────────────────────────────────────────────────────────────────
 
+function showToast(msg) {
+  const el = document.createElement("div");
+  el.textContent = msg;
+  el.style.cssText = "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(30,30,30,0.85);color:#fff;padding:10px 20px;border-radius:999px;font-size:13px;z-index:99999;pointer-events:none;transition:opacity 0.4s";
+  document.body.appendChild(el);
+  setTimeout(() => { el.style.opacity = "0"; setTimeout(() => el.remove(), 400); }, 2000);
+}
+
 const BEHAVIOR_TAGS = [
   { name: "지각안함",         xp:  3,   cp:   10, group: "출결" },
   { name: "지각",             xp: -5,   cp:    0, group: "출결" },
@@ -2171,8 +2179,8 @@ function AttendanceReportModal({ date, lessons, attendance, students, profiles, 
         html2canvas(modalRef.current, { scale: 2, backgroundColor: "#ffffff" }).then(canvas => {
           canvas.toBlob(blob => {
             navigator.clipboard.write([new ClipboardItem({ "image/png": blob })])
-              .then(() => alert("클립보드에 복사됐습니다. 카톡에 붙여넣기 하세요."))
-              .catch(() => alert("클립보드 복사 실패 (브라우저 권한 필요)"));
+              .then(() => showToast("클립보드에 복사되었습니다."))
+              .catch(() => showToast("클립보드 복사 실패 (브라우저 권한 필요)"));
           });
         });
       }
