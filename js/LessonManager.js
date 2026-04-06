@@ -657,6 +657,10 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
     if (val.trim()) await db.ref(`lessonAttendance/${lesson._key}/${studentId}/absenceReason`).set(val.trim());
     else await db.ref(`lessonAttendance/${lesson._key}/${studentId}/absenceReason`).remove();
   };
+  const saveAbsenceResponse = async (studentId, val) => {
+    if (val.trim()) await db.ref(`lessonAttendance/${lesson._key}/${studentId}/absenceResponse`).set(val.trim());
+    else await db.ref(`lessonAttendance/${lesson._key}/${studentId}/absenceResponse`).remove();
+  };
 
   const saveDailyComment = async (studentId, val) => {
     if (val.trim()) await db.ref(`lessonAttendance/${lesson._key}/${studentId}/dailyComment`).set(val.trim());
@@ -1641,13 +1645,20 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
                               })}
                             </div>
                             {(tags.includes("결석") || tags.includes("무단결석")) && (
-                              <input
-                                defaultValue={sRec.absenceReason || ""}
-                                onBlur={e => saveAbsenceReason(s.id, e.target.value)}
-                                placeholder="결석 사유..."
-                                onClick={e => e.stopPropagation()}
-                                className="w-full text-[11px] text-slate-600 outline-none bg-red-50 border border-red-200 rounded-lg px-2 py-1 placeholder-red-300"
-                              />
+                              <div className="space-y-1" onClick={e => e.stopPropagation()}>
+                                <input
+                                  defaultValue={sRec.absenceReason || ""}
+                                  onBlur={e => saveAbsenceReason(s.id, e.target.value)}
+                                  placeholder="결석 사유..."
+                                  className="w-full text-[11px] text-slate-600 outline-none bg-red-50 border border-red-200 rounded-lg px-2 py-1 placeholder-red-300"
+                                />
+                                <input
+                                  defaultValue={sRec.absenceResponse || ""}
+                                  onBlur={e => saveAbsenceResponse(s.id, e.target.value)}
+                                  placeholder="처리 내용..."
+                                  className="w-full text-[11px] text-slate-600 outline-none bg-orange-50 border border-orange-200 rounded-lg px-2 py-1 placeholder-orange-300"
+                                />
+                              </div>
                             )}
                           </div>
                         ) : (
@@ -1868,13 +1879,20 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
                             })}
                           </div>
                           {(tags.includes("결석") || tags.includes("무단결석")) && (
-                            <input
-                              defaultValue={sRec.absenceReason || ""}
-                              onBlur={e => saveAbsenceReason(s.id, e.target.value)}
-                              placeholder="결석 사유..."
-                              onClick={e => e.stopPropagation()}
-                              className="w-full text-[11px] text-slate-600 outline-none bg-red-50 border border-red-200 rounded-lg px-2 py-1 placeholder-red-300"
-                            />
+                            <div className="space-y-1" onClick={e => e.stopPropagation()}>
+                              <input
+                                defaultValue={sRec.absenceReason || ""}
+                                onBlur={e => saveAbsenceReason(s.id, e.target.value)}
+                                placeholder="결석 사유..."
+                                className="w-full text-[11px] text-slate-600 outline-none bg-red-50 border border-red-200 rounded-lg px-2 py-1 placeholder-red-300"
+                              />
+                              <input
+                                defaultValue={sRec.absenceResponse || ""}
+                                onBlur={e => saveAbsenceResponse(s.id, e.target.value)}
+                                placeholder="처리 내용..."
+                                className="w-full text-[11px] text-slate-600 outline-none bg-orange-50 border border-orange-200 rounded-lg px-2 py-1 placeholder-orange-300"
+                              />
+                            </div>
                           )}
                         </div>
                       ) : (
@@ -2054,9 +2072,12 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
                   </div>
                 )}
 
-                {/* 결석 사유 */}
+                {/* 결석 사유 / 처리 */}
                 {isAbsent && r.absenceReason && section("결석 사유",
                   <span className="text-red-600">{r.absenceReason}</span>
+                )}
+                {isAbsent && r.absenceResponse && section("처리",
+                  <span className="text-orange-600">{r.absenceResponse}</span>
                 )}
 
                 {/* 데일리 코멘트 */}
@@ -2165,7 +2186,7 @@ function AttendanceReportModal({ date, lessons, attendance, students, profiles, 
                   <th className="text-left py-2 px-3 text-xs font-semibold text-slate-500 w-24">이름</th>
                   <th className="text-left py-2 px-3 text-xs font-semibold text-slate-500 w-20">담당T</th>
                   <th className="text-left py-2 px-3 text-xs font-semibold text-slate-500">결석사유</th>
-                  <th className="text-left py-2 px-3 text-xs font-semibold text-slate-500">대응</th>
+                  <th className="text-left py-2 px-3 text-xs font-semibold text-slate-500">처리</th>
                 </tr>
               </thead>
               <tbody>
@@ -2181,7 +2202,7 @@ function AttendanceReportModal({ date, lessons, attendance, students, profiles, 
                         <input
                           defaultValue={sRec.absenceResponse || ""}
                           onBlur={e => saveResponse(lessonKey, student?.id, e.target.value)}
-                          placeholder="대응 내용..."
+                          placeholder="처리 내용..."
                           className="w-full text-xs outline-none bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 placeholder-slate-300 focus:ring-2 focus:ring-blue-300"
                         />
                       </td>
