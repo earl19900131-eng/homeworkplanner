@@ -2147,8 +2147,7 @@ function LessonDetailView({ lesson, lessons = [], students, materials = [], atte
 
 // ── 출결보고 모달 ─────────────────────────────────────────────────────────
 function AttendanceReportModal({ date, lessons, attendance, students, profiles, onClose }) {
-  // 해당 날짜의 모든 수업에서 결석 학생 추출 (중복 제거)
-  const absentMap = {}; // studentId -> { student, lessonKey, absenceReason, absenceResponse }
+  const absentMap = {};
   lessons.forEach(lesson => {
     const rec = attendance[lesson._key] || {};
     (lesson.studentIds || []).forEach(sid => {
@@ -2162,18 +2161,38 @@ function AttendanceReportModal({ date, lessons, attendance, students, profiles, 
     });
   });
   const absentList = Object.values(absentMap);
+  const modalRef = React.useRef(null);
 
+  React.useEffect(() => {
+    const handler = (e) => {
+      if (e.ctrlKey && e.key === "c") {
+        e.preventDefault();
+        if (!modalRef.current || typeof html2canvas === "undefined") return;
+        html2canvas(modalRef.current, { scale: 2, backgroundColor: "#ffffff" }).then(canvas => {
+          const link = document.createElement("a");
+          link.download = `출결보고_${date}.png`;
+          link.href = canvas.toDataURL("image/png");
+          link.click();
+        });
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [date]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col"
+      <div ref={modalRef} className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col"
         onClick={e => e.stopPropagation()}>
         <div className="p-5 pb-3 border-b shrink-0 flex items-center justify-between">
           <div>
             <h3 className="font-bold text-base">출결보고</h3>
             <div className="text-sm text-slate-500 mt-0.5">{date} · 결석 {absentList.length}명</div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-300">Ctrl+C 캡처</span>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold">×</button>
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4">
           {absentList.length === 0 ? (
@@ -2198,7 +2217,7 @@ function AttendanceReportModal({ date, lessons, attendance, students, profiles, 
                       <td className="py-2 px-3 font-medium text-slate-900">{student?.name || "-"}</td>
                       <td className="py-2 px-3 text-slate-500">{profile.teacher || "-"}</td>
                       <td className="py-2 px-3 text-slate-600">{sRec.absenceReason || <span className="text-slate-300">-</span>}</td>
-                      <td className="py-2 px-3 text-xs text-orange-600">{sRec.absenceResponse || <span className="text-slate-300">-</span>}</td>
+                      <td className="py-2 px-3 text-slate-600">{sRec.absenceResponse || <span className="text-slate-300">-</span>}</td>
                     </tr>
                   );
                 })}
