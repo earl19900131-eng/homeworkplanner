@@ -371,6 +371,14 @@ function StudentManager({ students, homeworks }) {
         const num = parseFloat(val);
         if (isNaN(num)) { alert("숫자를 입력해 주세요."); return; }
         await db.ref(`studentProfiles/${studentId}/${field}`).set(num);
+      } else if (["currentSubject","addSubject1","addSubject2"].includes(field)) {
+        await db.ref(`studentProfiles/${studentId}/${field}`).set(val || null);
+      } else if (field === "paymentDay") {
+        const num = parseInt(val);
+        await db.ref(`studentProfiles/${studentId}/paymentDay`).set(isNaN(num) ? null : num);
+      } else if (["tuition","tuition1","tuition2","tutorialTuition"].includes(field)) {
+        const num = parseInt(val.replace(/,/g, ""));
+        await db.ref(`studentProfiles/${studentId}/${field}`).set(isNaN(num) ? null : num);
       }
     } catch(e) { alert("저장 실패: " + e.message); }
   };
