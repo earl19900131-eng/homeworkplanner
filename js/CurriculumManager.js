@@ -307,15 +307,17 @@ function MaterialsTab({ materials }) {
   };
 
   // ── 폴더 그리드 (루트 or 하위 폴더 공통) ────────────────────────────────────
+  const countProblemsInFolder = (folderId) => {
+    const direct = materials.filter(m => m.folderId === folderId).reduce((s, m) => s + (Number(m.totalProblems) || 0), 0);
+    const sub = folders.filter(f => f.parentId === folderId).reduce((s, f) => s + countProblemsInFolder(f.id), 0);
+    return direct + sub;
+  };
+
   const renderFolderGrid = (folderList) => (
     <div className="flex flex-wrap gap-2">
       {folderList.map(folder => {
-        const directMats = materials.filter(m => m.folderId === folder.id).length;
-        const subCount = folders.filter(f => f.parentId === folder.id).length;
         const isDragOver = draggingMatId && dragOverTarget === folder.id;
-        const countLabel = directMats > 0 || subCount > 0
-          ? [(directMats > 0 ? `교재 ${directMats}` : ""), (subCount > 0 ? `폴더 ${subCount}` : "")].filter(Boolean).join(" · ")
-          : "비어있음";
+        const totalProblems = countProblemsInFolder(folder.id);
         return (
           <div key={folder.id} className="group relative"
             onDragOver={draggingMatId ? (e => { e.preventDefault(); setDragOverTarget(folder.id); }) : undefined}
@@ -336,7 +338,7 @@ function MaterialsTab({ materials }) {
                 style={{width:130,height:130}}>
                 <span className="text-3xl leading-none">{isDragOver ? "📂" : "📁"}</span>
                 <span className="text-xs font-semibold text-amber-900 text-center leading-tight line-clamp-2 px-2">{folder.name}</span>
-                <span className="text-[10px] text-amber-600">{isDragOver ? "여기에 놓기" : countLabel}</span>
+                <span className="text-[10px] text-amber-600">{isDragOver ? "여기에 놓기" : (totalProblems > 0 ? `총 ${totalProblems}문제` : "비어있음")}</span>
               </button>
             )}
             {!draggingMatId && (
