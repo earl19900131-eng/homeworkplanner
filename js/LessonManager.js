@@ -2169,10 +2169,11 @@ function AttendanceReportModal({ date, lessons, attendance, students, profiles, 
         e.preventDefault();
         if (!modalRef.current || typeof html2canvas === "undefined") return;
         html2canvas(modalRef.current, { scale: 2, backgroundColor: "#ffffff" }).then(canvas => {
-          const link = document.createElement("a");
-          link.download = `출결보고_${date}.png`;
-          link.href = canvas.toDataURL("image/png");
-          link.click();
+          canvas.toBlob(blob => {
+            navigator.clipboard.write([new ClipboardItem({ "image/png": blob })])
+              .then(() => alert("클립보드에 복사됐습니다. 카톡에 붙여넣기 하세요."))
+              .catch(() => alert("클립보드 복사 실패 (브라우저 권한 필요)"));
+          });
         });
       }
     };
