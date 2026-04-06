@@ -834,7 +834,8 @@ function StudentManager({ students, homeworks }) {
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-rose-600">추가2수강료</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-amber-600">특강수강료</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">현행평가</th>
-                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">추가평가</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-violet-500">추가1평가</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-rose-500">추가2평가</th>
                     <th className="text-left px-4 py-2.5 text-xs font-semibold text-slate-500">상태</th>
                     <th className="px-4 py-2.5 w-16"></th>
                   </tr>
@@ -946,13 +947,15 @@ function StudentManager({ students, homeworks }) {
                               {assessments.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
                             </select>
                           </td>
-                          <td className="px-3 py-2">
-                            <select value={profile?.advanceAssessment || ""} onChange={e=>updateAdvanceAssessment(s.id,e.target.value)}
-                              className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white outline-none focus:ring-1 focus:ring-violet-300 max-w-[160px]">
-                              <option value="">-</option>
-                              {assessments.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
-                            </select>
-                          </td>
+                          {["advanceAssessment","advanceAssessment2"].map((field,fi)=>(
+                            <td key={field} className="px-3 py-2">
+                              <select value={profile?.[field] || ""} onChange={e=>{ db.ref(`studentProfiles/${s.id}/${field}`).set(e.target.value||null); }}
+                                className={`text-xs border rounded-lg px-2 py-1 bg-white outline-none focus:ring-1 max-w-[160px] ${fi===0?"border-violet-200 focus:ring-violet-300":"border-rose-200 focus:ring-rose-300"}`}>
+                                <option value="">-</option>
+                                {assessments.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+                              </select>
+                            </td>
+                          ))}
                           <td className="px-4 py-2.5">
                             {isLocked
                               ? <span className="text-xs text-emerald-600 font-medium">🔒 확정</span>
