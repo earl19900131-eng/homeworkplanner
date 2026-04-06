@@ -223,7 +223,7 @@ function InlineStudentCalendar({ type, student, lessonEntries, lessons, attendan
       </div>
       <div className="grid grid-cols-7 text-center">
         {["일","월","화","수","목","금","토"].map((d,i)=>(
-          <div key={d} className={`text-[10px] font-bold py-0.5 ${i===0?"text-red-400":i===6?"text-blue-400":"text-slate-400"}`}>{d}</div>
+          <div key={d} className={`text-[15px] font-bold py-0.5 ${i===0?"text-red-400":i===6?"text-blue-400":"text-slate-400"}`}>{d}</div>
         ))}
       </div>
       <div className="grid grid-cols-7 gap-0.5 flex-1">
@@ -233,12 +233,12 @@ function InlineStudentCalendar({ type, student, lessonEntries, lessons, attendan
           const dow = i%7;
           return (
             <div key={cell.dateStr} className={`rounded-md p-0.5 min-h-[36px] flex flex-col items-center gap-0.5 ${cellBg(entries)}`}>
-              <div className={`text-[10px] font-medium ${dow===0?"text-red-400":dow===6?"text-blue-400":"text-slate-600"}`}>{cell.d}</div>
+              <div className={`text-[15px] font-medium ${dow===0?"text-red-400":dow===6?"text-blue-400":"text-slate-600"}`}>{cell.d}</div>
               {type==="homework"
                 ? entries.map((e,ei)=>(
                     <div key={ei} className="flex flex-col items-center">
-                      <div className={`w-1.5 h-1.5 rounded-full ${hwDotColor(e.status)}`}/>
-                      <span className={`text-[7px] font-bold leading-none ${hwTypeColor(e.lessonType)}`}>{hwTypeLabel(e.lessonType)}</span>
+                      <div className={`w-2 h-2 rounded-full ${hwDotColor(e.status)}`}/>
+                      <span className={`text-[11px] font-bold leading-none ${hwTypeColor(e.lessonType)}`}>{hwTypeLabel(e.lessonType)}</span>
                     </div>
                   ))
                 : entries.map((e,ei)=>(
@@ -252,10 +252,10 @@ function InlineStudentCalendar({ type, student, lessonEntries, lessons, attendan
       <div className="flex flex-wrap gap-2 pt-1 border-t">
         {type==="homework"
           ? [["bg-emerald-400","이행"],["bg-red-400","미이행"]].map(([cls,lbl])=>(
-              <div key={lbl} className="flex items-center gap-1"><div className={`w-2 h-2 rounded-full ${cls}`}/><span className="text-[10px] text-slate-400">{lbl}</span></div>
+              <div key={lbl} className="flex items-center gap-1"><div className={`w-2 h-2 rounded-full ${cls}`}/><span className="text-[15px] text-slate-400">{lbl}</span></div>
             ))
           : [["bg-emerald-400","출석"],["bg-amber-400","지각"],["bg-red-400","결석"],["bg-pink-500","무단"]].map(([cls,lbl])=>(
-              <div key={lbl} className="flex items-center gap-1"><div className={`w-2 h-2 rounded-full ${cls}`}/><span className="text-[10px] text-slate-400">{lbl}</span></div>
+              <div key={lbl} className="flex items-center gap-1"><div className={`w-2 h-2 rounded-full ${cls}`}/><span className="text-[15px] text-slate-400">{lbl}</span></div>
             ))
         }
       </div>
